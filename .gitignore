@@ -216,3 +216,26 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Proyecto bot-consorcios
+# ---------------------------------------------------------------------------
+# Secretos: solo se versiona .env.example
+.env
+.env.*
+!.env.example
+
+# Datos reales (propietarios, exports, capturas de ConsorPlus). NUNCA se suben.
+private/
+
+# Datos locales / volúmenes / dumps
+data/
+*.dump
+*.sqlite3
+*.db
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
