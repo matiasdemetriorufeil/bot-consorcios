@@ -36,6 +36,7 @@ from app.sync.normalize import (
     NormalizedPhone,
     clean_document,
     clean_name,
+    clean_payment_code,
     extract_emails,
     extract_phones,
     name_key,
@@ -81,6 +82,9 @@ class RosterReport:
     nameless_contacts: int = 0
     contacts_ignored: int = 0
     people_in_several_buildings: int = 0
+    payment_codes_valid: int = 0
+    payment_codes_invalid: int = 0  # present but not 19 digits: stored as NULL
+    payment_codes_missing: int = 0  # empty cell
     # unit type -> {"units", "with_owner_phone", "with_owner_email"}
     by_unit_type: dict[str, dict[str, int]] = field(
         default_factory=lambda: defaultdict(_unit_type_counters)
@@ -151,7 +155,20 @@ def _upsert_building(session: Session, code: int, name: str) -> Building:
     return building
 
 
-def _upsert_unit(session: Session, building: Building, row: RosterRow) -> Unit:
+def _payment_code(row: RosterRow, report: RosterReport) -> str | None:
+    code = clean_payment_code(row.payment_code)
+    if code is not None:
+        report.payment_codes_valid += 1
+    elif row.payment_code.strip():
+        report.payment_codes_invalid += 1
+    else:
+        report.payment_codes_missing += 1
+    return code
+
+
+def _upsert_unit(
+    session: Session, building: Building, row: RosterRow, report: RosterReport
+) -> Unit:
     unit = session.scalar(
         select(Unit).where(
             Unit.building_id == building.id, Unit.consorplus_unit_value == row.unit_value
@@ -164,6 +181,7 @@ def _upsert_unit(session: Session, building: Building, row: RosterRow) -> Unit:
         session.add(unit)
     unit.label = label
     unit.unit_type = clean_name(row.unit_type) or None
+    unit.payment_code = _payment_code(row, report)
     unit.owner_name = owner_name or None
     unit.active = True
     session.flush()
@@ -355,7 +373,7 @@ def sync_building_rows(
     building = _upsert_building(session, int(building_code), name)
     wanted_phones: dict[int, set[str]] = defaultdict(set)
     for row in rows:
-        unit = _upsert_unit(session, building, row)
+        unit = _upsert_unit(session, building, row, report)
         report.units += 1
         wanted: set[tuple[int, PersonRole]] = set()
         owner_has_phone = owner_has_email = False

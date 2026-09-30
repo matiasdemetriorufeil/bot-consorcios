@@ -296,6 +296,15 @@ def test_coupon_is_unique_per_unit_period_and_id(db_session: Session) -> None:
         db_session.flush()
 
 
+def test_coupon_id_is_required(db_session: Session) -> None:
+    """A NULL coupon_id would slip past the unique constraint (NULLs never collide)."""
+    unit = make_unit(db_session, make_building(db_session))
+
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.add(make_coupon(unit, "03/2026", None))
+        db_session.flush()
+
+
 def test_coupon_upsert_on_unique_key_updates_existing_row(db_session: Session) -> None:
     unit = make_unit(db_session, make_building(db_session))
     values = {

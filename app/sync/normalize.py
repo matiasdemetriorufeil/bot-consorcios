@@ -148,3 +148,14 @@ def clean_document(document: str) -> str | None:
     if 7 <= len(digits) <= 8:
         return digits
     return None
+
+
+PAYMENT_CODE_LENGTH = 19
+
+
+def clean_payment_code(code: str) -> str | None:
+    """Siro payment code ("Cód.Electrónico"): exactly 19 digits, else None. No guessing."""
+    code = (code or "").strip()
+    if len(code) == PAYMENT_CODE_LENGTH and code.isascii() and code.isdigit():
+        return code
+    return None

@@ -22,7 +22,9 @@ from app.consorplus.allowlist import (
     LOADING_PAGE,
     LOGIN_LINK,
     LOGIN_PAGE,
+    MAX_REDIRECTS,
     PASSWORD_FIELD,
+    REDIRECT_STATUSES,
     ROSTER_FROM_SELECT,
     ROSTER_QUERY_BUTTON,
     ROSTER_TO_SELECT,
@@ -32,6 +34,7 @@ from app.consorplus.allowlist import (
     check_get,
     check_input_fields,
     check_postback,
+    check_redirect,
     page_name,
 )
 from app.consorplus.delta import DeltaNode, apply_delta, parse_delta
@@ -43,6 +46,7 @@ from app.consorplus.errors import (
     NotFoundError,
     ParseError,
     SessionExpiredError,
+    UnexpectedRedirectError,
 )
 from app.consorplus.models import Building, RosterRow, Unit, UnitDebt
 
@@ -69,6 +73,15 @@ def _label_code(label: str) -> str | None:
     """'050 EDIFICIO X' -> '050'."""
     match = re.match(r"\s*(\d+)(?!\S)", label)
     return match.group(1) if match else None
+
+
+def _redirect_location(response: requests.Response) -> str | None:
+    if response.status_code not in REDIRECT_STATUSES:
+        return None
+    location = response.headers.get("Location")
+    if not location:
+        raise ConsorPlusError(f"Redirección HTTP {response.status_code} sin Location")
+    return location
 
 
 def _same_code(a: str, b: str) -> bool:
@@ -259,6 +272,9 @@ class ConsorPlusClient:
         check_input_fields(fields or {})
         data = {**form.fields, **(fields or {}), "__EVENTTARGET": control, "__EVENTARGUMENT": ""}
         response = self._send("POST", url, control=control, data=data, button_names=form.buttons)
+        if page_name(response.url) == LOGIN_PAGE and page_name(url) != LOGIN_PAGE:
+            self._logged_in = False
+            raise SessionExpiredError("Redirigido a login.aspx")
         self._url, self._html = response.url, response.text
 
     def _async_postback(
@@ -314,8 +330,7 @@ class ConsorPlusClient:
         headers: Mapping[str, str] | None = None,
     ) -> requests.Response:
         # Allowlist first: nothing is sent unless it is explicitly permitted.
-        if urlsplit(url).netloc.lower() != self._netloc:
-            raise ForbiddenActionError(f"Host no permitido: {urlsplit(url).netloc!r}")
+        self._check_host(url)
         if method == "GET":
             check_get(url)
         elif method == "POST":
@@ -325,6 +340,34 @@ class ConsorPlusClient:
         else:
             raise ForbiddenActionError(f"Método no permitido: {method}")
 
+        response = self._request(method, url, data=data, headers=headers)
+        # Redirects are followed by hand, each hop checked BEFORE its GET is sent.
+        hops = 0
+        while (location := _redirect_location(response)) is not None:
+            if hops == MAX_REDIRECTS:
+                raise UnexpectedRedirectError(
+                    f"Más de {MAX_REDIRECTS} redirecciones desde {page_name(url)!r}"
+                )
+            next_url = urljoin(url, location)
+            self._check_host(next_url)
+            check_redirect(method, url, response.status_code, next_url)
+            method, url, hops = "GET", next_url, hops + 1
+            response = self._request("GET", url)
+        return response
+
+    def _check_host(self, url: str) -> None:
+        if urlsplit(url).netloc.lower() != self._netloc:
+            raise ForbiddenActionError(f"Host no permitido: {urlsplit(url).netloc!r}")
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        data: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> requests.Response:
+        """One request (with retries). Never follows redirects: see `_send`."""
         last_error: Exception | None = None
         for attempt in range(self._max_retries + 1):
             if attempt:
@@ -332,7 +375,12 @@ class ConsorPlusClient:
             self._rate_limiter.wait()
             try:
                 response = self._session.request(
-                    method, url, data=data, headers=headers, timeout=self._timeout
+                    method,
+                    url,
+                    data=data,
+                    headers=headers,
+                    timeout=self._timeout,
+                    allow_redirects=False,
                 )
             except RETRY_EXCEPTIONS as exc:
                 last_error = exc

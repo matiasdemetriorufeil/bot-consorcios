@@ -5,6 +5,7 @@ import pytest
 from app.sync.normalize import (
     clean_document,
     clean_name,
+    clean_payment_code,
     extract_emails,
     extract_phones,
     name_key,
@@ -128,3 +129,20 @@ def test_name_key_ignores_accents_case_punctuation_titles_and_order() -> None:
 )
 def test_clean_document(raw: str, dni: str | None) -> None:
     assert clean_document(raw) == dni
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [
+        ("0000000000000009001", "0000000000000009001"),
+        (" 1234567890123456789 ", "1234567890123456789"),
+        ("", None),
+        ("123456789012345678", None),  # 18 digits
+        ("12345678901234567890", None),  # 20 digits
+        ("1234 5678 9012 3456 789", None),  # no guessing: spaces are not stripped inside
+        ("123456789012345678X", None),
+        ("١٢٣٤٥٦٧٨٩٠١٢٣٤٥٦٧٨٩", None),  # non-ASCII digits
+    ],
+)
+def test_clean_payment_code(raw: str, code: str | None) -> None:
+    assert clean_payment_code(raw) == code

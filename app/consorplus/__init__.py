@@ -9,6 +9,7 @@ from app.consorplus.errors import (
     NotFoundError,
     ParseError,
     SessionExpiredError,
+    UnexpectedRedirectError,
 )
 from app.consorplus.models import (
     Building,
@@ -32,6 +33,7 @@ __all__ = [
     "RosterContact",
     "RosterRow",
     "SessionExpiredError",
+    "UnexpectedRedirectError",
     "Unit",
     "UnitDebt",
 ]

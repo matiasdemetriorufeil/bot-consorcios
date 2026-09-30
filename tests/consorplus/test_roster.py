@@ -155,6 +155,13 @@ def test_parse_roster_discards_sensitive_columns() -> None:
         assert secret not in repr(rows)
 
 
+def test_parse_roster_reads_the_payment_code_raw_and_keeps_it_out_of_repr() -> None:
+    rows = parse_roster(load("roster_panel.html"))
+
+    assert [r.payment_code for r in rows] == ["0000000000000009001", "12345-6"]
+    assert "0000000000000009001" not in repr(rows)
+
+
 def test_contact_repr_is_redacted() -> None:
     rows = parse_roster(load("roster_panel.html"))
 

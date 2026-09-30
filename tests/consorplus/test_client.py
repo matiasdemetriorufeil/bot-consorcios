@@ -34,6 +34,7 @@ def test_login_flow(server, make_client) -> None:
         ("GET", "login.aspx"),
         ("POST", "login.aspx"),
         ("POST", "loadingcache.aspx"),
+        ("GET", "home.aspx"),  # 302 hop, followed by hand
     ]
     login_post = server.calls[1].data
     assert login_post["__EVENTTARGET"] == "lnkIniciarSesion"
@@ -129,7 +130,9 @@ def test_expired_session_logs_in_again(server, make_client) -> None:
     debt = client.get_debt("1", "9001")
 
     assert debt.total == Decimal("151925.50")
-    assert server.pages().count(("GET", "login.aspx")) == 2
+    # First login, the 302 hop to login.aspx?goTo=... and the new login.
+    assert server.pages().count(("GET", "login.aspx")) == 3
+    assert server.calls[6].url == BASE_URL + "login.aspx?goTo=detalledeudaunidad.aspx"
 
 
 def test_expired_session_in_async_postback_logs_in_again(server, make_client) -> None:
@@ -137,13 +140,13 @@ def test_expired_session_in_async_postback_logs_in_again(server, make_client) ->
     original = server.request
     expired = {"done": False}
 
-    def request(method, url, data=None, headers=None, timeout=None):
+    def request(method, url, data=None, headers=None, **kwargs):
         if method == "POST" and data and data.get("__ASYNCPOST") and not expired["done"]:
             expired["done"] = True
             server.session_valid = False
             redirect = ("pageRedirect", "", "/login.aspx?ReturnUrl=%2fDetalleDeudaUnidad.aspx")
             return FakeResponse(url, make_delta(redirect))
-        return original(method, url, data=data, headers=headers, timeout=timeout)
+        return original(method, url, data=data, headers=headers, **kwargs)
 
     server.request = request
     assert [u.value for u in client.list_units("1")] == ["9001", "9002", "9003"]
@@ -231,7 +234,7 @@ def test_rate_limiter(clock) -> None:
 def test_client_is_rate_limited(server, make_client, clock) -> None:
     make_client(server, min_request_interval=0.5).login()
 
-    assert clock.sleeps == [0.5, 0.5]  # 3 requests, 2 waits
+    assert clock.sleeps == [0.5, 0.5, 0.5]  # 4 requests (with the Home hop), 3 waits
 
 
 def test_from_settings_and_repr_hide_password() -> None:

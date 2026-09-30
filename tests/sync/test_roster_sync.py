@@ -32,6 +32,7 @@ def row(
     unit_type: str = "DPTO",
     second_owner: RosterContact | None = None,
     tenant: RosterContact | None = None,
+    payment_code: str = "",
 ) -> RosterRow:
     return RosterRow(
         unit_value=unit,
@@ -43,6 +44,7 @@ def row(
         owner=owner,
         second_owner=second_owner,
         tenant=tenant,
+        payment_code=payment_code,
     )
 
 
@@ -227,6 +229,44 @@ def test_contact_without_name_nor_phone_nor_email_is_ignored(db_session) -> None
     assert count(db_session, Person) == 0
     assert (report.contacts_ignored, report.nameless_contacts) == (1, 0)
     assert report.units_without_owner_phone == 1
+
+
+VALID_CODE = "0000000000000009001"
+
+
+def test_payment_code_is_stored_only_when_it_has_19_digits(db_session) -> None:
+    source = FakeSource(
+        {
+            "7": [
+                row("9001", JUAN, payment_code=VALID_CODE),
+                row("9002", ANA, payment_code="12345-6"),
+                row("9003", MARIA),
+            ]
+        }
+    )
+
+    report = sync_roster(db_session, source, ["7"])
+
+    codes = dict(db_session.execute(select(Unit.consorplus_unit_value, Unit.payment_code)).all())
+    assert codes == {"9001": VALID_CODE, "9002": None, "9003": None}
+    counters = (report.payment_codes_valid, report.payment_codes_invalid)
+    assert counters + (report.payment_codes_missing,) == (1, 1, 1)
+    run = db_session.scalar(select(SyncRun))
+    assert run.stats["payment_codes_valid"] == 1
+    # Counters only: the code itself never reaches the report or sync_runs.
+    assert VALID_CODE not in repr(report)
+    assert VALID_CODE not in str(run.stats)
+
+
+def test_payment_code_that_turns_invalid_is_cleared(db_session) -> None:
+    sync_roster(db_session, FakeSource({"7": [row("9001", JUAN, payment_code=VALID_CODE)]}), ["7"])
+
+    report = sync_roster(
+        db_session, FakeSource({"7": [row("9001", JUAN, payment_code="999")]}), ["7"]
+    )
+
+    assert db_session.scalar(select(Unit.payment_code)) is None
+    assert report.payment_codes_invalid == 1
 
 
 def test_one_failing_building_does_not_stop_the_rest(db_session) -> None:

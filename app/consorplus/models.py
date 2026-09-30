@@ -69,6 +69,8 @@ class RosterRow:
     unit_label: str
     ph: str
     unit_type: str = ""  # "Tipo Unidad", e.g. department, garage
+    # "Cód.Electrónico": Siro payment code, raw cell text. Kept out of repr and logs.
+    payment_code: str = field(default="", repr=False)
     owner: RosterContact | None = field(default=None, repr=False)
     second_owner: RosterContact | None = field(default=None, repr=False)
     tenant: RosterContact | None = field(default=None, repr=False)

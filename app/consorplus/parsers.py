@@ -236,7 +236,8 @@ def parse_debt_lines(html: str) -> list[DebtLine]:
 
 
 # 'List. Todos Los Datos' (Listado2036.aspx). ONLY these columns are read; everything else in
-# the grid (bank account, CBU/alias, payment codes, web login, ...) is never extracted.
+# the grid (bank account, CBU/alias, web login, ...) is never extracted. The one payment code
+# read is "Cód.Electrónico" (Siro), which the bot gives to owners so they can pay.
 ROSTER_COLUMNS = {
     "id": "unit_value",
     "cod.edif": "building_code",
@@ -244,6 +245,7 @@ ROSTER_COLUMNS = {
     "unidad": "unit_label",
     "p.h": "ph",
     "tipo unidad": "unit_type",
+    "cód.electrónico": "payment_code",
     "propietario": "owner_name",
     "telef. propietario": "owner_phone",
     "celular propietario": "owner_mobile",
@@ -319,6 +321,7 @@ def parse_roster(html: str) -> list[RosterRow]:
                 unit_label=values["unit_label"],
                 ph=values["ph"],
                 unit_type=values["unit_type"],
+                payment_code=values["payment_code"],
                 owner=_contact(values, "owner", with_document=True),
                 second_owner=_contact(values, "second_owner", with_document=True),
                 tenant=_contact(values, "tenant", with_document=False),

@@ -24,3 +24,7 @@ class NotFoundError(ConsorPlusError):
 
 class ParseError(ConsorPlusError, ValueError):
     """The HTML or delta response does not have the expected structure."""
+
+
+class UnexpectedRedirectError(ForbiddenActionError):
+    """ConsorPlus redirected somewhere outside the allowlist. The redirect was NOT followed."""

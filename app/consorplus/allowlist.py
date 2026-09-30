@@ -10,7 +10,7 @@ All checks run BEFORE the request is sent.
 from collections.abc import Iterable, Mapping
 from urllib.parse import unquote, urlsplit
 
-from app.consorplus.errors import ForbiddenActionError
+from app.consorplus.errors import ForbiddenActionError, UnexpectedRedirectError
 
 LOGIN_PAGE = "login.aspx"
 LOADING_PAGE = "loadingcache.aspx"
@@ -55,6 +55,16 @@ ALLOWED_INPUT_FIELDS: frozenset[str] = frozenset(
         ROSTER_FROM_SELECT,
         ROSTER_TO_SELECT,
     }
+)
+
+
+# Redirects are followed by hand (never by requests), one hop at a time, and only these:
+# - POST LoadingCache.aspx -> Home.aspx (end of the login);
+# - anything -> login.aspx (expired session; the client then logs in again).
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+MAX_REDIRECTS = 5
+ALLOWED_REDIRECTS: frozenset[tuple[str, str, str]] = frozenset(
+    {("POST", LOADING_PAGE, HOME_PAGE)}  # (method, from page, to page)
 )
 
 
@@ -104,3 +114,18 @@ def check_input_fields(fields: Mapping[str, str]) -> None:
     forbidden = set(fields) - ALLOWED_INPUT_FIELDS
     if forbidden:
         raise ForbiddenActionError(f"Campos no permitidos: {sorted(forbidden)}")
+
+
+def check_redirect(method: str, from_url: str, status: int, to_url: str) -> None:
+    """Validate ONE redirect hop before it is followed (always with a GET)."""
+    source, target = page_name(from_url), page_name(to_url)
+    if status in (307, 308) and method != "GET":
+        # 307/308 ask to repeat the same method and body: never re-send a POST.
+        raise UnexpectedRedirectError(
+            f"Redirección {status} de {source!r} a {target!r}: repetiría el {method}"
+        )
+    if target == LOGIN_PAGE or (method, source, target) in ALLOWED_REDIRECTS:
+        return
+    raise UnexpectedRedirectError(
+        f"ConsorPlus redirigió de {source!r} a {target!r}: redirección no permitida, no se siguió"
+    )

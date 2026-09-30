@@ -84,6 +84,8 @@ class Unit(Base):
     consorplus_unit_value: Mapped[str] = mapped_column(String(50))
     label: Mapped[str] = mapped_column(String(100))
     unit_type: Mapped[str | None] = mapped_column(String(50))  # ConsorPlus "Tipo Unidad"
+    # ConsorPlus "Cód.Electrónico": Siro payment code, exactly 19 digits. Never logged.
+    payment_code: Mapped[str | None] = mapped_column(String(19))
     owner_name: Mapped[str | None] = mapped_column(String(200))
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

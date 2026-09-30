@@ -5,7 +5,7 @@ Usage (from the repo root):
     uv run python scripts/sync_roster.py --all [--dry-run]
 
 `building_code` is the value of the building combo (e.g. "1"). Prints counters only: never
-names, phones or emails.
+names, phones, emails or payment codes.
 """
 
 import argparse
@@ -42,6 +42,9 @@ LABELS = {
     "nameless_contacts": "contactos sin nombre (creados/unidos)",
     "contacts_ignored": "contactos sin nombre ni contacto (ignorados)",
     "people_in_several_buildings": "personas en varios edificios (tel. no depurados)",
+    "payment_codes_valid": "unidades con código electrónico válido",
+    "payment_codes_invalid": "códigos electrónicos inválidos (guardados NULL)",
+    "payment_codes_missing": "unidades sin código electrónico",
 }
 
 

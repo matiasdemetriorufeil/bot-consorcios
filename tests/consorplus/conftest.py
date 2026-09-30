@@ -47,6 +47,11 @@ class FakeResponse:
     url: str
     text: str
     status_code: int = 200
+    headers: dict[str, str] = field(default_factory=dict)
+
+
+def redirect(url: str, location: str, status_code: int = 302) -> FakeResponse:
+    return FakeResponse(url, "", status_code, {"Location": location})
 
 
 @dataclass
@@ -55,6 +60,7 @@ class Call:
     page: str
     data: dict[str, str]
     headers: dict[str, str] | None
+    url: str = ""
 
 
 @dataclass
@@ -63,14 +69,20 @@ class FakeConsorPlus:
 
     debt_panel: str = "panel_with_debt.html"
     roster_panel: str = "roster_panel.html"
+    # page -> Location: that page answers with a 302 there (e.g. to /Avisos.aspx).
+    redirects: dict[str, str] = field(default_factory=dict)
     session_valid: bool = False
     calls: list[Call] = field(default_factory=list)
     headers: dict[str, str] = field(default_factory=dict)
     cookies: RequestsCookieJar = field(default_factory=RequestsCookieJar)
 
-    def request(self, method, url, data=None, headers=None, timeout=None):
+    def request(self, method, url, data=None, headers=None, timeout=None, allow_redirects=True):
+        # The client must follow redirects itself, validating each hop.
+        assert allow_redirects is False, "requests no debe seguir redirecciones solo"
         page = page_name(url)
-        self.calls.append(Call(method, page, dict(data or {}), dict(headers or {}) or None))
+        self.calls.append(Call(method, page, dict(data or {}), dict(headers or {}) or None, url))
+        if page in self.redirects:
+            return redirect(url, self.redirects[page])
 
         if page == "login.aspx":
             if method == "POST" and data.get("txtPassword") == PASSWORD:
@@ -79,9 +91,11 @@ class FakeConsorPlus:
             return FakeResponse(BASE_URL + "login.aspx", load("login.html"))
         if page == "loadingcache.aspx" and method == "POST":
             self.session_valid = True
-            return FakeResponse(BASE_URL + "Home.aspx", load("home.html"))
+            return redirect(url, "/Home.aspx")
         if not self.session_valid:
-            return FakeResponse(BASE_URL + "login.aspx?ReturnUrl=%2fx", load("login.html"))
+            return redirect(url, f"/login.aspx?goTo={page}")
+        if page == "home.aspx" and method == "GET":
+            return FakeResponse(url, load("home.html"))
         if page == "detalledeudaunidad.aspx" and method == "GET":
             return FakeResponse(url, load("debt_page.html"))
         if page == "detalledeudaunidad.aspx" and method == "POST":
