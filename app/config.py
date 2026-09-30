@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     chatwoot_account_id: int | None = None
     chatwoot_webhook_secret: SecretStr | None = None
 
+    # "console" (development: logs the email, including the code) or "smtp".
+    email_backend: Literal["console", "smtp"] = "console"
+    smtp_host: str = ""
+    # 465 uses implicit TLS; any other port uses STARTTLS.
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: SecretStr | None = None
+    smtp_from: str = ""
+
     timezone: str = "America/Argentina/Cordoba"
 
 

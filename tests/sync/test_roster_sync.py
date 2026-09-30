@@ -201,7 +201,7 @@ def test_phone_of_another_person_is_flagged_not_moved(db_session) -> None:
 
     db_session.refresh(existing)
     assert existing.person_id == other.id
-    assert existing.needs_review is True
+    assert (existing.conflict, existing.needs_review) == (True, False)
     assert count(db_session, Phone) == 1
     assert report.conflicts == 1
     assert count(db_session, Person) == 2
@@ -216,6 +216,7 @@ def test_assumed_area_code_is_flagged_and_invalid_phones_are_counted(db_session)
 
     phone = db_session.scalar(select(Phone))
     assert (phone.e164, phone.raw, phone.needs_review) == ("+5493515550404", "5550404", True)
+    assert phone.conflict is False
     assert (report.needs_review, report.phones_invalid) == (1, 1)
     assert report.units_without_owner_phone == 1
 

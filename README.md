@@ -62,6 +62,24 @@ Para el bot, `app.sync.live.refresh_unit(unit_id)` trae en vivo la deuda de una 
 con `source="live"`. Si ConsorPlus no responde en 6 segundos, devuelve la última deuda guardada con
 `stale=True` y su fecha.
 
+## Identidad y verificación (`app/bot/identity.py`)
+
+Reglas determinísticas, sin IA:
+
+- `identify_by_phone`: persona y unidades (con rol) del teléfono. Un teléfono con
+  `needs_review` (en conflicto o con característica supuesta) se trata como desconocido.
+- `can_view_unit_finance`: **única puerta** para mostrar deuda o código de pago. Solo
+  propietarios de la unidad activa.
+- Números desconocidos: `start_email_verification` busca la unidad (tolerante a cómo se
+  escriba) y manda un código de 6 dígitos distinto a cada email de **propietario** (nunca de
+  inquilinos), válido 15 minutos; `confirm_email_code` asocia el teléfono. Límites: 3 inicios
+  por teléfono cada 24 h y 5 intentos por verificación. Sin email de propietario:
+  `request_operator_verification` deja una solicitud para el panel de operadores.
+- Todo queda en `bot_events` (sin códigos ni emails).
+
+Emails: `EMAIL_BACKEND=console` (desarrollo: no manda nada, loguea el email y el código) o
+`smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`).
+
 ## Tests y lint
 
 Los tests de base de datos usan un Postgres real: la base `<POSTGRES_DB>_test` en el mismo

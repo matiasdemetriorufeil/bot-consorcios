@@ -77,6 +77,8 @@ class RosterReport:
     needs_review: int = 0
     units_without_owner_phone: int = 0
     conflicts: int = 0
+    # Phone listed for someone else but verified (bot/operator) for its current person.
+    verified_phones_kept: int = 0
     links_added: int = 0
     links_removed: int = 0
     nameless_contacts: int = 0
@@ -285,8 +287,12 @@ def _sync_phones(
                 )
             )
         elif existing.person_id != person.id:
+            if existing.source != DataSource.CONSORPLUS and existing.verified:
+                # Proven by the bot (owner email) or by an operator: wins over the roster.
+                report.verified_phones_kept += 1
+                continue
             # phones.e164 is unique: the number is already someone else's. Flag, do not move.
-            existing.needs_review = True
+            existing.conflict = True
             report.conflicts += 1
     session.flush()
 

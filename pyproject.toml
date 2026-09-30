@@ -12,6 +12,7 @@ dependencies = [
     "phonenumbers>=9.0.40",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.6",
+    "rapidfuzz>=3.9",
     "requests>=2.34.2",
     "sqlalchemy>=2.0.36",
     "uvicorn[standard]>=0.32",

@@ -146,7 +146,10 @@ class Phone(Base):
     raw: Mapped[str | None] = mapped_column(String(100))
     source: Mapped[DataSource] = mapped_column(_str_enum(DataSource, "source_valid"))
     verified: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # The area code was assumed (the number came without one). It still identifies.
     needs_review: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # ConsorPlus lists the number for another person too: it does not identify anyone.
+    conflict: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="phones")
@@ -218,3 +221,53 @@ class BotEvent(Base):
         default=dict, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+
+
+class VerificationCode(Base):
+    """One-time code emailed to ONE owner of a unit to link an unknown phone to that owner.
+
+    All the codes created by the same start share `verification_id` (one per owner email) and
+    their attempt counter. Only a salted hash of the code is stored, never the code itself.
+    """
+
+    __tablename__ = "verification_codes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    verification_id: Mapped[str] = mapped_column(String(32), index=True)
+    phone_e164: Mapped[str] = mapped_column(String(20), index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"))
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"))
+    code_hash: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    expires_at: Mapped[datetime]
+    attempts: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    used_at: Mapped[datetime | None]
+    # Set when a newer start, a lockout or the use of a sibling code invalidates it.
+    revoked_at: Mapped[datetime | None]
+
+
+class VerificationRequestStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class VerificationRequest(Base):
+    """Request for an operator to link a phone to an owner (units without owner email)."""
+
+    __tablename__ = "verification_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone_e164: Mapped[str] = mapped_column(String(20), index=True)
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
+    claimed_name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[VerificationRequestStatus] = mapped_column(
+        _str_enum(VerificationRequestStatus, "status_valid"),
+        default=VerificationRequestStatus.PENDING,
+        server_default=VerificationRequestStatus.PENDING.value,
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    resolved_at: Mapped[datetime | None]
+    resolved_by: Mapped[str | None] = mapped_column(String(100))
+    # The owner the phone was linked to (only when approved).
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
