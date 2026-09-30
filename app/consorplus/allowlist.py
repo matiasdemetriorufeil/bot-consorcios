@@ -16,6 +16,7 @@ LOGIN_PAGE = "login.aspx"
 LOADING_PAGE = "loadingcache.aspx"
 HOME_PAGE = "home.aspx"
 DEBT_PAGE = "detalledeudaunidad.aspx"
+ROSTER_PAGE = "listado2036.aspx"  # "List. Todos Los Datos"
 
 CONTENT_PREFIX = "ctl00$ContentPlaceHolder1$"
 LOGIN_LINK = "lnkIniciarSesion"
@@ -24,6 +25,10 @@ PASSWORD_FIELD = "txtPassword"  # noqa: S105 - form field name, not a secret
 BUILDING_SELECT = CONTENT_PREFIX + "ddlEdificio"
 UNIT_SELECT = CONTENT_PREFIX + "ddlDepto"
 LOAD_BUTTON = CONTENT_PREFIX + "btnBuscar"
+ROSTER_FROM_SELECT = CONTENT_PREFIX + "ddlEdificioDesde"
+ROSTER_TO_SELECT = CONTENT_PREFIX + "ddlEdificioHasta"
+# "Consultar". Its Excel sibling (Button4) and the debt page's btnListar ("Listar PDF") stay out.
+ROSTER_QUERY_BUTTON = CONTENT_PREFIX + "btnListar"
 
 # (page, control that triggers the postback). "" = postback with an empty __EVENTTARGET.
 ALLOWED_POSTBACKS: frozenset[tuple[str, str]] = frozenset(
@@ -33,15 +38,23 @@ ALLOWED_POSTBACKS: frozenset[tuple[str, str]] = frozenset(
         (DEBT_PAGE, BUILDING_SELECT),
         (DEBT_PAGE, UNIT_SELECT),
         (DEBT_PAGE, LOAD_BUTTON),
+        (ROSTER_PAGE, ROSTER_QUERY_BUTTON),
     }
 )
 
 # Query pages that may be fetched with a plain GET (no query string).
-ALLOWED_GET_PAGES: frozenset[str] = frozenset({LOGIN_PAGE, DEBT_PAGE})
+ALLOWED_GET_PAGES: frozenset[str] = frozenset({LOGIN_PAGE, DEBT_PAGE, ROSTER_PAGE})
 
 # The only form fields callers may set; everything else is copied from the page as-is.
 ALLOWED_INPUT_FIELDS: frozenset[str] = frozenset(
-    {USERNAME_FIELD, PASSWORD_FIELD, BUILDING_SELECT, UNIT_SELECT}
+    {
+        USERNAME_FIELD,
+        PASSWORD_FIELD,
+        BUILDING_SELECT,
+        UNIT_SELECT,
+        ROSTER_FROM_SELECT,
+        ROSTER_TO_SELECT,
+    }
 )
 
 

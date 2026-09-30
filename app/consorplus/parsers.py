@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.consorplus.allowlist import BUILDING_SELECT, UNIT_SELECT
 from app.consorplus.errors import ParseError
-from app.consorplus.models import Building, DebtLine, Unit
+from app.consorplus.models import Building, DebtLine, RosterContact, RosterRow, Unit
 
 BUTTON_INPUT_TYPES = frozenset({"submit", "image", "button", "reset"})
 
@@ -233,3 +233,95 @@ def parse_debt_lines(html: str) -> list[DebtLine]:
             )
         )
     return lines
+
+
+# 'List. Todos Los Datos' (Listado2036.aspx). ONLY these columns are read; everything else in
+# the grid (bank account, CBU/alias, payment codes, web login, ...) is never extracted.
+ROSTER_COLUMNS = {
+    "id": "unit_value",
+    "cod.edif": "building_code",
+    "edificio": "building_name",
+    "unidad": "unit_label",
+    "p.h": "ph",
+    "tipo unidad": "unit_type",
+    "propietario": "owner_name",
+    "telef. propietario": "owner_phone",
+    "celular propietario": "owner_mobile",
+    "e-mail propietario": "owner_email",
+    "nro.doc. propietario": "owner_document",
+    "segundo propietario": "second_owner_name",
+    "tel. 2do.prop": "second_owner_phone",
+    "cel. 2do.prop": "second_owner_mobile",
+    "email 2do.prop": "second_owner_email",
+    "doc.nro. 2do.prop": "second_owner_document",
+    "inquilino": "tenant_name",
+    "telef. inquilino": "tenant_phone",
+    "celular inquilino": "tenant_mobile",
+    "e-mail inquilino": "tenant_email",
+}
+
+
+def _find_roster_table(soup: BeautifulSoup) -> tuple[list[str], list[Tag]] | None:
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr", recursive=False) or table.find_all("tr")
+        if not rows:
+            continue
+        headers = [_normalize_header(_text(c)) for c in rows[0].find_all(["th", "td"])]
+        if "cod.edif" in headers and "propietario" in headers:
+            return headers, rows
+    return None
+
+
+def _contact(values: dict[str, str], prefix: str, *, with_document: bool) -> RosterContact | None:
+    contact = RosterContact(
+        name=values[f"{prefix}_name"],
+        phone=values[f"{prefix}_phone"],
+        mobile=values[f"{prefix}_mobile"],
+        email=values[f"{prefix}_email"],
+        document=values[f"{prefix}_document"] if with_document else "",
+    )
+    has_data = any((contact.name, contact.phone, contact.mobile, contact.email, contact.document))
+    return contact if has_data else None
+
+
+def parse_roster(html: str) -> list[RosterRow]:
+    """Rows of the 'List. Todos Los Datos' grid, by header name (never by position).
+
+    Raises ParseError if the grid is missing or any expected header is absent.
+    """
+    found = _find_roster_table(_soup(html))
+    if found is None:
+        raise ParseError("No se encontró la grilla del listado de unidades")
+    headers, rows = found
+
+    missing = set(ROSTER_COLUMNS) - set(headers)
+    if missing:
+        raise ParseError(f"Faltan columnas en el listado de unidades: {sorted(missing)}")
+    index = {ROSTER_COLUMNS[h]: headers.index(h) for h in ROSTER_COLUMNS}
+
+    result = []
+    for row in rows[1:]:
+        cells = row.find_all(["td", "th"], recursive=False)
+        if len(cells) != len(headers):
+            if row.find("table") is not None:
+                continue  # GridView pager row
+            raise ParseError(f"Fila con {len(cells)} celdas (se esperaban {len(headers)})")
+        values = {key: _text(cells[i]) for key, i in index.items()}
+        if not any(values.values()):
+            continue
+        if not values["unit_value"]:
+            raise ParseError("Fila del listado sin Id de unidad")
+        result.append(
+            RosterRow(
+                unit_value=values["unit_value"],
+                building_code=values["building_code"],
+                building_name=values["building_name"],
+                unit_label=values["unit_label"],
+                ph=values["ph"],
+                unit_type=values["unit_type"],
+                owner=_contact(values, "owner", with_document=True),
+                second_owner=_contact(values, "second_owner", with_document=True),
+                tenant=_contact(values, "tenant", with_document=False),
+            )
+        )
+    return result

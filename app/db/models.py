@@ -34,6 +34,11 @@ class SyncKind(StrEnum):
     LIVE = "live"
 
 
+class SyncJob(StrEnum):
+    DEBT = "debt"
+    ROSTER = "roster"
+
+
 class SyncStatus(StrEnum):
     OK = "ok"
     PARTIAL = "partial"
@@ -78,6 +83,7 @@ class Unit(Base):
     )
     consorplus_unit_value: Mapped[str] = mapped_column(String(50))
     label: Mapped[str] = mapped_column(String(100))
+    unit_type: Mapped[str | None] = mapped_column(String(50))  # ConsorPlus "Tipo Unidad"
     owner_name: Mapped[str | None] = mapped_column(String(200))
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
@@ -203,6 +209,9 @@ class SyncRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[SyncKind] = mapped_column(_str_enum(SyncKind, "kind_valid"))
+    job: Mapped[SyncJob] = mapped_column(
+        _str_enum(SyncJob, "job_valid"), default=SyncJob.DEBT, server_default=SyncJob.DEBT.value
+    )
     started_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None]
     # NULL while the run is still in progress.
@@ -210,6 +219,8 @@ class SyncRun(Base):
     units_ok: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     units_failed: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     error_summary: Mapped[str | None] = mapped_column(Text)
+    # Job-specific counters (never personal data).
+    stats: Mapped[dict[str, Any]] = mapped_column(default=dict, server_default=text("'{}'::jsonb"))
 
 
 class BotEvent(Base):

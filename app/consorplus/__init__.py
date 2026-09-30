@@ -10,7 +10,14 @@ from app.consorplus.errors import (
     ParseError,
     SessionExpiredError,
 )
-from app.consorplus.models import Building, DebtLine, Unit, UnitDebt
+from app.consorplus.models import (
+    Building,
+    DebtLine,
+    RosterContact,
+    RosterRow,
+    Unit,
+    UnitDebt,
+)
 
 __all__ = [
     "Building",
@@ -22,6 +29,8 @@ __all__ = [
     "LoginError",
     "NotFoundError",
     "ParseError",
+    "RosterContact",
+    "RosterRow",
     "SessionExpiredError",
     "Unit",
     "UnitDebt",

@@ -40,3 +40,35 @@ class UnitDebt:
     @property
     def is_up_to_date(self) -> bool:
         return self.total <= 0
+
+
+@dataclass(frozen=True, repr=False)
+class RosterContact:
+    """A person as ConsorPlus lists them for a unit. Raw cell texts, not normalized.
+
+    Personal data: repr is redacted so it does not end up in logs by accident.
+    """
+
+    name: str
+    phone: str = ""
+    mobile: str = ""
+    email: str = ""
+    document: str = ""
+
+    def __repr__(self) -> str:
+        return "RosterContact(<redacted>)"
+
+
+@dataclass(frozen=True)
+class RosterRow:
+    """One unit of 'List. Todos Los Datos' (Listado2036.aspx), reduced to what the bot needs."""
+
+    unit_value: str  # "Id": same value as the unit combo of the debt page
+    building_code: str  # "Cod.Edif", e.g. "001"
+    building_name: str
+    unit_label: str
+    ph: str
+    unit_type: str = ""  # "Tipo Unidad", e.g. department, garage
+    owner: RosterContact | None = field(default=None, repr=False)
+    second_owner: RosterContact | None = field(default=None, repr=False)
+    tenant: RosterContact | None = field(default=None, repr=False)

@@ -29,8 +29,12 @@ def make_delta(*nodes: tuple[str, str, str]) -> str:
 
 
 def panel_delta(panel_fixture: str, viewstate: str) -> str:
+    return panel_delta_html(load(panel_fixture), viewstate)
+
+
+def panel_delta_html(panel_html: str, viewstate: str) -> str:
     return make_delta(
-        ("updatePanel", "ContentPlaceHolder1_UpdatePanel1", load(panel_fixture)),
+        ("updatePanel", "ContentPlaceHolder1_UpdatePanel1", panel_html),
         ("hiddenField", "__EVENTTARGET", ""),
         ("hiddenField", "__VIEWSTATE", viewstate),
         ("asyncPostBackControlIDs", "", ""),
@@ -58,6 +62,7 @@ class FakeConsorPlus:
     """Stands in for requests.Session and mimics the ConsorPlus page flow."""
 
     debt_panel: str = "panel_with_debt.html"
+    roster_panel: str = "roster_panel.html"
     session_valid: bool = False
     calls: list[Call] = field(default_factory=list)
     headers: dict[str, str] = field(default_factory=dict)
@@ -87,6 +92,12 @@ class FakeConsorPlus:
                 LOAD_BUTTON: self.debt_panel,
             }[control]
             return FakeResponse(url, panel_delta(panel, f"VS-{len(self.calls)}"))
+        if page == "listado2036.aspx" and method == "GET":
+            return FakeResponse(url, load("roster_page.html"))
+        if page == "listado2036.aspx" and method == "POST":
+            control = data["ctl00$ScriptManager1"].split("|", 1)[1]
+            assert control == "ctl00$ContentPlaceHolder1$btnListar", control
+            return FakeResponse(url, panel_delta(self.roster_panel, f"VS-{len(self.calls)}"))
         raise AssertionError(f"Request inesperada: {method} {url}")
 
     def pages(self) -> list[tuple[str, str]]:

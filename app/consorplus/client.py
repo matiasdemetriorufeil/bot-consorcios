@@ -5,6 +5,7 @@ anything leaves the process.
 """
 
 import logging
+import re
 import time
 from collections.abc import Callable, Mapping
 from urllib.parse import unquote, urljoin, urlsplit
@@ -22,6 +23,9 @@ from app.consorplus.allowlist import (
     LOGIN_LINK,
     LOGIN_PAGE,
     PASSWORD_FIELD,
+    ROSTER_FROM_SELECT,
+    ROSTER_QUERY_BUTTON,
+    ROSTER_TO_SELECT,
     UNIT_SELECT,
     USERNAME_FIELD,
     check_control,
@@ -40,7 +44,7 @@ from app.consorplus.errors import (
     ParseError,
     SessionExpiredError,
 )
-from app.consorplus.models import Building, Unit, UnitDebt
+from app.consorplus.models import Building, RosterRow, Unit, UnitDebt
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +56,27 @@ SCRIPT_MANAGER = "ctl00$ScriptManager1"
 UPDATE_PANEL = "ctl00$ContentPlaceHolder1$UpdatePanel1"
 UPDATE_PANEL_ID = "ContentPlaceHolder1_UpdatePanel1"
 AJAX_HEADERS = {"X-MicrosoftAjax": "Delta=true", "X-Requested-With": "XMLHttpRequest"}
+ROSTER_PAGE_PATH = "Listado2036.aspx"
 RETRY_STATUS_CODES = frozenset({500, 502, 503, 504})
 RETRY_EXCEPTIONS = (
     requests.ConnectionError,
     requests.Timeout,
     requests.exceptions.ChunkedEncodingError,
 )
+
+
+def _label_code(label: str) -> str | None:
+    """'050 EDIFICIO X' -> '050'."""
+    match = re.match(r"\s*(\d+)(?!\S)", label)
+    return match.group(1) if match else None
+
+
+def _same_code(a: str, b: str) -> bool:
+    """The same building code may come as "1" or as "001"."""
+    a, b = a.strip(), b.strip()
+    if a.isdigit() and b.isdigit():
+        return int(a) == int(b)
+    return a == b
 
 
 class RateLimiter:
@@ -173,6 +192,27 @@ class ConsorPlusClient:
                 raise ConsorPlusError("La pantalla de deuda no quedó en la unidad pedida")
             lines = parsers.parse_debt_lines(self._html)
             return UnitDebt(building_code=building_code, unit_value=unit_value, lines=tuple(lines))
+
+        return self._with_session(operation)
+
+    def list_roster(self, building_code: str) -> list[RosterRow]:
+        """Units of ONE building with owner/tenant contact data ('List. Todos Los Datos')."""
+
+        def operation() -> list[RosterRow]:
+            self._get(ROSTER_PAGE_PATH)
+            options = parsers.parse_select_options(self._html, ROSTER_FROM_SELECT)
+            option = next((o for o in options if o.value == building_code), None)
+            if option is None:
+                raise NotFoundError(f"El edificio {building_code!r} no existe")
+            selection = {ROSTER_FROM_SELECT: building_code, ROSTER_TO_SELECT: building_code}
+            self._async_postback(ROSTER_QUERY_BUTTON, selection)
+            rows = parsers.parse_roster(self._html)
+            # Guard against reading a stale panel or another building's units. The combo value
+            # is an internal id; the visible code ("050 ...") is what the grid shows.
+            expected = _label_code(option.label) or building_code
+            if any(not _same_code(row.building_code, expected) for row in rows):
+                raise ConsorPlusError("El listado trajo unidades de otro edificio")
+            return rows
 
         return self._with_session(operation)
 
