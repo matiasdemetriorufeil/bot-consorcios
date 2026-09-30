@@ -5,8 +5,11 @@ description = "Bot de WhatsApp con IA para Estudio Diego Rufeil (administración
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "alembic>=1.14",
     "fastapi>=0.115",
+    "psycopg[binary]>=3.2",
     "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0.36",
     "uvicorn[standard]>=0.32",
 ]
 
@@ -35,6 +38,10 @@ select = [
     "SIM", # flake8-simplify
     "S",   # flake8-bandit (security)
 ]
+
+[tool.ruff.lint.isort]
+# The local alembic/ folder holds migrations; the import is the third-party package.
+known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]

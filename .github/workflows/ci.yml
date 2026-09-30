@@ -7,6 +7,26 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bot_consorcios
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bot_consorcios"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Throwaway credentials of the CI service container, not real secrets.
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/bot_consorcios
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +43,11 @@ jobs:
 
       - name: Ruff format
         run: uv run ruff format --check .
+
+      - name: Alembic migrations
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
 
       - name: Pytest
         run: uv run pytest
