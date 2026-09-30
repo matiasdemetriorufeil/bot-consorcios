@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     consorplus_password: SecretStr | None = None
     # Minimum seconds between two requests to ConsorPlus (production system: be gentle).
     consorplus_min_request_interval: float = 0.5
+    # Known unit checked daily to detect changes in ConsorPlus pages (combo values).
+    canary_building: str = ""
+    canary_unit: str = ""
+    # refresh_unit reuses a live snapshot younger than this instead of querying ConsorPlus.
+    # 0 disables the cache.
+    live_cache_minutes: float = 10
 
     chatwoot_base_url: str = ""
     chatwoot_api_token: SecretStr | None = None

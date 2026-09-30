@@ -3,9 +3,10 @@
 ## Contexto del proyecto
 
 Vamos a construir un bot de WhatsApp con IA para una administración de consorcios de Córdoba
-(Argentina), "Estudio Diego Rufeil": unas 800 unidades en 53 consorcios. El bot atiende a
-propietarios por WhatsApp: los identifica por teléfono, informa deuda de expensas y cupones de
-pago, responde sobre el reglamento del edificio y deriva a humanos. Los operadores usan Chatwoot.
+(Argentina), "Estudio Diego Rufeil": unas 2450 unidades (incluye cocheras y locales) en 53
+consorcios. El bot atiende a propietarios por WhatsApp: los identifica por teléfono, informa deuda
+y código de pago Siro, responde sobre el reglamento del edificio y deriva a humanos. Los operadores
+usan Chatwoot.
 Los datos salen del sistema de gestión "ConsorPlus" (una web ASP.NET WebForms sin API) mediante
 scraping de SOLO LECTURA.
 

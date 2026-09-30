@@ -181,6 +181,8 @@ DEBT_COLUMNS = {
     "saldo adeudado": "balance",
     "deuda acumulada": "accumulated",
 }
+# Present only when the unit has debt; its header row is what `_find_debt_table` looks for.
+DEBT_GRID_ID = "ContentPlaceHolder1_gridView"
 
 
 def _normalize_header(text: str) -> str:
@@ -202,10 +204,14 @@ def parse_debt_lines(html: str) -> list[DebtLine]:
     """Debt lines of the 'Detalle Deuda Unidad' table.
 
     No table means no debt (ConsorPlus hides it when the unit is up to date). A table with
-    unexpected columns raises ParseError instead of being read as 'no debt'.
+    unexpected columns, or the debt grid without its 'Saldo Adeudado' header, raises
+    ParseError instead of being read as 'no debt'.
     """
-    found = _find_debt_table(_soup(html))
+    soup = _soup(html)
+    found = _find_debt_table(soup)
     if found is None:
+        if soup.find("table", id=DEBT_GRID_ID) is not None:
+            raise ParseError("La grilla de deuda no tiene la columna 'Saldo Adeudado'")
         return []
     _, rows = found
 

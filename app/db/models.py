@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -37,6 +37,7 @@ class SyncKind(StrEnum):
 class SyncJob(StrEnum):
     DEBT = "debt"
     ROSTER = "roster"
+    CANARY = "canary"
 
 
 class SyncStatus(StrEnum):
@@ -98,9 +99,6 @@ class Unit(Base):
         back_populates="unit",
         cascade="all, delete-orphan",
         order_by="DebtSnapshot.fetched_at",
-    )
-    coupons: Mapped[list["Coupon"]] = relationship(
-        back_populates="unit", cascade="all, delete-orphan"
     )
 
 
@@ -180,30 +178,12 @@ class DebtLine(Base):
     )
     concept: Mapped[str] = mapped_column(String(200))
     period: Mapped[str] = mapped_column(String(7))  # "MM/AAAA"
-    concept_amount: Mapped[Decimal]
+    # Empty cells in ConsorPlus are stored as NULL, never as 0.
+    concept_amount: Mapped[Decimal | None]
     balance_due: Mapped[Decimal]
-    accumulated: Mapped[Decimal]
+    accumulated: Mapped[Decimal | None]
 
     snapshot: Mapped[DebtSnapshot] = relationship(back_populates="lines")
-
-
-class Coupon(Base):
-    __tablename__ = "coupons"
-    # Upsert key for the sync. Its index also serves lookups by (unit_id) and (unit_id, period).
-    __table_args__ = (UniqueConstraint("unit_id", "period", "coupon_id"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"))
-    period: Mapped[str] = mapped_column(String(7))  # "MM/AAAA"
-    coupon_id: Mapped[str] = mapped_column(String(50))  # "Id. cupón" de Siro
-    amount_1: Mapped[Decimal]
-    due_date_1: Mapped[date]
-    amount_2: Mapped[Decimal | None]
-    due_date_2: Mapped[date | None]
-    detail_url: Mapped[str | None] = mapped_column(String(500))
-    fetched_at: Mapped[datetime] = mapped_column(server_default=func.now())
-
-    unit: Mapped[Unit] = relationship(back_populates="coupons")
 
 
 class SyncRun(Base):

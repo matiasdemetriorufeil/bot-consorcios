@@ -89,6 +89,13 @@ def test_unexpected_debt_table_raises_instead_of_reporting_no_debt() -> None:
         parse_debt_lines(html)
 
 
+def test_debt_grid_with_renamed_headers_raises_instead_of_reporting_no_debt() -> None:
+    html = load("panel_with_debt.html").replace("Saldo Adeudado", "Saldo")
+
+    with pytest.raises(ParseError, match="Saldo Adeudado"):
+        parse_debt_lines(html)
+
+
 def test_unit_debt_total_and_status() -> None:
     lines = tuple(parse_debt_lines(load("panel_with_debt.html")))
 

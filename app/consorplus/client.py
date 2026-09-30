@@ -190,21 +190,20 @@ class ConsorPlusClient:
         return self._with_session(operation)
 
     def get_debt(self, building_code: str, unit_value: str) -> UnitDebt:
+        """Debt of one unit. When the debt page already shows `building_code` (the previous
+        call was for the same building) it only picks the unit and loads it, like a browser:
+        2 requests instead of 4. If that shortcut fails, the building is opened again."""
+
         def operation() -> UnitDebt:
+            if self._on_building(building_code):
+                try:
+                    return self._load_debt(building_code, unit_value)
+                except (SessionExpiredError, ConsorPlusUnavailableError, ForbiddenActionError):
+                    raise
+                except ConsorPlusError as exc:
+                    logger.info("Reusing the debt page failed (%s), reopening", type(exc).__name__)
             self._open_building(building_code)
-            if unit_value not in {unit.value for unit in parsers.parse_units(self._html)}:
-                raise NotFoundError(f"La unidad {unit_value!r} no existe en {building_code!r}")
-            selection = {BUILDING_SELECT: building_code, UNIT_SELECT: unit_value}
-            self._async_postback(UNIT_SELECT, selection)
-            self._async_postback(LOAD_BUTTON, selection, button=True)
-            # Guard against reading a stale or foreign panel as "no debt".
-            if (
-                parsers.selected_value(self._html, BUILDING_SELECT) != building_code
-                or parsers.selected_value(self._html, UNIT_SELECT) != unit_value
-            ):
-                raise ConsorPlusError("La pantalla de deuda no quedó en la unidad pedida")
-            lines = parsers.parse_debt_lines(self._html)
-            return UnitDebt(building_code=building_code, unit_value=unit_value, lines=tuple(lines))
+            return self._load_debt(building_code, unit_value)
 
         return self._with_session(operation)
 
@@ -252,6 +251,31 @@ class ConsorPlusClient:
         if building_code not in {b.code for b in parsers.parse_buildings(self._html)}:
             raise NotFoundError(f"El edificio {building_code!r} no existe")
         self._async_postback(BUILDING_SELECT, {BUILDING_SELECT: building_code})
+
+    def _on_building(self, building_code: str) -> bool:
+        """The current page is the debt page with `building_code` already selected."""
+        if not self._logged_in or page_name(self._url) != DEBT_PAGE:
+            return False
+        try:
+            return parsers.selected_value(self._html, BUILDING_SELECT) == building_code
+        except ParseError:
+            return False
+
+    def _load_debt(self, building_code: str, unit_value: str) -> UnitDebt:
+        """Pick the unit and load its debt. The page must already show `building_code`."""
+        if unit_value not in {unit.value for unit in parsers.parse_units(self._html)}:
+            raise NotFoundError(f"La unidad {unit_value!r} no existe en {building_code!r}")
+        selection = {BUILDING_SELECT: building_code, UNIT_SELECT: unit_value}
+        self._async_postback(UNIT_SELECT, selection)
+        self._async_postback(LOAD_BUTTON, selection, button=True)
+        # Guard against reading a stale or foreign panel as "no debt".
+        if (
+            parsers.selected_value(self._html, BUILDING_SELECT) != building_code
+            or parsers.selected_value(self._html, UNIT_SELECT) != unit_value
+        ):
+            raise ConsorPlusError("La pantalla de deuda no quedó en la unidad pedida")
+        lines = parsers.parse_debt_lines(self._html)
+        return UnitDebt(building_code=building_code, unit_value=unit_value, lines=tuple(lines))
 
     # --- Requests ----------------------------------------------------------------------
 

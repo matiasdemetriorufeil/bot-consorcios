@@ -34,5 +34,22 @@ services:
       db:
         condition: service_healthy
 
+  # Periodic jobs: nightly sync with ConsorPlus (03:00) and canary (08:00), Córdoba time.
+  scheduler:
+    build: .
+    command: python -m app.scheduler
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-bot_consorcios}
+      TZ: America/Argentina/Cordoba
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:

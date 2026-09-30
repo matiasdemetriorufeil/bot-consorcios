@@ -2,7 +2,7 @@
 
 Bot de WhatsApp con IA para **Estudio Diego Rufeil**, administración de consorcios de Córdoba
 (~800 unidades en 53 consorcios). El bot identifica a los propietarios por teléfono, informa
-deuda de expensas y cupones de pago, responde sobre el reglamento del edificio y deriva a
+deuda de expensas y el código de pago de la unidad, responde sobre el reglamento del edificio y deriva a
 operadores humanos en Chatwoot. Los datos se leen (solo lectura) del sistema de gestión ConsorPlus.
 
 Stack: Python 3.12 (uv), FastAPI, SQLAlchemy 2 + Alembic, PostgreSQL 16, pytest, ruff, Docker Compose.
@@ -33,6 +33,34 @@ docker compose run --rm api alembic check                             # modelo y
 ```
 
 Al cambiar dependencias hay que reconstruir la imagen: `docker compose build api`.
+
+## Sincronización con ConsorPlus
+
+El servicio `scheduler` (APScheduler, levantado por `docker compose up`) corre, en hora de Córdoba:
+
+- **03:00 — sincronización nocturna** (`app/sync/nightly.py`): primero el padrón (unidades,
+  propietarios, teléfonos, código de pago) y después la deuda de cada unidad activa, que queda en
+  `debt_snapshots` con `source="nightly"`. Una unidad que falla no corta el resto. Si ConsorPlus
+  está caído (10 fallas seguidas) o rechaza el login, se corta. Si se corre dos veces el mismo
+  día, reemplaza el snapshot del día. Aplica la retención: borra los snapshots nightly de más de 60
+  días y los live de más de 30, pero siempre deja el último de cada unidad.
+- **08:00 — canario** (`app/sync/canary.py`): consulta la unidad `CANARY_BUILDING`/`CANARY_UNIT`
+  del `.env` y, si la página de deuda cambió de estructura, deja un error `CANARIO FALLÓ` en el log.
+
+Cada corrida queda en la tabla `sync_runs` (job `roster`, `debt` o `canary`), solo con contadores.
+
+```bash
+docker compose run --rm api python -m app.sync.nightly --buildings 1,2   # manual, algunos edificios
+docker compose run --rm api python -m app.sync.nightly                   # manual, todos
+docker compose run --rm api python -m app.sync.canary                    # canario a mano
+docker compose logs -f scheduler
+```
+
+Un lock de Postgres impide que se pisen dos sincronizaciones nocturnas (la programada y una manual).
+
+Para el bot, `app.sync.live.refresh_unit(unit_id)` trae en vivo la deuda de una unidad y la guarda
+con `source="live"`. Si ConsorPlus no responde en 6 segundos, devuelve la última deuda guardada con
+`stale=True` y su fecha.
 
 ## Tests y lint
 

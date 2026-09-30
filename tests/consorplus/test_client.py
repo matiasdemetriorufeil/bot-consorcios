@@ -96,6 +96,52 @@ def test_get_debt(server, make_client) -> None:
     assert not [k for k in button_post if "btn" in k and k != LOAD_BUTTON]
 
 
+def test_get_debt_of_same_building_reuses_the_open_page(server, make_client) -> None:
+    client = make_client(server)
+    client.get_debt("1", "9001")
+    before = len(server.calls)
+
+    debt = client.get_debt("1", "9001")
+
+    assert debt.total == Decimal("151925.50")
+    # Only the unit combo and the load button: no GET, no building postback.
+    assert server.pages()[before:] == [("POST", DEBT), ("POST", DEBT)]
+    assert server.calls[before].data["__EVENTTARGET"] == UNIT_SELECT
+
+
+def test_get_debt_reopens_the_building_when_the_shortcut_fails(server, make_client) -> None:
+    client = make_client(server)
+    client.get_debt("1", "9001")
+    before = len(server.calls)
+    original = server.request
+    failed = []
+
+    def unit_select_fails_once(method, url, data=None, **kwargs):
+        if data and data.get("__EVENTTARGET") == UNIT_SELECT and not failed:
+            failed.append(True)
+            return FakeResponse(url, make_delta(("error", "500", "Error interno")))
+        return original(method, url, data=data, **kwargs)
+
+    server.request = unit_select_fails_once
+
+    debt = client.get_debt("1", "9001")
+
+    assert debt.total == Decimal("151925.50")
+    assert failed == [True]  # the failed unit postback is not recorded by the fake
+    assert server.pages()[before:] == [("GET", DEBT)] + [("POST", DEBT)] * 3
+
+
+def test_get_debt_of_another_building_opens_it(server, make_client) -> None:
+    client = make_client(server)
+    client.get_debt("1", "9001")
+    before = len(server.calls)
+
+    with pytest.raises(ConsorPlusError):  # the fake always answers with building 1
+        client.get_debt("2", "9001")
+
+    assert server.pages()[before] == ("GET", DEBT)
+
+
 def test_get_debt_without_table_is_up_to_date(make_client) -> None:
     server = FakeConsorPlus(debt_panel="panel_no_debt.html")
     # The no-debt panel shows unit 9002 selected.

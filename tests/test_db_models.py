@@ -1,18 +1,16 @@
 """Model tests against a real Postgres test database. All data here is made up."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import delete, func, select, text
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     BotEvent,
     Building,
-    Coupon,
     DataSource,
     DebtLine,
     DebtSnapshot,
@@ -244,86 +242,6 @@ def test_get_latest_debt_returns_none_without_snapshots(db_session: Session) -> 
     unit = make_unit(db_session, make_building(db_session))
 
     assert get_latest_debt(db_session, unit.id) is None
-
-
-def test_coupon_belongs_to_unit(db_session: Session) -> None:
-    unit = make_unit(db_session, make_building(db_session))
-    unit.coupons.append(
-        Coupon(
-            period="03/2026",
-            coupon_id="0000000000000001",
-            amount_1=Decimal("1000.00"),
-            due_date_1=date(2026, 3, 10),
-            amount_2=Decimal("1050.00"),
-            due_date_2=date(2026, 3, 20),
-        )
-    )
-    db_session.flush()
-    db_session.expire_all()
-
-    coupon = db_session.scalars(select(Coupon)).one()
-    assert coupon.unit.id == unit.id
-    assert coupon.detail_url is None
-    assert coupon.fetched_at is not None
-
-
-def make_coupon(unit: Unit, period: str, coupon_id: str, amount: str = "1000.00") -> Coupon:
-    return Coupon(
-        unit=unit,
-        period=period,
-        coupon_id=coupon_id,
-        amount_1=Decimal(amount),
-        due_date_1=date(2026, 3, 10),
-    )
-
-
-def test_coupon_is_unique_per_unit_period_and_id(db_session: Session) -> None:
-    building = make_building(db_session)
-    unit = make_unit(db_session, building, "1001")
-    other_unit = make_unit(db_session, building, "1002")
-    db_session.add_all(
-        [
-            make_coupon(unit, "03/2026", "0000000000000001"),
-            make_coupon(unit, "03/2026", "0000000000000002"),  # another coupon, same period
-            make_coupon(unit, "04/2026", "0000000000000001"),  # same id, another period
-            make_coupon(other_unit, "03/2026", "0000000000000001"),  # another unit
-        ]
-    )
-    db_session.flush()
-
-    with pytest.raises(IntegrityError), db_session.begin_nested():
-        db_session.add(make_coupon(unit, "03/2026", "0000000000000001"))
-        db_session.flush()
-
-
-def test_coupon_id_is_required(db_session: Session) -> None:
-    """A NULL coupon_id would slip past the unique constraint (NULLs never collide)."""
-    unit = make_unit(db_session, make_building(db_session))
-
-    with pytest.raises(IntegrityError), db_session.begin_nested():
-        db_session.add(make_coupon(unit, "03/2026", None))
-        db_session.flush()
-
-
-def test_coupon_upsert_on_unique_key_updates_existing_row(db_session: Session) -> None:
-    unit = make_unit(db_session, make_building(db_session))
-    values = {
-        "unit_id": unit.id,
-        "period": "03/2026",
-        "coupon_id": "0000000000000001",
-        "amount_1": Decimal("1000.00"),
-        "due_date_1": date(2026, 3, 10),
-    }
-    for amount in ("1000.00", "1100.00"):
-        stmt = insert(Coupon).values({**values, "amount_1": Decimal(amount)})
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["unit_id", "period", "coupon_id"],
-            set_={"amount_1": stmt.excluded.amount_1, "fetched_at": func.now()},
-        )
-        db_session.execute(stmt)
-
-    coupon = db_session.scalars(select(Coupon)).one()
-    assert coupon.amount_1 == Decimal("1100.00")
 
 
 def test_sync_run_starts_without_status(db_session: Session) -> None:
