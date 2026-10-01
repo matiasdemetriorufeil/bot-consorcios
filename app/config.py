@@ -19,6 +19,19 @@ class Settings(BaseSettings):
     llm_model: str = ""
     gemini_api_key: SecretStr | None = None
     anthropic_api_key: SecretStr | None = None
+    llm_timeout_seconds: float = 30
+    # Gemini 3.x: "low" | "medium" | "high" (some also "minimal"). Empty: model default.
+    gemini_thinking_level: str = "low"
+    # USD per million tokens of LLM_MODEL, to estimate costs in bot_events. Empty: no estimate.
+    llm_price_input: float | None = None
+    llm_price_output: float | None = None
+    llm_price_cache_read: float | None = None
+    llm_price_cache_write: float | None = None
+
+    # Office hours (Córdoba time) the bot mentions when handing off. Weekdays: 0 = Monday.
+    office_hours_start: str = "09:00"
+    office_hours_end: str = "17:00"
+    office_weekdays: list[int] = [0, 1, 2, 3, 4]
 
     consorplus_base_url: str = "https://consorplus.drufeilccios.com.ar/"
     consorplus_user: str = ""

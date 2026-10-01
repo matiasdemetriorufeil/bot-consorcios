@@ -53,3 +53,4 @@ RESUMEN
 - Resultado de tests y lint (pegar el final de la salida):
 - Pendientes, dudas o riesgos:
 ```
+"Nunca hagas commit ni push: los hace el usuario. Al terminar, sugerí el nombre del commit."

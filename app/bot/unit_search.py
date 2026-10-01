@@ -123,6 +123,11 @@ def _split_code(word: str) -> list[str]:
     return parts + ([pb] if pb else []) + ([letter] if letter else [])
 
 
+def display_building_name(name: str) -> str:
+    """ "007 LOS PINOS" -> "LOS PINOS": the name without the ConsorPlus code, for the chat."""
+    return _CODE_PREFIX.sub("", name).strip() or name
+
+
 def _building_tokens(name: str) -> list[str]:
     return tokens(_CODE_PREFIX.sub("", name), roman=True)
 
