@@ -96,6 +96,19 @@ uv run python scripts/chat_cli.py --phone +5493515550977       # número que esc
 uv run python scripts/chat_cli.py --as-owner-of 1 1025         # propietario simulado
 ```
 
+### Evaluación automática (`evals/`)
+
+`evals/cases.yaml` tiene casos con datos inventados (`evals/seed.py`); `evals/run.py` los corre
+contra el proveedor real sobre la base `<POSTGRES_DB>_eval` (se reconstruye en cada corrida, no
+toca ConsorPlus ni manda emails) y deja el informe en `evals/reports/`. Cuesta dinero: no corre
+en `pytest` ni en CI.
+
+```bash
+uv run python -m evals.run                                        # proveedor de .env
+uv run python -m evals.run --provider anthropic --model claude-haiku-4-5
+uv run python -m evals.run --only deuda_simple urgencia_gas
+```
+
 ### Pendientes
 
 - **Derivación repetida (Etapa 4, Chatwoot):** después de `handoff_to_human` el bot sigue
