@@ -21,6 +21,10 @@ docker compose up --build
 
 La API se recarga sola al editar archivos en `app/`.
 
+Chatwoot (panel de operadores) está en el mismo compose, en el perfil `chatwoot` (necesita ~4 GB
+de RAM): `docker compose --profile chatwoot up -d` → http://localhost:3000. Primer arranque,
+admin y API token: [docs/chatwoot.md](docs/chatwoot.md).
+
 ## Base de datos y migraciones
 
 El modelo está en `app/db/models.py` (SQLAlchemy 2) y las migraciones en `alembic/versions/`.
