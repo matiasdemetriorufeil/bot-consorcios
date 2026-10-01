@@ -75,10 +75,32 @@ Reglas determinísticas, sin IA:
   inquilinos), válido 15 minutos; `confirm_email_code` asocia el teléfono. Límites: 3 inicios
   por teléfono cada 24 h y 5 intentos por verificación. Sin email de propietario:
   `request_operator_verification` deja una solicitud para el panel de operadores.
+- `VERIFICATION_EMAIL_EXCLUDE` (emails o dominios separados por coma; por defecto
+  `estudiodiegorufeil@gmail.com`): nunca reciben códigos. Una unidad con solo esos emails se
+  trata como "sin email" y va a operador.
 - Todo queda en `bot_events` (sin códigos ni emails).
 
 Emails: `EMAIL_BACKEND=console` (desarrollo: no manda nada, loguea el email y el código) o
 `smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`).
+
+## Agente conversacional (`app/llm/`, `app/bot/agent.py`)
+
+Funciona con Gemini o Claude según `LLM_PROVIDER` / `LLM_MODEL` (vacío = default por
+proveedor). Herramientas en `app/bot/tools.py`; tokens y costo estimado (`LLM_PRICE_*`) en
+`bot_events`.
+
+Probarlo en la terminal (solo desarrollo, requiere `EMAIL_BACKEND=console`):
+
+```bash
+uv run python scripts/chat_cli.py --phone +5493515550977       # número que escribe
+uv run python scripts/chat_cli.py --as-owner-of 1 1025         # propietario simulado
+```
+
+### Pendientes
+
+- **Derivación repetida (Etapa 4, Chatwoot):** después de `handoff_to_human` el bot sigue
+  contestando y cada mensaje nuevo vuelve a derivar. Con Chatwoot, mientras la conversación
+  esté asignada a una persona el bot no tiene que responder ni derivar de nuevo.
 
 ## Tests y lint
 

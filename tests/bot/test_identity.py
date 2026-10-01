@@ -19,10 +19,13 @@ from app.bot.identity import (
     can_view_unit_finance,
     confirm_email_code,
     identify_by_phone,
+    is_excluded_email,
+    parse_email_exclusions,
     reject_verification_request,
     request_operator_verification,
     start_email_verification,
 )
+from app.config import Settings
 from app.consorplus.models import RosterContact, RosterRow
 from app.db.models import (
     BotEvent,
@@ -225,6 +228,61 @@ def test_unit_with_only_tenant_email_goes_to_operator(db_session: Session, world
     assert result.unit.unit_id == world.ids["u7a"]
     assert sender.sent == []  # the tenant's email is never used
     assert db_session.scalars(select(VerificationCode)).all() == []
+
+
+def test_excluded_email_never_gets_a_code(db_session: Session, world: World) -> None:
+    sender = FakeSender()
+    exclusions = parse_email_exclusions("ANA.LOPEZ@example.org")
+    result = start_email_verification(
+        db_session, UNKNOWN_PHONE, "Rodas 2", "4C", sender=sender, exclusions=exclusions
+    )
+
+    assert result.status == StartStatus.CODES_SENT
+    assert [to for to, _ in sender.sent] == ["juan@example.com"]
+
+
+def test_unit_with_only_excluded_emails_goes_to_operator(db_session: Session, world: World) -> None:
+    sender = FakeSender()
+    # Both owners of 4C excluded: one by address, the other by domain.
+    exclusions = parse_email_exclusions("ana.lopez@example.org, example.com")
+    result = start_email_verification(
+        db_session, UNKNOWN_PHONE, "Rodas 2", "4C", sender=sender, exclusions=exclusions
+    )
+
+    assert result.status == StartStatus.NO_EMAIL
+    assert sender.sent == []
+
+
+def test_default_exclusion_is_the_studio_email(
+    db_session: Session, world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sender = FakeSender()
+    studio = f.unit(db_session, f.building(db_session, "060 CONSORCIO FICTICIO"), "01-A")
+    f.link(
+        db_session, studio, f.person(db_session, "SIN MAIL", email="EstudioDiegoRufeil@gmail.com")
+    )
+    monkeypatch.setattr("app.bot.identity.get_settings", lambda: Settings(_env_file=None))
+
+    result = start_email_verification(db_session, UNKNOWN_PHONE, unit_id=studio.id, sender=sender)
+
+    assert result.status == StartStatus.NO_EMAIL
+    assert sender.sent == []
+
+
+@pytest.mark.parametrize(
+    ("email", "excluded"),
+    [
+        ("estudio@gmail.com", True),
+        (" Estudio@Gmail.com ", True),
+        ("otro@gmail.com", False),
+        ("alguien@estudio.com.ar", True),
+        ("alguien@sub.estudio.com.ar", False),
+        ("nadie@example.com", False),
+    ],
+)
+def test_is_excluded_email(email: str, excluded: bool) -> None:
+    rules = parse_email_exclusions("estudio@gmail.com, @estudio.com.ar, ,")
+    assert is_excluded_email(email, rules) is excluded
 
 
 def test_confirm_links_phone_to_the_owner_of_that_code(db_session: Session, world: World) -> None:

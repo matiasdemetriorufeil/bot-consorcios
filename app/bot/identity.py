@@ -26,6 +26,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.bot.unit_search import SearchStatus, UnitCandidate, search_unit
+from app.config import get_settings
 from app.db.models import (
     BotEvent,
     Building,
@@ -211,9 +212,28 @@ def _new_codes(count: int) -> list[str]:
     return list(codes)
 
 
-def _owner_emails(session: Session, unit_id: int) -> list[tuple[int, str]]:
+def parse_email_exclusions(text: str) -> frozenset[str]:
+    """ "a@b.com, otro.com.ar, @x.com" -> {"a@b.com", "@otro.com.ar", "@x.com"}: whole
+    addresses, or domains as "@domain"."""
+    rules: set[str] = set()
+    for item in (text or "").split(","):
+        item = item.strip().lower()
+        if item:
+            rules.add(item if "@" in item else f"@{item}")
+    return frozenset(rules)
+
+
+def is_excluded_email(email: str, exclusions: frozenset[str]) -> bool:
+    email = email.strip().lower()
+    domain = "@" + email.rpartition("@")[2]
+    return email in exclusions or domain in exclusions
+
+
+def _owner_emails(
+    session: Session, unit_id: int, exclusions: frozenset[str] = frozenset()
+) -> list[tuple[int, str]]:
     """(person_id, email) of the unit's OWNERS with email, one per distinct address.
-    Tenants' emails are never used."""
+    Tenants' emails and excluded addresses (VERIFICATION_EMAIL_EXCLUDE) are never used."""
     rows = session.execute(
         select(Person.id, Person.email)
         .join(UnitPerson, UnitPerson.person_id == Person.id)
@@ -229,7 +249,7 @@ def _owner_emails(session: Session, unit_id: int) -> list[tuple[int, str]]:
     result: list[tuple[int, str]] = []
     for person_id, email in rows:
         key = email.strip().lower()
-        if key and key not in seen:
+        if key and key not in seen and not is_excluded_email(key, exclusions):
             seen.add(key)
             result.append((person_id, email.strip()))
     return result
@@ -252,9 +272,11 @@ def start_email_verification(
     *,
     unit_id: int | None = None,
     sender: EmailSender | None = None,
+    exclusions: frozenset[str] | None = None,
 ) -> StartResult:
     """Find the unit (or use unit_id, once the person picked a candidate) and email a
-    different code to each owner email. Commits."""
+    different code to each owner email. Excluded emails (default: settings
+    VERIFICATION_EMAIL_EXCLUDE) never get a code; with only those it is NO_EMAIL. Commits."""
     e164 = to_e164(phone)
     if e164 is None:
         return StartResult(StartStatus.INVALID_PHONE)
@@ -273,7 +295,9 @@ def start_email_verification(
             return _start_rejected(session, e164, StartStatus.NOT_FOUND)
         unit = found.unit
 
-    owners = _owner_emails(session, unit.unit_id)
+    if exclusions is None:
+        exclusions = parse_email_exclusions(get_settings().verification_email_exclude)
+    owners = _owner_emails(session, unit.unit_id, exclusions)
     if not owners:
         return _start_rejected(session, e164, StartStatus.NO_EMAIL, unit=unit)
 

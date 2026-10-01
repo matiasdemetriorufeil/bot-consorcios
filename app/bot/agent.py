@@ -50,6 +50,8 @@ class AgentReply:
     handed_off: bool = False
     error: str | None = None
     usage: list[Usage] = field(default_factory=list)
+    # (tool name, result status) in call order, for logs and the CLI.
+    tools_called: list[tuple[str, str | None]] = field(default_factory=list)
 
 
 def _is_conversation_message(message: Message) -> bool:
@@ -126,6 +128,7 @@ class Agent:
         # The stored history keeps the plain text; the context only goes in this call.
         turn: list[Message] = []
         usages: list[Usage] = []
+        called: list[tuple[str, str | None]] = []
         handed_off = False
 
         for round_number in range(1, MAX_ROUNDS + 1):
@@ -134,7 +137,8 @@ class Agent:
                 response = self.provider.generate(SYSTEM_PROMPT, messages, TOOLS)
             except Exception as exc:
                 logger.warning("LLM call failed: %s", type(exc).__name__)
-                return self._fail(ctx, past, text, usages, f"provider_error:{type(exc).__name__}")
+                error = f"provider_error:{type(exc).__name__}"
+                return self._fail(ctx, past, text, usages, called, error, handed_off)
             usages.append(response.usage)
             self._log_usage(ctx, response.usage, round_number)
             message = response.message
@@ -142,24 +146,26 @@ class Agent:
 
             if not message.tool_calls:
                 if not message.text:
-                    return self._fail(ctx, past, text, usages, "empty_answer", handed_off)
+                    return self._fail(ctx, past, text, usages, called, "empty_answer", handed_off)
                 self._log_turn(ctx, usages, round_number)
                 return AgentReply(
                     text=message.text,
                     history=past + [UserMessage(text)] + turn,
                     handed_off=handed_off,
                     usage=usages,
+                    tools_called=called,
                 )
 
             results = []
             for call in message.tool_calls:
                 content = run_tool(ctx, call.name, call.arguments)
+                called.append((call.name, content.get("status")))
                 if call.name == "handoff_to_human" and content.get("status") == "ok":
                     handed_off = True
                 results.append(ToolResult(call_id=call.id, name=call.name, content=content))
             turn.append(ToolResultsMessage(tuple(results)))
 
-        return self._fail(ctx, past, text, usages, "max_rounds", handed_off)
+        return self._fail(ctx, past, text, usages, called, "max_rounds", handed_off)
 
     def _fail(
         self,
@@ -167,6 +173,7 @@ class Agent:
         past: list[Message],
         text: str,
         usages: list[Usage],
+        called: list[tuple[str, str | None]],
         reason: str,
         already_handed_off: bool = False,
     ) -> AgentReply:
@@ -188,6 +195,7 @@ class Agent:
             handed_off=True,
             error=reason,
             usage=usages,
+            tools_called=called,
         )
 
     def _log_usage(self, ctx: ToolContext, usage: Usage, round_number: int) -> None:

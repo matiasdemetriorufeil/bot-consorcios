@@ -23,11 +23,14 @@ def units(db_session: Session) -> dict[str, int]:
         "rodas2_1b": f.unit(db_session, rodas2, "01-B").id,
         "rodas2_pba": f.unit(db_session, rodas2, "PB-A").id,
         "rodas2_coc12": f.unit(db_session, rodas2, "COC-12").id,
+        "rodas2_pbloc": f.unit(db_session, rodas2, "PB-LOC").id,
         "rodas2_old": f.unit(db_session, rodas2, "09-Z", active=False).id,
         "rodas1_4c": f.unit(db_session, rodas1, "4° C").id,
         "rodas1_2b": f.unit(db_session, rodas1, "02 B").id,
         "rodas1_2a": f.unit(db_session, rodas1, "02 A").id,
         "sol_pba": f.unit(db_session, sol, "PB A").id,
+        "sol_loca": f.unit(db_session, sol, "LOC-A").id,
+        "sol_locb": f.unit(db_session, sol, "LOC-B").id,
         "closed_1a": f.unit(db_session, closed, "01-A").id,
         "t1_4a": f.unit(db_session, towers, "TI4A").id,
         "t4_1a": f.unit(db_session, towers, "TIV-1A").id,
@@ -63,6 +66,13 @@ def test_tokens_normalization() -> None:
         ("Jardines", "torre 1 4A", "t1_4a"),
         ("Jardines", "TIV 1A", "t4_1a"),  # same tokens as TI-4A, different order
         ("Torre del Sol", "PB A", "sol_pba"),
+        # Locales and cocheras: any order.
+        ("Rodas II", "local de planta baja", "rodas2_pbloc"),
+        ("Rodas II", "planta baja local", "rodas2_pbloc"),
+        ("local de planta baja del Rodas II", "", "rodas2_pbloc"),
+        ("Rodas II", "12 cochera", "rodas2_coc12"),
+        ("Torre del Sol", "local a", "sol_loca"),
+        ("Torre del Sol", "A local", "sol_loca"),
     ],
 )
 def test_finds_unit_in_many_spellings(
@@ -122,3 +132,17 @@ def test_not_found(
     assert all(
         c.unit_id not in (units["rodas2_old"], units["closed_1a"]) for c in result.candidates
     )
+
+
+def test_incomplete_local_is_offered_not_chosen(db_session: Session, units: dict[str, int]) -> None:
+    result = search_unit(db_session, "Torre del Sol", "el local")
+
+    assert result.status == SearchStatus.AMBIGUOUS
+    assert {c.unit_id for c in result.candidates} == {units["sol_loca"], units["sol_locb"]}
+
+
+def test_departments_keep_the_order(db_session: Session, units: dict[str, int]) -> None:
+    # "A PB" is not read as "PB A": only locales and cocheras are order-free.
+    result = search_unit(db_session, "Torre del Sol", "A PB")
+
+    assert result.status != SearchStatus.FOUND

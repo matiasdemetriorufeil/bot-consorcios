@@ -1,7 +1,9 @@
 """Measure unit_search against the units in the database (read only).
 
 For every active unit it builds 3 texts the way an owner could type them and prints ONLY
-percentages: never names, labels or ids (the database may hold real data).
+percentages: never names, labels or ids (the database may hold real data). Variant D only
+covers locales and cocheras whose label does not start with the type ("PB-LOC"), written
+type first as people say it ("local planta baja").
 
     docker compose run --rm api python -m scripts.eval_unit_search
 """
@@ -13,7 +15,7 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot.unit_search import SearchStatus, search_unit
+from app.bot.unit_search import SearchStatus, search_unit, tokens
 from app.db.models import Building, Unit
 from app.db.session import SessionLocal
 
@@ -21,6 +23,8 @@ _GENERIC = {"edificio", "consorcio", "de", "del", "la", "las", "los", "el", "y"}
 _ROMAN = {"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6"}
 _FLOOR_UNIT = re.compile(r"^0*(\d{1,2})\s*[-\s°º.]?\s*([A-Za-z])$")
 _PB_UNIT = re.compile(r"^PB\s*[-\s.]?\s*([A-Za-z0-9]+)$", re.IGNORECASE)
+_TYPE_TOKENS = {"loc": "local", "coc": "cochera"}
+_SPOKEN_TOKENS = {**_TYPE_TOKENS, "pb": "planta baja", "ss": "subsuelo", "of": "oficina"}
 _PARKING = re.compile(r"^(?:COC|CO|CH)\s*[-\s.]?\s*0*(\d+)$", re.IGNORECASE)
 
 
@@ -75,8 +79,18 @@ def unit_spoken(label: str) -> str:
     return label
 
 
+def unit_type_first(label: str) -> str | None:
+    """ "PB-LOC" -> "local planta baja". None when the label already starts with the type."""
+    key = tokens(label)
+    kind = next((t for t in key if t in _TYPE_TOKENS), None)
+    if kind is None or key[0] == kind:
+        return None
+    ordered = [kind] + [t for t in key if t != kind]
+    return " ".join(_SPOKEN_TOKENS.get(t, t) for t in ordered)
+
+
 def main() -> None:
-    results: dict[str, Counter[str]] = {v: Counter() for v in ("A", "B", "C")}
+    results: dict[str, Counter[str]] = {v: Counter() for v in ("A", "B", "C", "D")}
     with SessionLocal() as session:
         units = session.execute(
             select(Unit.id, Unit.label, Building.name)
@@ -89,11 +103,14 @@ def main() -> None:
                 "B": (building_short(name), unit_compact(label)),
                 "C": (f"{unit_spoken(label)} de {_plain(re.sub(r'^\d{3} ', '', name))}", ""),
             }
+            if type_first := unit_type_first(label):
+                queries["D"] = (building_full(name), type_first)
             for variant, (building_text, unit_text) in queries.items():
                 results[variant][_classify(session, unit_id, building_text, unit_text)] += 1
 
     print(f"Unidades activas evaluadas: {len(units)} (3 variantes c/u)")
     print("A = nombre completo + '4º C' | B = abreviado + '4C' | C = 'piso 4 depto c de ...'")
+    print(f"D = 'local planta baja' (solo locales/cocheras: {sum(results['D'].values())})")
     total: Counter[str] = sum(results.values(), Counter())
     for variant, counts in [*results.items(), ("TOTAL", total)]:
         n = sum(counts.values()) or 1

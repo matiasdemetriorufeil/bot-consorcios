@@ -7,6 +7,7 @@ and exactly one unit matching exactly. Anything else comes back as candidates to
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -20,6 +21,8 @@ BUILDING_MIN_SCORE = 80
 # Buildings this close to the best one are also candidates.
 BUILDING_SCORE_MARGIN = 5
 UNIT_FUZZY_MIN_SCORE = 75
+# Unit types whose label tokens are compared without order (see _order_free).
+_ORDER_FREE_TYPES = frozenset({"loc", "coc"})
 MAX_CANDIDATES = 5
 # A query token "consumes" a building token (combined text) above this similarity.
 TOKEN_MATCH_SCORE = 80
@@ -137,6 +140,24 @@ def _unit_key(label: str) -> tuple[str, ...]:
     return tuple(tokens(label))
 
 
+def _order_free(wanted: tuple[str, ...], key: tuple[str, ...]) -> bool:
+    """Locales and cocheras: "local de planta baja" is "PB-LOC", "cochera 12" is "12 COC".
+    Departments keep the order ("TI-4A" != "TIV-1A")."""
+    return bool(_ORDER_FREE_TYPES & set(wanted) & set(key))
+
+
+def _same_unit(wanted: tuple[str, ...], key: tuple[str, ...]) -> bool:
+    if _order_free(wanted, key):
+        return Counter(wanted) == Counter(key)
+    return wanted == key
+
+
+def _starts_like(wanted: tuple[str, ...], key: tuple[str, ...]) -> bool:
+    if _order_free(wanted, key):
+        return Counter(wanted) <= Counter(key)
+    return key[: len(wanted)] == wanted
+
+
 def _same(query_token: str, name_token: str) -> bool:
     """Equal, or a small typo in a long word ("rodaz" / "rodas"). Numbers must be equal."""
     if query_token == name_token:
@@ -229,11 +250,11 @@ def search_unit(session: Session, building_text: str, unit_text: str = "") -> Un
         for unit in units:
             candidate = UnitCandidate(unit.id, match.building.name, unit.label)
             key = _unit_key(unit.label)
-            if wanted == key:
+            if _same_unit(wanted, key):
                 exact.append(candidate)
                 continue
             # Incomplete ("PB" for "PB A") is offered as a candidate, never chosen alone.
-            prefix = len(wanted) < len(key) and key[: len(wanted)] == wanted
+            prefix = len(wanted) < len(key) and _starts_like(wanted, key)
             score = 100 if prefix else fuzz.ratio(" ".join(wanted), " ".join(key))
             if score >= UNIT_FUZZY_MIN_SCORE:
                 fuzzy.append((score, candidate))

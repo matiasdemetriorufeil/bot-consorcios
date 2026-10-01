@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: SecretStr | None = None
     smtp_from: str = ""
+    # Emails or domains that never receive verification codes (e.g. the studio's own
+    # address, loaded in ConsorPlus for owners without email). Comma separated:
+    # "a@b.com, otrodominio.com". A unit with only these is treated as "sin email".
+    verification_email_exclude: str = "estudiodiegorufeil@gmail.com"
 
     timezone: str = "America/Argentina/Cordoba"
 

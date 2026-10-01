@@ -131,6 +131,7 @@ def test_tool_loop_gets_debt_for_verified_owner(name: str, world: World) -> None
     assert reply.text == "Tu deuda es *$165.060,00*."
     assert reply.error is None and not reply.handed_off
     assert world.refreshed == [world.unit_id]
+    assert reply.tools_called == [("get_debt", "ok")]
     result = last_tool_result(name, script.requests[1])
     assert "$165.060,00" in result
     assert PAYMENT_CODE in result
@@ -237,6 +238,7 @@ def test_loop_exhausted(name: str, world: World) -> None:
     reply = agent.reply(world.session, OWNER_PHONE, "¿Se puede tener perro?")
 
     assert reply.text == FALLBACK_REPLY and reply.error == "max_rounds"
+    assert len(reply.tools_called) == MAX_ROUNDS
     assert len(script.requests) == MAX_ROUNDS
     assert len(world.events("handoff")) == 1
     assert reply.history[-1] == AssistantMessage(FALLBACK_REPLY)
