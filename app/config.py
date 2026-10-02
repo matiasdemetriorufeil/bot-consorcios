@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     # "development" enables /dev/chat. Anything else is treated as production.
     app_env: Literal["development", "production"] = "production"
+    # Level of the app's own logs (stdout): DEBUG also shows the ignored webhooks.
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/bot_consorcios"
 

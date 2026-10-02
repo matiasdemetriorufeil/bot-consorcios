@@ -41,13 +41,26 @@ def test_backend_selection() -> None:
         SmtpEmailSender(Settings(email_backend="smtp", smtp_host="", smtp_from=""))
 
 
-def test_console_backend_logs_the_code(caplog: pytest.LogCaptureFixture) -> None:
+def test_console_backend_logs_the_code_in_development(caplog: pytest.LogCaptureFixture) -> None:
+    sender = get_email_sender(Settings(_env_file=None, app_env="development"))
     with caplog.at_level(logging.INFO):
-        ConsoleEmailSender().send_verification_code("juan@example.com", "654321", 15)
+        sender.send_verification_code("juan@example.com", "654321", 15)
 
     assert "654321" in caplog.text
     assert "j***@example.com" in caplog.text
     assert "juan@example.com" not in caplog.text
+
+
+@pytest.mark.parametrize("sender", [ConsoleEmailSender(), None])
+def test_console_backend_hides_the_code_outside_development(
+    caplog: pytest.LogCaptureFixture, sender: ConsoleEmailSender | None
+) -> None:
+    with caplog.at_level(logging.INFO):
+        sender = sender or get_email_sender(Settings(_env_file=None, app_env="production"))
+        sender.send_verification_code("juan@example.com", "654321", 15)
+
+    assert "654321" not in caplog.text
+    assert "j***@example.com" in caplog.text and "oculto" in caplog.text
 
 
 class FakeSMTP:

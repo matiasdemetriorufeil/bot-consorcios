@@ -102,6 +102,7 @@ def chatwoot_webhook(
         request.headers.get("X-Chatwoot-Signature"),
         time.time(),
     ):
+        logger.warning("Webhook rejected: invalid or missing signature")
         raise HTTPException(401, "firma inválida")
     try:
         payload = json.loads(body)
@@ -111,6 +112,8 @@ def chatwoot_webhook(
         raise HTTPException(400, "JSON inválido")
 
     if reason := ignore_reason(payload):
+        # Every outgoing message (the bot's own replies too) comes back here: DEBUG only.
+        logger.debug("Webhook %s ignored: %s", payload.get("event"), reason)
         return {"status": "ignored", "reason": reason}
     message = parse_incoming(payload)
     if settings.chatwoot_account_id is not None and message.account_id not in (
@@ -119,6 +122,12 @@ def chatwoot_webhook(
     ):
         return {"status": "ignored", "reason": "other_account"}
     if not _mark_new(session, message.message_id, message.conversation_id):
+        logger.info("Message %s already received: duplicate ignored", message.message_id)
         return {"status": "ignored", "reason": "duplicate"}
+    logger.info(
+        "Webhook accepted: message %s of conversation %s",
+        message.message_id,
+        message.conversation_id,
+    )
     background.add_task(bot.handle, message)
     return {"status": "accepted"}

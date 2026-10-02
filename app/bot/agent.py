@@ -231,6 +231,14 @@ class Agent:
             cache_read_tokens=sum(u.cache_read_tokens for u in usages),
             cache_write_tokens=sum(u.cache_write_tokens for u in usages),
         )
+        cost = self.prices.estimate(total)
+        logger.info(
+            "Conversation %s: agent turn %s/%s, %d calls, tokens in %d out %d, cost %s%s",
+            ctx.conversation_id, self.provider.name, self.provider.model, rounds,
+            total.input_tokens, total.output_tokens,
+            f"US$ {cost:.5f}" if cost is not None else "n/a",
+            f", error {error}" if error else "",
+        )  # fmt: skip
         ctx.log(
             "agent_turn",
             provider=self.provider.name,

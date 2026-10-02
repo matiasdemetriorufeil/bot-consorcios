@@ -1,6 +1,7 @@
 """Outgoing email. Two backends chosen by EMAIL_BACKEND: "console" (development) and "smtp".
 
-Only the console backend ever writes a verification code to the logs.
+Only the console backend ever writes a verification code to the logs, and only with
+APP_ENV=development: anywhere else it logs the masked address and hides the code.
 """
 
 import logging
@@ -45,13 +46,17 @@ class EmailSender(Protocol):
 
 
 class ConsoleEmailSender:
-    """Development backend: nothing is sent, the email (and the code) goes to the log."""
+    """Development backend: nothing is sent, the email goes to the log. The code is only
+    shown with show_code=True (get_email_sender: APP_ENV=development)."""
+
+    def __init__(self, *, show_code: bool = False) -> None:
+        self.show_code = show_code
 
     def send_verification_code(self, to: str, code: str, valid_minutes: int) -> None:
         logger.info(
-            "[EMAIL_BACKEND=console] Email de verificación enviado a %s - código: %s",
+            "[EMAIL_BACKEND=console] Email de verificación (no enviado) a %s - código: %s",
             mask_email(to),
-            code,
+            code if self.show_code else "[oculto: solo se muestra con APP_ENV=development]",
         )
 
 
@@ -95,4 +100,6 @@ def get_email_sender(settings: Settings | None = None) -> EmailSender:
     settings = settings or get_settings()
     if settings.email_backend == "smtp":
         return SmtpEmailSender(settings)
-    return ConsoleEmailSender()
+    if settings.app_env != "development":
+        logger.warning("EMAIL_BACKEND=console fuera de desarrollo: los emails NO se envían")
+    return ConsoleEmailSender(show_code=settings.app_env == "development")

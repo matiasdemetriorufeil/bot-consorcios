@@ -279,6 +279,8 @@ def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str
         )
         return result
     ctx.log("tool_call", tool=name, args=_loggable(clean), status=result.get("status"))
+    # Name and status only: arguments may carry codes or what the person wrote.
+    logger.info("Conversation %s: tool %s -> %s", ctx.conversation_id, name, result.get("status"))
     return result
 
 
@@ -473,6 +475,9 @@ def handoff_to_human(
     """Records the handoff; the channel opens the conversation for a human after the reply.
     Several calls in one turn: the first one wins, unless a later one is urgent."""
     ctx.log("handoff", reason=reason, summary=summary, priority=priority)
+    logger.info(
+        "Conversation %s: handoff requested (%s, %s)", ctx.conversation_id, reason, priority
+    )
     if ctx.handoff is None or (priority == "urgent" and ctx.handoff.priority != "urgent"):
         ctx.handoff = Handoff(reason=reason, summary=summary, priority=priority)
     return {"status": "ok", "tell_person": ctx.handoff_notice}

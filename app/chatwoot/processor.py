@@ -139,12 +139,20 @@ class ChatwootBot:
     def _handle(self, session: Session, message: IncomingMessage) -> None:
         conversation_id = message.conversation_id
         if not self._still_pending(conversation_id):
+            logger.info("Conversation %s no longer pending: message %s skipped",
+                        conversation_id, message.message_id)  # fmt: skip
             self._log(session, message, None, "chatwoot_skipped", reason="not_pending")
             return
         phone, trusted = resolve_phone(message, self.settings.chatwoot_trusted_phone_inbox_ids)
         who = identify_by_phone(session, phone) if phone else Identity()
+        logger.info(
+            "Processing message %s of conversation %s (inbox %s, trusted phone: %s, known: %s)",
+            message.message_id, conversation_id, message.inbox_id,
+            "yes" if trusted else "no", "yes" if who.known else "no",
+        )  # fmt: skip
 
         if who.known and not in_pilot(session, who):
+            logger.info("Conversation %s: building outside the pilot, handing off", conversation_id)
             notice = f"{NON_PILOT_GREETING} {self._notice()}"
             handoff = Handoff("non_pilot", "Propietario de un edificio fuera de la prueba piloto.")
             self._log(session, message, phone, "handoff", **_handoff_payload(handoff))
@@ -155,6 +163,10 @@ class ChatwootBot:
         if not text:
             viewable = any(t in VIEWABLE_ATTACHMENTS for t in message.attachment_types)
             reply = ATTACHMENT_REPLY if viewable and not message.is_sticker else UNSUPPORTED_REPLY
+            kinds = ", ".join(message.attachment_types) or message.content_type
+            logger.info(
+                "Conversation %s: attachment only (%s), fixed reply", conversation_id, kinds
+            )
             self._log(session, message, phone, "chatwoot_fixed_reply", kind="attachment")
             self._finish(session, message, phone, trusted, reply, None)
             return
@@ -186,9 +198,13 @@ class ChatwootBot:
         conversation_id = message.conversation_id
         if not self._still_pending(conversation_id):
             # An operator took the conversation while the bot was thinking.
+            logger.info(
+                "Conversation %s taken by a human meanwhile: reply dropped", conversation_id
+            )
             self._log(session, message, phone, "chatwoot_reply_dropped")
             return
         self.client.send_message(conversation_id, reply)
+        logger.info("Conversation %s: reply sent", conversation_id)
         who = identify_by_phone(session, phone) if phone else Identity()  # may have verified
         if handoff is not None:
             try:
@@ -216,6 +232,11 @@ class ChatwootBot:
                     "Handoff %s failed for conversation %s: %s", step, conversation_id, exc
                 )
         self.client.toggle_status(conversation_id, "open")
+        logger.info(
+            "Conversation %s handed off (reason: %s, priority: %s, labels: %s)",
+            conversation_id, handoff.reason, handoff.priority,
+            ", ".join(handoff_labels(handoff, who)),
+        )  # fmt: skip
 
     def _emergency_handoff(self, session: Session, message: IncomingMessage) -> None:
         """Something broke: tell the person and leave the conversation to a human."""
