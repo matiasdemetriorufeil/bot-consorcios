@@ -43,6 +43,31 @@ NO_PAYMENT_CODE = "La unidad no tiene código de pago cargado: pedilo a la admin
 _SECRET_ARGS = frozenset({"code"})
 
 
+# Why a conversation goes to a human (also its Chatwoot label, see app.chatwoot.handoff).
+# The model picks one of HANDOFF_REASONS; the code also uses technical_error and non_pilot.
+HANDOFF_REASONS = (
+    "person_requested",
+    "upset",
+    "debt_claim",
+    "payment_not_credited",
+    "payment_plan",
+    "emergency",
+    "no_answer",
+    "other",
+)
+DEFAULT_HANDOFF_NOTICE = "Ya le pasé tu consulta a una persona del estudio."
+
+
+@dataclass(frozen=True)
+class Handoff:
+    """A request to pass the conversation to a human. The channel (Chatwoot) carries it out
+    after sending the bot's last reply."""
+
+    reason: str
+    summary: str
+    priority: str = "normal"  # "normal" | "urgent"
+
+
 @dataclass
 class ToolContext:
     session: Session
@@ -51,6 +76,10 @@ class ToolContext:
     timezone: str = "America/Argentina/Cordoba"
     email_sender: EmailSender | None = None
     conversation_id: int | None = None
+    # What to tell the person on handoff (depends on office hours, set by the agent).
+    handoff_notice: str = DEFAULT_HANDOFF_NOTICE
+    # Set by handoff_to_human.
+    handoff: Handoff | None = None
 
     @property
     def e164(self) -> str | None:
@@ -166,7 +195,14 @@ TOOLS: list[ToolSpec] = [
         ),
         parameters=_object(
             {
-                "reason": {"type": "string", "description": "Motivo breve."},
+                "reason": {
+                    "type": "string",
+                    "enum": list(HANDOFF_REASONS),
+                    "description": "person_requested: pide una persona; upset: enojado o "
+                    "molesto; debt_claim: reclama por la deuda; payment_not_credited: pago "
+                    "que no figura; payment_plan: plan de pago o cuotas; emergency: urgencia; "
+                    "no_answer: no tenés la respuesta; other: otro motivo.",
+                },
                 "summary": {
                     "type": "string",
                     "description": "Resumen para el operador: qué pidió y qué se le respondió.",
@@ -434,9 +470,12 @@ def get_building_info(ctx: ToolContext, building_id: int, question: str) -> dict
 def handoff_to_human(
     ctx: ToolContext, reason: str, summary: str, priority: str = "normal"
 ) -> dict[str, Any]:
-    # Stage 4 opens/assigns the conversation in Chatwoot.
+    """Records the handoff; the channel opens the conversation for a human after the reply.
+    Several calls in one turn: the first one wins, unless a later one is urgent."""
     ctx.log("handoff", reason=reason, summary=summary, priority=priority)
-    return {"status": "ok", "message": "Derivado a una persona del estudio."}
+    if ctx.handoff is None or (priority == "urgent" and ctx.handoff.priority != "urgent"):
+        ctx.handoff = Handoff(reason=reason, summary=summary, priority=priority)
+    return {"status": "ok", "tell_person": ctx.handoff_notice}
 
 
 def _units_of(who: identity.Identity) -> list[dict[str, Any]]:

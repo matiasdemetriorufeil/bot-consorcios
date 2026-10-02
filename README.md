@@ -113,11 +113,20 @@ uv run python -m evals.run --provider anthropic --model claude-haiku-4-5
 uv run python -m evals.run --only deuda_simple urgencia_gas
 ```
 
-### Pendientes
+## Chatwoot (`app/chatwoot/`)
 
-- **Derivación repetida (Etapa 4, Chatwoot):** después de `handoff_to_human` el bot sigue
-  contestando y cada mensaje nuevo vuelve a derivar. Con Chatwoot, mientras la conversación
-  esté asignada a una persona el bot no tiene que responder ni derivar de nuevo.
+El bot atiende como **Agent Bot** de Chatwoot: `POST /webhooks/chatwoot` recibe los mensajes
+(firma HMAC verificada, idempotente, respuesta en segundo plano), el historial (últimos 20
+mensajes) se lee de Chatwoot y, al derivar, deja una nota privada, etiquetas y pasa la
+conversación a Abierta. Solo atiende conversaciones **Pendientes**: una vez derivada o tomada
+por un operador, no contesta ni vuelve a derivar.
+
+El teléfono del contacto solo identifica en las bandejas de `CHATWOOT_TRUSTED_PHONE_INBOX_IDS`
+(en producción, solo WhatsApp). Los propietarios de edificios fuera del piloto
+(`buildings.pilot`) van directo a una persona.
+
+- Configuración, Agent Bot y prueba con el chat web (`/dev/chat`): [docs/chatwoot.md](docs/chatwoot.md)
+- Conectar WhatsApp cuando Meta apruebe: [docs/whatsapp.md](docs/whatsapp.md)
 
 ## Tests y lint
 

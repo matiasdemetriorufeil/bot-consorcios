@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 
+from app import dev
+from app.chatwoot import webhook as chatwoot_webhook
+
 app = FastAPI(title="Bot Consorcios - Estudio Diego Rufeil")
+app.include_router(chatwoot_webhook.router)
+app.include_router(dev.router)
 
 
 @app.get("/health")

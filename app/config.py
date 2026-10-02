@@ -1,8 +1,8 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True
     )
+
+    # "development" enables /dev/chat. Anything else is treated as production.
+    app_env: Literal["development", "production"] = "production"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/bot_consorcios"
 
@@ -46,9 +49,20 @@ class Settings(BaseSettings):
     live_cache_minutes: float = 10
 
     chatwoot_base_url: str = ""
+    # Agent Bot access token: sends messages and notes, hands off, adds labels.
+    chatwoot_bot_token: SecretStr | None = None
+    # A user's access token: reads the history and updates contacts (the bot token can't).
     chatwoot_api_token: SecretStr | None = None
     chatwoot_account_id: int | None = None
+    # The Agent Bot's "Webhook Secret": Chatwoot signs every webhook with it (HMAC-SHA256).
     chatwoot_webhook_secret: SecretStr | None = None
+    chatwoot_timeout_seconds: float = 10
+    # Inboxes whose contact phone was set by the channel itself (WhatsApp: Meta), "3" or "3,5".
+    # In any other inbox the phone could be typed by anyone: it is never used to identify.
+    chatwoot_trusted_phone_inbox_ids: Annotated[list[int], NoDecode] = []
+    # Browser-side URL of Chatwoot and the Website inbox token, for /dev/chat.
+    chatwoot_frontend_url: str = "http://localhost:3000"
+    chatwoot_website_token: str = ""
 
     # "console" (development: logs the email, including the code) or "smtp".
     email_backend: Literal["console", "smtp"] = "console"
@@ -64,6 +78,14 @@ class Settings(BaseSettings):
     verification_email_exclude: str = "estudiodiegorufeil@gmail.com"
 
     timezone: str = "America/Argentina/Cordoba"
+
+    @field_validator("chatwoot_trusted_phone_inbox_ids", mode="before")
+    @classmethod
+    def _split_ids(cls, value: Any) -> Any:
+        """ "3, 5" or "[3, 5]" -> [3, 5]."""
+        if isinstance(value, str):
+            return [int(item) for item in value.strip("[] ").split(",") if item.strip()]
+        return value
 
 
 @lru_cache

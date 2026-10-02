@@ -1,6 +1,6 @@
 """System prompt (fixed, cacheable) and the per-message context (goes in the user message)."""
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from app.bot.identity import Identity
 from app.bot.unit_search import display_building_name
@@ -47,8 +47,8 @@ Derivá a una persona (handoff_to_human) cuando:
 - es una urgencia (pérdidas de agua o gas, incendio, ascensor con gente, seguridad): \
 priority "urgent";
 - no sabés la respuesta o las herramientas no la tienen.
-Al derivar avisá que una persona del estudio le va a responder; si es fuera del horario de \
-atención, que le responden en el próximo horario hábil. En urgencias graves recordá llamar \
+Al derivar, avisale con el texto de tell_person que devuelve handoff_to_human (ya dice \
+cuándo le van a responder): no prometas otros tiempos. En urgencias graves recordá llamar \
 también a los servicios de emergencia.
 """
 
@@ -59,6 +59,51 @@ def is_office_hours(now: datetime, start: str, end: str, weekdays: list[int]) ->
     if now.weekday() not in weekdays:
         return False
     return time.fromisoformat(start) <= now.time() < time.fromisoformat(end)
+
+
+def _hour(value: str) -> str:
+    """ "09:00" -> "9", "17:30" -> "17:30"."""
+    t = time.fromisoformat(value)
+    return f"{t.hour}" if t.minute == 0 else f"{t.hour}:{t.minute:02d}"
+
+
+def describe_office_hours(start: str, end: str, weekdays: list[int]) -> str:
+    """ "de lunes a viernes de 9 a 17" (or "los lunes, miércoles y viernes de 9 a 17")."""
+    days = sorted(set(weekdays))
+    names = [_WEEKDAYS[d] for d in days]
+    if len(days) > 2 and days == list(range(days[0], days[-1] + 1)):
+        when = f"de {names[0]} a {names[-1]}"
+    else:
+        plural = [n if n.endswith("s") else f"{n}s" for n in names]
+        when = "los " + (", ".join(plural[:-1]) + " y " if len(plural) > 1 else "") + plural[-1]
+    return f"{when} de {_hour(start)} a {_hour(end)}"
+
+
+def next_opening(now: datetime, start: str, weekdays: list[int]) -> str:
+    """When the office opens next, said from outside office hours: "hoy a partir de las 9",
+    "mañana a partir de las 9" or "el lunes a partir de las 9"."""
+    opening = time.fromisoformat(start)
+    for offset in range(8):
+        day = now + timedelta(days=offset)
+        if day.weekday() not in weekdays or (offset == 0 and now.time() >= opening):
+            continue
+        name = {0: "hoy", 1: "mañana"}.get(offset, f"el {_WEEKDAYS[day.weekday()]}")
+        return f"{name} a partir de las {_hour(start)}"
+    return "en el próximo horario de atención"
+
+
+def handoff_notice(now: datetime, start: str, end: str, weekdays: list[int]) -> str:
+    """What the person is told when the conversation goes to a human."""
+    if is_office_hours(now, start, end, weekdays):
+        return (
+            "Ya le pasé tu consulta a una persona del estudio: te va a responder por acá a la "
+            "brevedad."
+        )
+    return (
+        "Ya le pasé tu consulta a una persona del estudio. Ahora estamos fuera del horario de "
+        f"atención ({describe_office_hours(start, end, weekdays)}), así que te van a responder "
+        f"{next_opening(now, start, weekdays)}."
+    )
 
 
 def describe_identity(who: Identity) -> str:

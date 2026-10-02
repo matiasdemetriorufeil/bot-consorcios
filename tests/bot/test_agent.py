@@ -208,7 +208,7 @@ def test_provider_error_answers_fixed_message_and_hands_off(name: str, world: Wo
 
     reply = agent.reply(world.session, OWNER_PHONE, "hola")
 
-    assert reply.text == FALLBACK_REPLY
+    assert reply.text.startswith(FALLBACK_REPLY)
     assert reply.handed_off and reply.error.startswith("provider_error")
     [handoff] = world.events("handoff")
     assert handoff.payload["reason"] == "technical_error"
@@ -227,7 +227,7 @@ def test_real_sdk_error_also_falls_back(name: str, world: World) -> None:
         else errors.ServerError(503, {"error": {"message": "x", "status": "UNAVAILABLE"}})
     )
     agent, _ = make_agent(name, [error], world)
-    assert agent.reply(world.session, OWNER_PHONE, "hola").text == FALLBACK_REPLY
+    assert agent.reply(world.session, OWNER_PHONE, "hola").text.startswith(FALLBACK_REPLY)
 
 
 @pytest.mark.parametrize("name", PROVIDERS)
@@ -237,17 +237,17 @@ def test_loop_exhausted(name: str, world: World) -> None:
 
     reply = agent.reply(world.session, OWNER_PHONE, "¿Se puede tener perro?")
 
-    assert reply.text == FALLBACK_REPLY and reply.error == "max_rounds"
+    assert reply.text.startswith(FALLBACK_REPLY) and reply.error == "max_rounds"
     assert len(reply.tools_called) == MAX_ROUNDS
     assert len(script.requests) == MAX_ROUNDS
     assert len(world.events("handoff")) == 1
-    assert reply.history[-1] == AssistantMessage(FALLBACK_REPLY)
+    assert reply.history[-1] == AssistantMessage(reply.text)
 
 
 @pytest.mark.parametrize("name", PROVIDERS)
 def test_model_handoff_is_not_duplicated(name: str, world: World) -> None:
     steps = [
-        Call("handoff_to_human", {"reason": "plan de pago", "summary": "x", "priority": "normal"}),
+        Call("handoff_to_human", {"reason": "payment_plan", "summary": "x", "priority": "normal"}),
         Say("Te paso con una persona del estudio."),
     ]
     agent, _ = make_agent(name, steps, world)
@@ -370,7 +370,7 @@ def test_building_info_and_handoff_placeholders(world: World) -> None:
     info = run_tool(ctx, "get_building_info", {"building_id": 1, "question": "¿Mascotas?"})
     assert info["status"] == "no_info"
     handoff = run_tool(
-        ctx, "handoff_to_human", {"reason": "urgencia", "summary": "pérdida de agua",
+        ctx, "handoff_to_human", {"reason": "emergency", "summary": "pérdida de agua",
                                   "priority": "urgent"}
     )  # fmt: skip
     assert handoff["status"] == "ok"

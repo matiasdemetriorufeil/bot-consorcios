@@ -4,6 +4,7 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Enum,
     ForeignKey,
     Index,
@@ -271,3 +272,14 @@ class VerificationRequest(Base):
     resolved_by: Mapped[str | None] = mapped_column(String(100))
     # The owner the phone was linked to (only when approved).
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
+
+
+class ChatwootProcessedMessage(Base):
+    """Incoming Chatwoot messages already accepted by the webhook (idempotency: Chatwoot may
+    deliver the same message twice)."""
+
+    __tablename__ = "chatwoot_processed_messages"
+
+    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    conversation_id: Mapped[int] = mapped_column(index=True)  # Chatwoot display id
+    received_at: Mapped[datetime] = mapped_column(server_default=func.now())

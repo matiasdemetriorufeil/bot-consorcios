@@ -3,11 +3,13 @@
 One incoming message -> at most MAX_ROUNDS model calls. Tools run here (app.bot.tools) with
 the phone set by the code. Each model call logs its token usage (and estimated cost) in
 bot_events. If the provider fails or the loop runs out, the person gets a fixed message and
-the conversation is handed off.
+the conversation is handed off. A handoff is only recorded in AgentReply.handoff: the channel
+carries it out after sending the reply.
 
-History: the caller keeps it (Stage 4 will store it per Chatwoot conversation) and passes it
-back each time. It is trimmed to the last HISTORY_MESSAGES user/assistant messages, keeping
-the tool exchanges in between (so unit ids found earlier are not lost).
+History: the caller passes it each time (app.chatwoot reads it from the Chatwoot
+conversation; the CLI keeps it in memory). It is trimmed to the last HISTORY_MESSAGES
+user/assistant messages, keeping the tool exchanges in between (so unit ids found earlier are
+not lost).
 """
 
 import logging
@@ -20,8 +22,14 @@ from sqlalchemy.orm import Session
 
 from app.bot import tools
 from app.bot.identity import identify_by_phone
-from app.bot.prompts import SYSTEM_PROMPT, build_user_turn, is_office_hours
-from app.bot.tools import TOOLS, ToolContext, run_tool
+from app.bot.prompts import (
+    SYSTEM_PROMPT,
+    build_user_turn,
+    describe_office_hours,
+    handoff_notice,
+    is_office_hours,
+)
+from app.bot.tools import TOOLS, Handoff, ToolContext, run_tool
 from app.config import Settings, get_settings
 from app.llm import (
     AssistantMessage,
@@ -40,7 +48,8 @@ logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 6
 HISTORY_MESSAGES = 20
-FALLBACK_REPLY = "Tuve un problema técnico, te paso con una persona del estudio."
+# Followed by the handoff notice (which depends on office hours).
+FALLBACK_REPLY = "Tuve un problema técnico."
 
 
 @dataclass
@@ -48,6 +57,7 @@ class AgentReply:
     text: str
     history: list[Message]
     handed_off: bool = False
+    handoff: Handoff | None = None
     error: str | None = None
     usage: list[Usage] = field(default_factory=list)
     # (tool name, result status) in call order, for logs and the CLI.
@@ -105,6 +115,9 @@ class Agent:
         conversation_id: int | None = None,
     ) -> AgentReply:
         past = trim_history(list(history or []))
+        now = self._now().astimezone(ZoneInfo(self.settings.timezone))
+        s = self.settings
+        hours = (s.office_hours_start, s.office_hours_end, s.office_weekdays)
         ctx = ToolContext(
             session=session,
             phone=phone,
@@ -112,24 +125,20 @@ class Agent:
             timezone=self.settings.timezone,
             email_sender=self._email_sender,
             conversation_id=conversation_id,
+            handoff_notice=handoff_notice(now, *hours),
         )
-        now = self._now().astimezone(ZoneInfo(self.settings.timezone))
-        s = self.settings
         user_turn = build_user_turn(
             text,
             who=identify_by_phone(session, phone),
             now=now,
-            office_hours=is_office_hours(
-                now, s.office_hours_start, s.office_hours_end, s.office_weekdays
-            ),
-            hours_text=f"{s.office_hours_start} a {s.office_hours_end} en días hábiles",
+            office_hours=is_office_hours(now, *hours),
+            hours_text=describe_office_hours(*hours),
             first_message=not any(isinstance(m, UserMessage) for m in past),
         )
         # The stored history keeps the plain text; the context only goes in this call.
         turn: list[Message] = []
         usages: list[Usage] = []
         called: list[tuple[str, str | None]] = []
-        handed_off = False
 
         for round_number in range(1, MAX_ROUNDS + 1):
             messages = past + [UserMessage(user_turn)] + turn
@@ -138,7 +147,7 @@ class Agent:
             except Exception as exc:
                 logger.warning("LLM call failed: %s", type(exc).__name__)
                 error = f"provider_error:{type(exc).__name__}"
-                return self._fail(ctx, past, text, usages, called, error, handed_off)
+                return self._fail(ctx, past, text, usages, called, error)
             usages.append(response.usage)
             self._log_usage(ctx, response.usage, round_number)
             message = response.message
@@ -146,12 +155,13 @@ class Agent:
 
             if not message.tool_calls:
                 if not message.text:
-                    return self._fail(ctx, past, text, usages, called, "empty_answer", handed_off)
+                    return self._fail(ctx, past, text, usages, called, "empty_answer")
                 self._log_turn(ctx, usages, round_number)
                 return AgentReply(
                     text=message.text,
                     history=past + [UserMessage(text)] + turn,
-                    handed_off=handed_off,
+                    handed_off=ctx.handoff is not None,
+                    handoff=ctx.handoff,
                     usage=usages,
                     tools_called=called,
                 )
@@ -160,12 +170,10 @@ class Agent:
             for call in message.tool_calls:
                 content = run_tool(ctx, call.name, call.arguments)
                 called.append((call.name, content.get("status")))
-                if call.name == "handoff_to_human" and content.get("status") == "ok":
-                    handed_off = True
                 results.append(ToolResult(call_id=call.id, name=call.name, content=content))
             turn.append(ToolResultsMessage(tuple(results)))
 
-        return self._fail(ctx, past, text, usages, called, "max_rounds", handed_off)
+        return self._fail(ctx, past, text, usages, called, "max_rounds")
 
     def _fail(
         self,
@@ -175,11 +183,10 @@ class Agent:
         usages: list[Usage],
         called: list[tuple[str, str | None]],
         reason: str,
-        already_handed_off: bool = False,
     ) -> AgentReply:
         ctx.log("agent_error", reason=reason, provider=self.provider.name)
         self._log_turn(ctx, usages, len(usages), error=reason)
-        if not already_handed_off:
+        if ctx.handoff is None:
             try:
                 tools.handoff_to_human(
                     ctx,
@@ -189,10 +196,14 @@ class Agent:
                 )
             except Exception:
                 logger.exception("Handoff after an agent error failed")
+            if ctx.handoff is None:  # the log failed: hand off anyway
+                ctx.handoff = Handoff("technical_error", f"El bot no pudo responder ({reason}).")
+        reply = f"{FALLBACK_REPLY} {ctx.handoff_notice}"
         return AgentReply(
-            text=FALLBACK_REPLY,
-            history=past + [UserMessage(text), AssistantMessage(FALLBACK_REPLY)],
+            text=reply,
+            history=past + [UserMessage(text), AssistantMessage(reply)],
             handed_off=True,
+            handoff=ctx.handoff,
             error=reason,
             usage=usages,
             tools_called=called,
