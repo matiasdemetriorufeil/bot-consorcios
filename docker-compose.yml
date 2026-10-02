@@ -23,9 +23,9 @@ x-chatwoot-base: &chatwoot-base
     LOG_LEVEL: info
     TZ: America/Argentina/Cordoba
     # ⚠️ DEVELOPMENT ONLY. Chatwoot refuses webhooks to private-network addresses (SSRF
-    # protection) and http://api:8000 is one inside Docker. This lets the Agent Bot call our
-    # api here. NEVER in production: there the webhook goes to a public HTTPS URL and this
-    # protection must stay on.
+    # protection) and http://host.docker.internal:8000 (the Agent Bot URL in development, see
+    # docs/chatwoot.md) is one. This lets the Agent Bot call our api here. NEVER in
+    # production: there the webhook goes to a public HTTPS URL and this protection must stay on.
     SAFE_FETCH_ALLOW_PRIVATE_NETWORK: "true"
   volumes:
     - chatwoot_storage:/app/storage

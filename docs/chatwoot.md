@@ -217,17 +217,29 @@ Otras reglas:
 2. Nombre: `Asistente` (es el nombre que ve la gente en el chat). URL del webhook:
 
    ```
-   http://api:8000/webhooks/chatwoot
+   http://host.docker.internal:8000/webhooks/chatwoot
    ```
 
-   (`api` es el nombre del servicio en el compose: Chatwoot y la api están en la misma red de
-   Docker.)
+   El formulario de Chatwoot **no acepta** `http://api:8000/...` (pide un dominio con punto).
+   `host.docker.internal` es el nombre con el que, en Docker Desktop, los contenedores llegan a
+   la PC; de ahí al puerto 8000 publicado por la api. Probado desde `chatwoot-rails` y
+   `chatwoot-sidekiq`:
+   `docker compose exec chatwoot-sidekiq wget -q -O - http://host.docker.internal:8000/health`
+   → `{"status":"ok"}`.
 3. Al crearlo, Chatwoot muestra el **Webhook Secret** y el **token de acceso** del bot (después
    también se ven editando el bot):
    - Webhook Secret → `CHATWOOT_WEBHOOK_SECRET`
    - Token de acceso → `CHATWOOT_BOT_TOKEN`
 4. Asignalo a la bandeja: *Configuración → Bandejas de entrada → (la bandeja) → pestaña
-   Bot* (*Bot Configuration*) → elegí el bot → **Actualizar**.
+   Bot* (*Bot Configuration*) → elegí el bot → **Actualizar**. Crear el bot **no** lo asigna:
+   sin este paso Chatwoot ni intenta mandar el webhook. Para comprobarlo:
+
+   ```powershell
+   docker compose exec chatwoot-rails bundle exec rails runner "i = Inbox.find(1); puts i.agent_bot_inbox&.status.inspect"
+   ```
+
+   Tiene que decir `"active"` (el `1` es el ID de la bandeja). Las conversaciones creadas
+   **antes** de asignar el bot quedan en Abierta y el bot no las atiende: probá con una nueva.
 
 **La firma.** Chatwoot v4.18 firma cada webhook del Agent Bot con su Webhook Secret: manda
 `X-Chatwoot-Timestamp` (segundos) y `X-Chatwoot-Signature` =
@@ -257,7 +269,7 @@ personalizados → Agregar*, aplicado a **Contacto**: `Unidad` (clave `unit`, te
 ```ini
 APP_ENV=development
 CHATWOOT_BASE_URL=http://chatwoot-rails:3000
-CHATWOOT_ACCOUNT_ID=1
+CHATWOOT_ACCOUNT_ID=1           # el de la URL del panel: .../app/accounts/<ID>/...
 CHATWOOT_BOT_TOKEN=...          # token del Agent Bot
 CHATWOOT_API_TOKEN=...          # token de un usuario administrador
 CHATWOOT_WEBHOOK_SECRET=...     # Webhook Secret del Agent Bot
@@ -266,8 +278,20 @@ CHATWOOT_WEBSITE_TOKEN=...      # websiteToken de la bandeja Website
 CHATWOOT_FRONTEND_URL=http://localhost:3000
 ```
 
-Después: `docker compose run --rm api alembic upgrade head` (tabla de idempotencia) y
-`docker compose up -d api chatwoot-rails chatwoot-sidekiq` (para que tomen las variables).
+`CHATWOOT_BASE_URL` es para que la api llame a Chatwoot por la red de Docker: no puede quedar
+vacío (si falta, el webhook responde 503).
+
+Después, una sola vez:
+
+```powershell
+docker compose build api scheduler                    # dependencias al día (si no: "No module named 'google'")
+docker compose run --rm api alembic upgrade head      # tabla de idempotencia
+docker compose --profile chatwoot up -d --force-recreate api chatwoot-rails chatwoot-sidekiq
+```
+
+El último comando hace que la api tome el `.env` y que Chatwoot tome
+`SAFE_FETCH_ALLOW_PRIVATE_NETWORK`. Para comprobarlo:
+`docker compose exec chatwoot-sidekiq printenv SAFE_FETCH_ALLOW_PRIVATE_NETWORK` → `true`.
 
 ### 5. Probar desde `/dev/chat`
 
@@ -278,6 +302,18 @@ deriva). Logs: `docker compose logs -f api chatwoot-sidekiq`.
 
 Para empezar una conversación nueva, borrá las cookies de `localhost:8000` o abrí una ventana
 de incógnito (el widget recuerda al contacto).
+
+**Si a la api no le llega el `POST /webhooks/chatwoot`**, revisá en este orden:
+
+1. El bot está asignado a la bandeja (paso 2.4) y la conversación es nueva (Pendiente).
+2. `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true` dentro de `chatwoot-sidekiq` (paso 4): si Chatwoot
+   se levantó antes de ese cambio en el compose, hay que recrearlo.
+3. Conectividad: `docker compose exec chatwoot-sidekiq wget -q -O - http://host.docker.internal:8000/health`.
+4. Logs: `docker compose logs -f chatwoot-sidekiq | Select-String AgentBots` muestra el envío
+   y sus errores.
+
+Si llega pero el bot no contesta: `docker compose logs -f api` (503 = falta configuración en
+`.env`, 401 = el `CHATWOOT_WEBHOOK_SECRET` no coincide con el del bot).
 
 ### Teléfono confiable
 
@@ -340,8 +376,8 @@ docker compose exec db psql -U postgres -d bot_consorcios -c "DELETE FROM phones
 ## Limitaciones conocidas en desarrollo
 
 - **Webhooks hacia nuestra api.** Chatwoot bloquea por defecto los webhooks a direcciones de red
-  privada (protección SSRF), y `http://api:8000` dentro de Docker lo es. En el compose de
-  desarrollo los servicios de Chatwoot tienen `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true`.
+  privada (protección SSRF), y `host.docker.internal` (la PC vista desde Docker) lo es. En el
+  compose de desarrollo los servicios de Chatwoot tienen `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true`.
   **En producción no va**: ahí el webhook apunta a una URL pública con HTTPS.
 - **Sin email:** no hay SMTP configurado, así que Chatwoot no manda invitaciones, recuperación de
   contraseña ni notificaciones por mail.

@@ -126,7 +126,8 @@ de Meta?) y `docker compose logs -f api` (¿llega el del Agent Bot?).
 
 - `APP_ENV=production` (apaga `/dev/chat`).
 - **Sin** `SAFE_FETCH_ALLOW_PRIVATE_NETWORK` en Chatwoot: la URL del Agent Bot pasa a ser la
-  URL pública con HTTPS de nuestra api (`https://.../webhooks/chatwoot`), no `http://api:8000`.
+  URL pública con HTTPS de nuestra api (`https://.../webhooks/chatwoot`), no
+  `http://host.docker.internal:8000`.
 - `CHATWOOT_TRUSTED_PHONE_INBOX_IDS` solo con la bandeja de WhatsApp.
 - Ventana de 24 h de WhatsApp: el bot solo responde mensajes entrantes, así que siempre está
   dentro de la ventana. Para escribirle primero a alguien hacen falta plantillas aprobadas
