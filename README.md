@@ -63,8 +63,12 @@ docker compose logs -f scheduler
 Un lock de Postgres impide que se pisen dos sincronizaciones nocturnas (la programada y una manual).
 
 Para el bot, `app.sync.live.refresh_unit(unit_id)` trae en vivo la deuda de una unidad y la guarda
-con `source="live"`. Si ConsorPlus no responde en 6 segundos, devuelve la última deuda guardada con
-`stale=True` y su fecha.
+con `source="live"`. Usa una sola sesión de ConsorPlus por proceso (sin login en cada consulta);
+espera 6 segundos con la sesión lista o 10 si antes tiene que hacer login (medido: ~1 s y ~4–5,5 s).
+Si no llega a tiempo, devuelve la última deuda guardada con `stale=True` y su fecha (la consulta
+sigue y se guarda al terminar). La sesión se da por vencida tras `CONSORPLUS_SESSION_IDLE_MINUTES`
+(15) sin uso. Cuando escribe un propietario identificado, el bot hace el login por adelantado
+(`warm_up`) mientras piensa la respuesta.
 
 ## Identidad y verificación (`app/bot/identity.py`)
 

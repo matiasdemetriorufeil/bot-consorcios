@@ -69,6 +69,7 @@ class Harness:
     chatwoot: FakeChatwoot
     bot: ChatwootBot
     script: Any
+    warm_ups: list[bool]
 
     def handle(self, **payload: Any) -> None:
         self.bot.handle(parse_incoming(message_payload(**payload)))
@@ -111,14 +112,16 @@ def make_harness(
         raise LookupError(unit_id)
 
     agent = Agent(llm, settings=SETTINGS, refresh_debt=no_debt, now=lambda: now)
+    warm_ups: list[bool] = []
     bot = ChatwootBot(
         chatwoot,  # type: ignore[arg-type]
         lambda: nullcontext(session),
         lambda: agent,
         SETTINGS,
         now=lambda: now,
+        warm_up=lambda: warm_ups.append(True),
     )
-    return Harness(session, chatwoot, bot, script)
+    return Harness(session, chatwoot, bot, script, warm_ups)
 
 
 # --- Signature ----------------------------------------------------------------------------
@@ -530,3 +533,33 @@ def test_works_without_history_token(db_session: Session, people: None) -> None:
 
     assert h.chatwoot.sent() == ["Hola"] and "get_messages" not in h.chatwoot.names()
     assert "update_contact_attributes" not in h.chatwoot.names()
+
+
+# --- ConsorPlus warm-up -------------------------------------------------------------------
+
+
+def test_identified_pilot_owner_warms_up_the_consorplus_session(
+    db_session: Session, people: None
+) -> None:
+    h = make_harness(db_session, [Say("Hola Ana")])
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE)
+
+    assert h.warm_ups == [True]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"inbox_id": WEB_INBOX, "phone": OWNER_PHONE},  # unknown: no debt without verifying
+        {"inbox_id": WHATSAPP_INBOX, "phone": NON_PILOT_PHONE},  # straight to a human
+    ],
+)
+def test_no_warm_up_for_unknown_or_non_pilot(
+    db_session: Session, people: None, kwargs: dict
+) -> None:
+    h = make_harness(db_session, [Say("Hola")])
+
+    h.handle(**kwargs)
+
+    assert h.warm_ups == []

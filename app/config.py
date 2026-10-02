@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # refresh_unit reuses a live snapshot younger than this instead of querying ConsorPlus.
     # 0 disables the cache.
     live_cache_minutes: float = 10
+    # Minutes without requests after which the ConsorPlus session is taken as expired (the
+    # server's ASP.NET session lasts ~20). The bot then logs in first. 0 disables it.
+    consorplus_session_idle_minutes: float = 15
 
     chatwoot_base_url: str = ""
     # Agent Bot access token: sends messages and notes, hands off, adds labels.

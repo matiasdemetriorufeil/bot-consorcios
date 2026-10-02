@@ -48,6 +48,26 @@ class FakeConsorPlus:
     # If set, get_debt waits for it (to simulate a slow ConsorPlus).
     gate: threading.Event | None = None
     debt_calls: list[tuple[str, str]] = field(default_factory=list)
+    # Session, like ConsorPlusClient: get_debt logs in when needed.
+    logged_in: bool = False
+    logins: int = 0
+    login_error: Exception | None = None
+    # If set, the login waits for it (to simulate a slow login).
+    login_gate: threading.Event | None = None
+
+    @property
+    def needs_login(self) -> bool:
+        return not self.logged_in
+
+    def ensure_session(self) -> None:
+        if self.logged_in:
+            return
+        if self.login_gate is not None:
+            assert self.login_gate.wait(timeout=10), "login gate never opened"
+        if self.login_error is not None:
+            raise self.login_error
+        self.logins += 1
+        self.logged_in = True
 
     def list_buildings(self) -> list[CpBuilding]:
         return [CpBuilding(code=code, name=f"{code} X") for code in self.rosters]
@@ -59,6 +79,7 @@ class FakeConsorPlus:
         return result
 
     def get_debt(self, building_code: str, unit_value: str) -> UnitDebt:
+        self.ensure_session()
         self.debt_calls.append((building_code, unit_value))
         if self.gate is not None:
             assert self.gate.wait(timeout=10), "gate never opened"

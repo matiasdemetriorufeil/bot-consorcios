@@ -296,3 +296,52 @@ def test_from_settings_and_repr_hide_password() -> None:
 
     assert client._rate_limiter._min_interval == 1.5
     assert PASSWORD not in repr(client)
+
+
+def test_needs_login_and_ensure_session(server, make_client, clock) -> None:
+    client = make_client(server, session_idle_seconds=900)
+    assert client.needs_login
+
+    client.ensure_session()
+    requests_after_login = len(server.calls)
+    client.ensure_session()  # session ready: nothing is sent
+
+    assert not client.needs_login and len(server.calls) == requests_after_login
+    clock.now += 901
+    assert client.needs_login  # idle longer than the server keeps sessions
+
+
+def test_idle_session_logs_in_before_the_operation(server, make_client, clock) -> None:
+    client = make_client(server, session_idle_seconds=900)
+    client.list_buildings()
+    clock.now += 901
+    server.session_valid = False  # the server forgot us meanwhile
+
+    debt = client.get_debt("1", "9001")
+
+    assert debt.total == Decimal("151925.50")
+    # Logs in first: no wasted request bounced to login.aspx?goTo=...
+    assert not any("login.aspx?goTo" in c.url for c in server.calls)
+    assert server.pages().count(("GET", "login.aspx")) == 2
+
+
+def test_without_idle_limit_only_bounces_trigger_a_login(server, make_client, clock) -> None:
+    client = make_client(server)
+    client.list_buildings()
+    clock.now += 10_000
+
+    assert not client.needs_login
+    client.list_buildings()
+    assert server.pages().count(("GET", "login.aspx")) == 1
+
+
+@pytest.mark.parametrize(("minutes", "seconds"), [(15, 900), (0, None)])
+def test_from_settings_session_idle(minutes: float, seconds: float | None) -> None:
+    settings = Settings(
+        _env_file=None,
+        consorplus_user="usuario",
+        consorplus_password=PASSWORD,
+        consorplus_session_idle_minutes=minutes,
+    )
+
+    assert ConsorPlusClient.from_settings(settings)._session_idle_seconds == seconds

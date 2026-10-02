@@ -35,7 +35,7 @@ from app.chatwoot.events import VIEWABLE_ATTACHMENTS, IncomingMessage
 from app.chatwoot.handoff import contact_attributes, handoff_labels, handoff_note
 from app.chatwoot.history import build_history
 from app.config import Settings
-from app.db.models import BotEvent, Building, Unit
+from app.db.models import BotEvent, Building, PersonRole, Unit
 from app.llm import Message
 
 logger = logging.getLogger(__name__)
@@ -108,12 +108,16 @@ class ChatwootBot:
         settings: Settings,
         *,
         now: Callable[[], datetime] | None = None,
+        warm_up: Callable[[], object] = lambda: None,
     ) -> None:
+        """warm_up: logs in to ConsorPlus in the background (app.sync.live.warm_up); called
+        when an identified owner writes, so a debt query finds the session ready."""
         self.client = client
         self.session_factory = session_factory
         self._agent_factory = agent_factory
         self._agent: Agent | None = None
         self.settings = settings
+        self._warm_up = warm_up
         tz = ZoneInfo(settings.timezone)
         self._now = now or (lambda: datetime.now(tz))
 
@@ -158,6 +162,8 @@ class ChatwootBot:
             self._log(session, message, phone, "handoff", **_handoff_payload(handoff))
             self._finish(session, message, phone, trusted, notice, handoff)
             return
+        if any(u.role == PersonRole.OWNER for u in who.units):
+            self._warm_up()  # they may ask for their debt: log in while the LLM thinks
 
         text = message.content
         if not text:

@@ -29,6 +29,7 @@ from app.config import Settings, get_settings
 from app.db.models import ChatwootProcessedMessage
 from app.db.session import SessionLocal, get_session
 from app.llm import get_prices, get_provider
+from app.sync import live
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ def _build_bot() -> ChatwootBot:
         SessionLocal,
         lambda: Agent(get_provider(settings), prices=get_prices(settings), settings=settings),
         settings,
+        warm_up=live.warm_up,
     )
 
 

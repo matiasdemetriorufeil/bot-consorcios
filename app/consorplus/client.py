@@ -129,7 +129,11 @@ class ConsorPlusClient:
         session: requests.Session | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        session_idle_seconds: float | None = None,
     ) -> None:
+        """session_idle_seconds: after that long without requests the server session is taken
+        as expired and the next operation logs in first (instead of being bounced to the
+        login page and then logging in). None: only log in again when bounced."""
         if not username or not password:
             raise LoginError("Faltan el usuario o la clave de ConsorPlus")
         self._base_url = base_url if base_url.endswith("/") else base_url + "/"
@@ -140,6 +144,9 @@ class ConsorPlusClient:
         self._max_retries = max_retries
         self._backoff_seconds = backoff_seconds
         self._sleep = sleep
+        self._clock = clock
+        self._session_idle_seconds = session_idle_seconds
+        self._last_activity: float | None = None  # clock() of the last answered request
         self._rate_limiter = RateLimiter(min_request_interval, clock=clock, sleep=sleep)
         self._session = session or requests.Session()
         self._session.headers["User-Agent"] = user_agent
@@ -150,6 +157,8 @@ class ConsorPlusClient:
     @classmethod
     def from_settings(cls, settings: Settings, **kwargs) -> "ConsorPlusClient":
         password = settings.consorplus_password
+        idle = settings.consorplus_session_idle_minutes
+        kwargs.setdefault("session_idle_seconds", idle * 60 if idle > 0 else None)
         return cls(
             settings.consorplus_base_url,
             settings.consorplus_user,
@@ -162,6 +171,20 @@ class ConsorPlusClient:
         return f"ConsorPlusClient(base_url={self._base_url!r}, logged_in={self._logged_in})"
 
     # --- Public API --------------------------------------------------------------------
+
+    @property
+    def needs_login(self) -> bool:
+        """The next operation will log in first: never logged in, bounced to the login page,
+        or idle longer than session_idle_seconds."""
+        if not self._logged_in:
+            return True
+        return self._idle_expired()
+
+    def ensure_session(self) -> None:
+        """Log in now if the next operation would have to (e.g. to warm up the session
+        before the bot needs it). Only uses the allowlisted login flow."""
+        if self.needs_login:
+            self.login()
 
     def login(self) -> None:
         self._logged_in = False
@@ -236,9 +259,16 @@ class ConsorPlusClient:
 
     # --- Page flows --------------------------------------------------------------------
 
+    def _idle_expired(self) -> bool:
+        idle = self._session_idle_seconds
+        if idle is None or self._last_activity is None:
+            return False
+        return self._clock() - self._last_activity > idle
+
     def _with_session[T](self, operation: Callable[[], T]) -> T:
-        if not self._logged_in:
-            self.login()
+        if self._logged_in and self._idle_expired():
+            logger.info("ConsorPlus session idle for too long, logging in again")
+        self.ensure_session()
         try:
             return operation()
         except SessionExpiredError:
@@ -418,6 +448,7 @@ class ConsorPlusClient:
                 continue
             if response.status_code >= 400:
                 raise ConsorPlusError(f"HTTP {response.status_code} en {page_name(url)}")
+            self._last_activity = self._clock()
             return response
         raise ConsorPlusUnavailableError(
             f"ConsorPlus no respondió tras {self._max_retries + 1} intentos"

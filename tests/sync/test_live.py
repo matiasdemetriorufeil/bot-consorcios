@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.consorplus.errors import ConsorPlusUnavailableError
 from app.db.models import Building, DebtSnapshot, SyncKind, Unit
-from app.sync.live import LiveRefresher
+from app.sync import live
+from app.sync.live import DEFAULT_TIMEOUT_SECONDS, LOGIN_TIMEOUT_SECONDS, LiveRefresher
 from app.sync.snapshots import save_snapshot
 from tests.sync.fakes import FakeConsorPlus, debt
 
@@ -75,8 +76,9 @@ def make_refresher(db_session: Session, source: FakeConsorPlus, clock: Clock):
         return refresher
 
     yield factory
-    if source.gate is not None:
-        source.gate.set()
+    for gate in (source.gate, source.login_gate):
+        if gate is not None:
+            gate.set()
     for refresher in refreshers:
         refresher.shutdown(wait=True)
 
@@ -231,3 +233,81 @@ def test_cache_can_be_disabled(db_session, unit, make_refresher, source) -> None
 
     assert result.cached is False
     assert len(source.debt_calls) == 2
+
+
+# --- Session and time budget ------------------------------------------------------------
+
+
+def test_time_budget_is_longer_only_when_a_login_is_needed(unit, refresher, source) -> None:
+    assert refresher.time_budget() == LOGIN_TIMEOUT_SECONDS  # no client yet
+
+    refresher.refresh_unit(unit.id)  # logs in and stays logged in
+    assert source.logins == 1
+    assert refresher.time_budget() == DEFAULT_TIMEOUT_SECONDS
+
+    source.logged_in = False  # session expired (bounced or idle)
+    assert refresher.time_budget() == LOGIN_TIMEOUT_SECONDS
+
+
+def test_session_is_reused_between_queries(unit, make_refresher, source) -> None:
+    refresher = make_refresher(cache_minutes=0)
+
+    refresher.refresh_unit(unit.id)
+    refresher.refresh_unit(unit.id)
+
+    assert source.logins == 1 and len(source.debt_calls) == 2
+
+
+def test_slow_login_fits_in_the_login_budget(monkeypatch, unit, make_refresher, source) -> None:
+    monkeypatch.setattr(live, "DEFAULT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(live, "LOGIN_TIMEOUT_SECONDS", 5.0)
+    refresher = make_refresher(cache_minutes=0)
+    source.login_gate = threading.Event()
+    threading.Timer(0.3, source.login_gate.set).start()  # the login takes 0.3 s
+
+    result = refresher.refresh_unit(unit.id)
+
+    assert result.stale is False and result.snapshot.total_amount == Decimal(1500)
+
+
+def test_slow_answer_with_a_ready_session_uses_the_short_budget(
+    monkeypatch, unit, make_refresher, source
+) -> None:
+    monkeypatch.setattr(live, "DEFAULT_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr(live, "LOGIN_TIMEOUT_SECONDS", 5.0)
+    refresher = make_refresher(cache_minutes=0)
+    refresher.refresh_unit(unit.id)  # session ready
+    source.gate = threading.Event()  # ConsorPlus hangs
+
+    result = refresher.refresh_unit(unit.id)
+
+    assert result.stale is True and result.error == "timeout"
+
+
+def test_warm_up_logs_in_once_in_the_background(unit, refresher, source) -> None:
+    source.login_gate = threading.Event()
+
+    assert refresher.warm_up() is True
+    assert refresher.warm_up() is False  # already logging in
+    assert refresher.time_budget() == LOGIN_TIMEOUT_SECONDS  # login still running
+    source.login_gate.set()
+    refresher._warming.result(timeout=5)
+
+    assert source.logins == 1
+    assert refresher.warm_up() is False  # session ready: nothing to do
+    assert refresher.time_budget() == DEFAULT_TIMEOUT_SECONDS
+    refresher.refresh_unit(unit.id)
+    assert source.logins == 1
+
+
+def test_warm_up_failure_is_logged_and_does_not_break_queries(
+    caplog, unit, refresher, source
+) -> None:
+    source.login_error = ConsorPlusUnavailableError("caído")
+
+    assert refresher.warm_up() is True
+    refresher._warming.result(timeout=5)
+    assert "warm-up failed: ConsorPlusUnavailableError" in caplog.text
+
+    source.login_error = None
+    assert refresher.refresh_unit(unit.id).stale is False
