@@ -176,7 +176,11 @@ def test_rejects_bad_or_missing_signature(client: TestClient, harness: Harness) 
     assert harness.chatwoot.calls == []
 
 
-def test_without_secret_configured_rejects_everything(client: TestClient) -> None:
+def test_without_secret_configured_rejects_everything(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The container's environment may define it; Settings reads it despite _env_file=None.
+    monkeypatch.delenv("CHATWOOT_WEBHOOK_SECRET", raising=False)
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
 
     assert post(client, message_payload()).status_code == 503

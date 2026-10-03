@@ -56,3 +56,4 @@ RESUMEN
 "Nunca hagas commit ni push: los hace el usuario. Al terminar, sugerí el nombre del commit."
 
 - Nunca leas ni imprimas valores del .env. Para revisar variables, mostrá solo los nombres (por ejemplo, la parte antes del "=").
+- Nunca uses git stash, reset, checkout ni clean sobre cambios sin commitear: el working tree es del usuario.

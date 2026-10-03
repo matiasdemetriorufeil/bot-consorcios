@@ -175,7 +175,10 @@ def _get_dev_chat(settings: Settings) -> object:
         app.dependency_overrides.clear()
 
 
-def test_dev_chat_only_in_development() -> None:
+def test_dev_chat_only_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The container's environment may define them; Settings reads it despite _env_file=None.
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("CHATWOOT_FRONTEND_URL", raising=False)
     production = _get_dev_chat(Settings(_env_file=None, chatwoot_website_token="tok"))
     development = _get_dev_chat(
         Settings(_env_file=None, app_env="development", chatwoot_website_token="tok123")
