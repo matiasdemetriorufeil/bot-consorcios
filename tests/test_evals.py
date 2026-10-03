@@ -10,7 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.bot.identity import can_view_unit_finance, identify_by_phone
 from app.db.models import DebtSnapshot, Unit
-from app.llm import LLMError, Prices, Usage, UserMessage
+from app.llm import (
+    AssistantMessage,
+    LLMError,
+    Prices,
+    ToolCall,
+    ToolResult,
+    ToolResultsMessage,
+    Usage,
+    UserMessage,
+)
 from evals.run import (
     Case,
     CaseResult,
@@ -21,6 +30,7 @@ from evals.run import (
     check,
     load_cases,
     normalize,
+    text_only,
     write_report,
 )
 from evals.seed import PHONES, seed
@@ -180,3 +190,51 @@ def test_not_matches_catches_invented_rules_only() -> None:
     honest = _result(cbu, ["No tengo el CBU del consorcio, te paso con una persona."])
     assert any("patrón" in f for f in check(cbu, invented))
     assert not any("patrón" in f for f in check(cbu, honest))
+
+
+def test_no_email_claim_needs_the_tool_reason_in_that_turn() -> None:
+    case = _case()
+    replies = ["¿Te mando el código?", "La unidad RODAS II 01-A no tiene un email cargado."]
+    backed = _result(case, replies)
+    backed.tool_calls = [
+        ToolCallRecord("start_email_verification", {}, "not_sent", 1, "no_owner_email")
+    ]
+    assert check(case, backed) == []
+
+    # The bug: the tool said nothing about email in that turn (other reason, or other turn).
+    for record in [
+        ToolCallRecord("start_email_verification", {}, "error", 1, "unit_not_confirmed"),
+        ToolCallRecord("start_email_verification", {}, "not_sent", 0, "no_owner_email"),
+    ]:
+        unbacked = _result(case, replies)
+        unbacked.tool_calls = [record]
+        [failure] = check(case, unbacked)
+        assert "turno 2" in failure and "no_owner_email" in failure
+
+    other = _result(case, ["No hay un correo cargado para esa unidad."])
+    assert check(case, other)
+
+
+def test_text_only_history_drops_tool_exchanges() -> None:
+    call = ToolCall("1", "find_unit", {"building_text": "Rodas"})
+    history = [
+        UserMessage("hola"),
+        AssistantMessage("", (call,)),
+        ToolResultsMessage((ToolResult("1", "find_unit", {"status": "found"}),)),
+        AssistantMessage("¿Te mando el código?"),
+    ]
+    assert text_only(history) == [history[0], history[3]]
+
+
+def test_must_return_checks_the_tool_status() -> None:
+    case = _case(must_return=(("get_building_info", "no_info"),))
+    ok = _result(case, ["No tengo esa info."])
+    ok.tool_calls = [
+        ToolCallRecord("get_building_info", {}, "error", 0, "building_not_confirmed"),
+        ToolCallRecord("get_building_info", {}, "no_info", 0),
+    ]
+    assert check(case, ok) == []
+    bad = _result(case, ["No tengo esa info."])
+    bad.tool_calls = [ToolCallRecord("get_building_info", {}, "error", 0)]
+    [failure] = check(case, bad)
+    assert "no devolvió no_info" in failure

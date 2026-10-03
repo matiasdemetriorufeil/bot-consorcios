@@ -67,6 +67,7 @@ class UnitAccess:
     building_name: str
     unit_label: str
     role: PersonRole
+    building_id: int
 
 
 @dataclass(frozen=True, repr=False)
@@ -114,15 +115,21 @@ def identify_by_phone(session: Session, phone: str) -> Identity:
     if row is None:
         return UNKNOWN
     links = session.execute(
-        select(UnitPerson.role, Unit.id, Unit.label, Building.name)
+        select(UnitPerson.role, Unit.id, Unit.label, Building.name, Building.id)
         .join(Unit, Unit.id == UnitPerson.unit_id)
         .join(Building, Building.id == Unit.building_id)
         .where(UnitPerson.person_id == row.person_id, Unit.active.is_(True))
         .order_by(Building.name, Unit.label, UnitPerson.role)
     ).all()
     units = tuple(
-        UnitAccess(unit_id=uid, building_name=bname, unit_label=label, role=PersonRole(role))
-        for role, uid, label, bname in links
+        UnitAccess(
+            unit_id=uid,
+            building_name=bname,
+            unit_label=label,
+            role=PersonRole(role),
+            building_id=bid,
+        )
+        for role, uid, label, bname, bid in links
     )
     return Identity(person_id=row.person_id, full_name=row.person.full_name, units=units)
 
@@ -166,6 +173,8 @@ class StartResult:
     unit: UnitCandidate | None = None
     candidates: tuple[UnitCandidate, ...] = ()
     masked_emails: tuple[str, ...] = ()
+    # RATE_LIMITED: when this phone can start a verification again.
+    retry_at: datetime | None = None
 
 
 class ConfirmStatus(StrEnum):
@@ -302,14 +311,22 @@ def start_email_verification(
         return _start_rejected(session, e164, StartStatus.NO_EMAIL, unit=unit)
 
     now = _now()
-    starts_today = session.scalar(
-        select(func.count(func.distinct(VerificationCode.verification_id))).where(
+    # When each verification of the window started, oldest first.
+    starts = session.scalars(
+        select(func.min(VerificationCode.created_at))
+        .where(
             VerificationCode.phone_e164 == e164,
             VerificationCode.created_at >= now - RATE_WINDOW,
         )
-    )
-    if starts_today >= MAX_STARTS_PER_DAY:
-        return _start_rejected(session, e164, StartStatus.RATE_LIMITED, unit=unit)
+        .group_by(VerificationCode.verification_id)
+        .order_by(func.min(VerificationCode.created_at))
+    ).all()
+    if len(starts) >= MAX_STARTS_PER_DAY:
+        # Allowed again once enough starts leave the window.
+        retry_at = starts[len(starts) - MAX_STARTS_PER_DAY] + RATE_WINDOW
+        return _start_rejected(
+            session, e164, StartStatus.RATE_LIMITED, unit=unit, retry_at=retry_at
+        )
 
     # Only one live verification per phone: older pending codes stop working.
     session.execute(
@@ -373,6 +390,7 @@ def _start_rejected(
     *,
     unit: UnitCandidate | None = None,
     candidates: tuple[UnitCandidate, ...] = (),
+    retry_at: datetime | None = None,
 ) -> StartResult:
     _log_event(
         session,
@@ -383,7 +401,7 @@ def _start_rejected(
         candidates=len(candidates),
     )
     session.commit()
-    return StartResult(status, unit=unit, candidates=candidates)
+    return StartResult(status, unit=unit, candidates=candidates, retry_at=retry_at)
 
 
 def confirm_email_code(session: Session, phone: str, code: str) -> ConfirmResult:

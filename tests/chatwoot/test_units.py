@@ -118,9 +118,9 @@ ANA = Identity(
     person_id=1,
     full_name="Ana Prueba",
     units=(
-        UnitAccess(1, "031 RODAS II", "04-C", PersonRole.OWNER),
-        UnitAccess(2, "031 RODAS II", "Cochera 3", PersonRole.OWNER),
-        UnitAccess(3, "045 PEÑA ALTA", "01-A", PersonRole.TENANT),
+        UnitAccess(1, "031 RODAS II", "04-C", PersonRole.OWNER, 10),
+        UnitAccess(2, "031 RODAS II", "Cochera 3", PersonRole.OWNER, 10),
+        UnitAccess(3, "045 PEÑA ALTA", "01-A", PersonRole.TENANT, 11),
     ),
 )
 

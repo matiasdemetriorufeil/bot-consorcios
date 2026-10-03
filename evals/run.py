@@ -36,6 +36,7 @@ from app.config import Settings, get_settings
 from app.db.models import BotEvent, VerificationCode
 from app.db.queries import get_latest_debt
 from app.llm import (
+    AssistantMessage,
     LLMError,
     LLMProvider,
     LLMResponse,
@@ -43,6 +44,7 @@ from app.llm import (
     Prices,
     ToolSpec,
     Usage,
+    UserMessage,
     get_prices,
     get_provider,
 )
@@ -81,6 +83,8 @@ class Expect:
     contains: tuple[str | tuple[str, ...], ...] = ()
     not_contains: tuple[str, ...] = ()
     not_matches: tuple[str, ...] = ()  # regexes over the normalized replies
+    # (tool, status): at least one call of that tool returned that status.
+    must_return: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,7 +129,9 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
             exp = item.get("expect") or {}
             if unknown := set(exp) - _EXPECT_KEYS:
                 raise ValueError(f"expect con claves desconocidas {unknown}")
-            for tool in [*exp.get("must_call", []), *exp.get("must_not_call", [])]:
+            must_return = exp.get("must_return") or {}
+            names = [*exp.get("must_call", []), *exp.get("must_not_call", []), *must_return]
+            for tool in names:
                 if tool not in TOOLS_BY_NAME:
                     raise ValueError(f"herramienta inexistente {tool!r}")
             expect = Expect(
@@ -138,6 +144,7 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
                 ),
                 not_contains=tuple(exp.get("not_contains", [])),
                 not_matches=tuple(exp.get("not_matches", [])),
+                must_return=tuple(must_return.items()),
             )
             for pattern in expect.not_matches:
                 re.compile(pattern)
@@ -175,6 +182,16 @@ class ToolCallRecord:
     name: str
     args: dict[str, Any]
     status: str | None
+    turn: int = 0  # index of the user message it answered
+    reason: str | None = None
+
+
+# The bot says a unit has no email. Only right in a turn where start_email_verification
+# returned reason "no_owner_email": checked in every case, not only the sin_email ones.
+NO_EMAIL_CLAIM = re.compile(
+    r"no (tiene|tenes|hay|figura|encuentro|tenemos)( cargado| registrado)?"
+    r"( un| ningun| el| algun)? (correo|e-?mail|mail)"
+)
 
 
 @dataclass
@@ -211,6 +228,10 @@ def check(case: Case, result: CaseResult) -> list[str]:
     exp = case.expect
     failures += [f"no llamó a {t}" for t in exp.must_call if t not in called]
     failures += [f"llamó a {t} (no debía)" for t in exp.must_not_call if t in called]
+    for tool, status in exp.must_return:
+        got = [c.status for c in result.tool_calls if c.name == tool]
+        if status not in got:
+            failures.append(f"{tool} no devolvió {status} (devolvió {got})")
     handed_off = bool(result.handoffs)
     if exp.handoff is not None and handed_off != exp.handoff:
         failures.append("no derivó (debía)" if exp.handoff else "derivó (no debía)")
@@ -230,8 +251,26 @@ def check(case: Case, result: CaseResult) -> list[str]:
     for pattern in exp.not_matches:
         if found := re.search(pattern, bot_text):
             failures.append(f"apareció lo prohibido: {found.group(0)!r} (patrón {pattern!r})")
+    for turn, reply in enumerate(result.replies):
+        said = NO_EMAIL_CLAIM.search(normalize(reply))
+        allowed = any(c.turn == turn and c.reason == "no_owner_email" for c in result.tool_calls)
+        if said and not allowed:
+            failures.append(
+                f"dijo {said.group(0)!r} en el turno {turn + 1} sin que "
+                "start_email_verification devolviera no_owner_email"
+            )
     failures += [f"error del agente: {e}" for e in result.agent_errors]
     return failures
+
+
+def text_only(history: list[Message]) -> list[Message]:
+    """What the next turn gets in production: Chatwoot keeps only the texts, so tool calls
+    and results (unit_ids included) of earlier turns are lost."""
+    return [
+        m
+        for m in history
+        if isinstance(m, UserMessage) or (isinstance(m, AssistantMessage) and not m.tool_calls)
+    ]
 
 
 # --- Running --------------------------------------------------------------------------------
@@ -301,7 +340,8 @@ def run_case(engine: Engine, provider: LLMProvider, settings: Settings, case: Ca
                 now=lambda: case.now,
             )
             history: list[Message] = []
-            for turn in case.turns:
+            last_event = 0
+            for index, turn in enumerate(case.turns):
                 if turn.before == "expire_codes":
                     session.execute(
                         update(VerificationCode)
@@ -311,21 +351,28 @@ def run_case(engine: Engine, provider: LLMProvider, settings: Settings, case: Ca
                     session.commit()
                 user_text = _fill(turn.text, sender)
                 reply = agent.reply(session, phone, user_text, history)
-                history = reply.history
+                history = text_only(reply.history)
                 result.user_texts.append(user_text)
                 result.replies.append(reply.text)
                 result.usage += reply.usage
                 if reply.error:
                     result.agent_errors.append(reply.error)
-            events = session.scalars(
-                select(BotEvent).where(BotEvent.phone_e164 == phone).order_by(BotEvent.id)
-            ).all()
-            for event in events:
-                if event.event_type == "tool_call":
+                events = session.scalars(
+                    select(BotEvent)
+                    .where(BotEvent.phone_e164 == phone, BotEvent.id > last_event)
+                    .order_by(BotEvent.id)
+                ).all()
+                for event in events:
+                    last_event = event.id
                     p = event.payload
-                    result.tool_calls.append(ToolCallRecord(p["tool"], p["args"], p["status"]))
-                elif event.event_type == "handoff":
-                    result.handoffs.append(event.payload)
+                    if event.event_type == "tool_call":
+                        result.tool_calls.append(
+                            ToolCallRecord(
+                                p["tool"], p["args"], p["status"], index, p.get("reason")
+                            )
+                        )
+                    elif event.event_type == "handoff":
+                        result.handoffs.append(p)
         except Exception as exc:  # a broken case must not stop the whole evaluation
             result.crash = f"{type(exc).__name__}: {exc}"
         finally:
@@ -382,7 +429,10 @@ def _safe(name: str) -> str:
 
 def _transcript(r: CaseResult) -> list[str]:
     lines = ["Herramientas:", ""]
-    lines += [f"- `{c.name}({c.args})` → {c.status}" for c in r.tool_calls] or ["- ninguna"]
+    lines += [
+        f"- `{c.name}({c.args})` → {c.status}" + (f" ({c.reason})" if c.reason else "")
+        for c in r.tool_calls
+    ] or ["- ninguna"]
     if r.handoffs:
         lines.append(
             "- derivaciones: "

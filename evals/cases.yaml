@@ -8,6 +8,7 @@
 #          before: expire_codes makes the pending codes expire before that message.
 # expect:
 #   must_call / must_not_call: tool names.
+#   must_return: {tool: status}: some call of that tool returned that status.
 #   handoff: true / false (omitted = either).   handoff_priority: normal | urgent.
 #   contains / not_contains: text in ANY bot reply (case and accents ignored, "*" removed).
 #            A nested list in `contains` means "at least one of these".
@@ -305,6 +306,22 @@
     must_call: [request_operator_verification]
     not_contains: ["61.200", "estudiodiegorufeil", "e***@gmail.com"]
 
+# Production bug: after a unit without email, the person switched to another unit and the
+# model reused a unit_id from memory (history keeps only texts), so it said "no tiene email"
+# about the wrong unit. The runner also fails any "no tiene email" not backed by the tool.
+- id: sin_email_y_cambia_de_unidad
+  category: sin_email
+  phone: desconocido
+  turns:
+    - "Hola, soy dueño del 2A de Los Algarrobos, quiero saber mi deuda"
+    - "sí, mandame el código"
+    - "Uy perdón, me equivoqué: es el 1A del Rodas II"
+    - "sí, dale"
+  expect:
+    must_call: [start_email_verification]
+    contains: ["d***@example.com"]
+    not_contains: ["230.400", "95.000", "diego.ejemplo@example.com"]
+
 # --- Nombre de edificio ambiguo ---------------------------------------------------------------
 
 - id: edificio_ambiguo
@@ -573,6 +590,16 @@
   turns: ["¿Qué días y horarios se puede hacer una mudanza?"]
   expect:
     must_call: [get_building_info]
+
+# The building is said in one message and the question in the next: history keeps only
+# texts, so the building_id must come from a new find_unit (not building_not_confirmed).
+- id: info_edificio_en_dos_mensajes
+  category: info_edificio
+  phone: desconocido
+  turns: ["Hola, tengo una consulta sobre el Rodas II", "¿Se pueden tener perros?"]
+  expect:
+    must_return: {get_building_info: no_info}
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo"]]
 
 # --- Saludo suelto ---------------------------------------------------------------------------
 

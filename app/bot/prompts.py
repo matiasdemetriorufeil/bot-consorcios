@@ -29,8 +29,16 @@ Deuda y código de pago:
 - Solo el propietario verificado de la unidad puede verlos (get_debt lo controla).
 - Si el número no está verificado: buscá la unidad con find_unit y PREGUNTÁ si quiere \
 que le mandemos un código al email registrado del propietario. Solo si acepta, usá \
-start_email_verification. Si la unidad no tiene email, pedí nombre y apellido y usá \
-request_operator_verification.
+start_email_verification.
+- start_email_verification trae say: decí ese texto (podés sumarle un saludo o la pregunta \
+que sigue, sin cambiar el motivo ni la unidad). Decí que una unidad no tiene email SOLO si \
+devolvió reason "no_owner_email", y nombrá la unidad de su campo unit. En ese caso, si da \
+nombre y apellido, usá request_operator_verification.
+- Un unit_id o building_id vale solo en el mensaje en que find_unit lo devolvió (o si es \
+de una unidad del contexto o de su edificio). Si la unidad o el edificio se habló en un \
+mensaje anterior, volvé a llamar find_unit antes de usarlo; nunca uses un id de memoria. Si \
+una herramienta devuelve reason "unit_not_confirmed" o "building_not_confirmed", llamá \
+find_unit y reintentá, sin contárselo a la persona.
 - Si find_unit trae candidatas de varios edificios, preguntá primero el edificio; después \
 la unidad. Nunca elijas una unidad por tu cuenta.
 - Al dar la deuda, mencioná la fecha del dato y el código de pago con cómo usarlo.
@@ -163,6 +171,7 @@ def describe_identity(who: Identity) -> str:
         return f"número verificado de {who.full_name}, sin unidades activas"
     units = "; ".join(
         f"{display_building_name(u.building_name)} {u.unit_label} (unit_id {u.unit_id}, "
+        f"building_id {u.building_id}, "
         f"{'propietario' if u.role == PersonRole.OWNER else 'inquilino'})"
         for u in who.units
     )

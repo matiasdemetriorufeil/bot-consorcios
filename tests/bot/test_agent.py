@@ -3,7 +3,7 @@ All data is invented."""
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -12,9 +12,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot import tools
+from app.bot import identity, tools
 from app.bot.agent import FALLBACK_REPLY, MAX_ROUNDS, Agent, trim_history
-from app.bot.prompts import SYSTEM_PROMPT
+from app.bot.identity import identify_by_phone
+from app.bot.prompts import SYSTEM_PROMPT, describe_identity
 from app.bot.tools import ToolContext, run_tool
 from app.config import Settings
 from app.db.models import BotEvent, DebtLine, DebtSnapshot, PersonRole, SyncKind, Unit
@@ -27,6 +28,7 @@ from app.llm import (
     ToolResultsMessage,
     UserMessage,
 )
+from app.notify.email import EmailError
 from app.sync.live import DebtResult
 from tests.bot import factories as f
 from tests.llm.fakes import (
@@ -171,14 +173,18 @@ def test_second_message_is_not_first(name: str, world: World) -> None:
     ("phone", "reason"), [(TENANT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")]
 )
 def test_get_debt_denied(name: str, phone: str, reason: str, world: World) -> None:
-    steps = [Call("get_debt", {"unit_id": world.unit_id}), Say("No puedo darte ese dato.")]
+    steps = [
+        Call("find_unit", {"building_text": "Rodas II", "unit_text": "4 C"}),
+        Call("get_debt", {"unit_id": world.unit_id}),
+        Say("No puedo darte ese dato."),
+    ]
     agent, script = make_agent(name, steps, world)
 
     reply = agent.reply(world.session, phone, "¿Cuánto debe el 4C?")
 
     assert reply.text == "No puedo darte ese dato."
     assert world.refreshed == []
-    result = last_tool_result(name, script.requests[1])
+    result = last_tool_result(name, script.requests[2])
     assert "denied" in result and reason in result
     assert "165.060" not in result and PAYMENT_CODE not in result
 
@@ -200,6 +206,30 @@ def test_model_cannot_pass_a_phone(name: str, world: World) -> None:
     assert "165.060" not in result
     [call] = world.events("tool_call")
     assert call.payload["status"] == "invalid_arguments"
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_unit_id_from_an_earlier_turn_is_not_accepted(name: str, world: World) -> None:
+    # The history keeps only texts: in the 2nd turn the model "remembers" a unit_id.
+    sender = FakeSender()
+    steps = [
+        Call("find_unit", {"building_text": "Rodas II", "unit_text": "4 C"}),
+        Say("¿Te mando un código al email del propietario?"),
+        Call("start_email_verification", {"unit_id": world.other_unit_id}),
+        Say("Dame un segundo."),
+    ]
+    agent, script = make_agent(name, steps, world)
+    agent._email_sender = sender
+
+    first = agent.reply(world.session, UNKNOWN_PHONE, "Soy dueño del 4C del Rodas II")
+    agent.reply(world.session, UNKNOWN_PHONE, "sí", first.history)
+
+    result = last_tool_result(name, script.requests[3])
+    assert "unit_not_confirmed" in result and "find_unit" in result
+    assert "no_owner_email" not in result
+    assert sender.sent == [] and world.events("email_verification_start") == []
+    [*_, logged] = world.events("tool_call")
+    assert logged.payload["reason"] == "unit_not_confirmed"
 
 
 @pytest.mark.parametrize("name", PROVIDERS)
@@ -309,7 +339,9 @@ def test_get_debt_stale_and_without_payment_code(world: World) -> None:
 
 
 def test_get_debt_owner_of_another_unit(world: World) -> None:
-    result = run_tool(world.ctx(OWNER_PHONE), "get_debt", {"unit_id": world.other_unit_id})
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "5 A"})
+    result = run_tool(ctx, "get_debt", {"unit_id": world.other_unit_id})
     assert result == {
         "status": "denied",
         "reason": "not_owner",
@@ -358,9 +390,12 @@ def test_email_verification_flow_never_logs_the_code(world: World) -> None:
     ctx = world.ctx(UNKNOWN_PHONE)
     ctx.email_sender = sender
 
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
     started = run_tool(ctx, "start_email_verification", {"unit_id": world.unit_id})
     assert started["status"] == "codes_sent"
+    assert started["unit"] == "RODAS II 04-C"
     assert started["masked_emails"] == ["a***@example.com"]
+    assert "a***@example.com" in started["say"] and "RODAS II 04-C" in started["say"]
     code = sender.sent[0][1]
 
     confirmed = run_tool(ctx, "confirm_email_code", {"code": code})
@@ -374,16 +409,85 @@ def test_email_verification_flow_never_logs_the_code(world: World) -> None:
 
 
 def test_start_verification_without_email(world: World) -> None:
-    result = run_tool(
-        world.ctx(UNKNOWN_PHONE), "start_email_verification", {"unit_id": world.other_unit_id}
-    )
-    assert result["status"] == "sin_email"
+    ctx = world.ctx(UNKNOWN_PHONE)
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "5 A"})
+    result = run_tool(ctx, "start_email_verification", {"unit_id": world.other_unit_id})
+    assert result["status"] == "not_sent"
+    assert result["reason"] == "no_owner_email"
+    assert result["unit"] == "RODAS II 05-A"
+    assert "La unidad RODAS II 05-A no tiene un email" in result["say"]
+    [*_, logged] = world.events("tool_call")
+    assert logged.payload["reason"] == "no_owner_email"
     requested = run_tool(
-        world.ctx(UNKNOWN_PHONE),
+        ctx,
         "request_operator_verification",
         {"unit_id": world.other_unit_id, "claimed_name": "Juan Inventado"},
     )
     assert requested["status"] == "created"
+
+
+def test_unit_id_not_returned_by_find_unit_is_rejected(world: World) -> None:
+    sender = FakeSender()
+    ctx = world.ctx(UNKNOWN_PHONE)
+    ctx.email_sender = sender
+
+    for tool, args in [
+        ("start_email_verification", {"unit_id": world.unit_id}),
+        ("get_debt", {"unit_id": world.unit_id}),
+        ("request_operator_verification", {"unit_id": world.unit_id, "claimed_name": "X Y"}),
+    ]:
+        result = run_tool(ctx, tool, args)
+        assert result["reason"] == "unit_not_confirmed", tool
+    assert sender.sent == [] and world.events("email_verification_start") == []
+    assert world.refreshed == []
+
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
+    result = run_tool(ctx, "start_email_verification", {"unit_id": world.unit_id})
+    assert result["status"] == "codes_sent"
+
+
+def test_start_verification_rate_limited_says_when_to_retry(world: World) -> None:
+    sender = FakeSender()
+    ctx = world.ctx(UNKNOWN_PHONE)
+    ctx.email_sender = sender
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
+    for _ in range(identity.MAX_STARTS_PER_DAY):
+        started = run_tool(ctx, "start_email_verification", {"unit_id": world.unit_id})
+        assert started["status"] == "codes_sent"
+
+    result = run_tool(ctx, "start_email_verification", {"unit_id": world.unit_id})
+
+    assert result["status"] == "not_sent" and result["reason"] == "rate_limited"
+    assert result["unit"] == "RODAS II 04-C"
+    assert result["say"] == (
+        "Ya enviamos varios códigos desde este número hoy; probá de nuevo en 24 horas o te "
+        "paso con una persona."
+    )
+    assert len(sender.sent) == identity.MAX_STARTS_PER_DAY
+
+
+def test_start_verification_send_failed(world: World) -> None:
+    class BrokenSender:
+        def send_verification_code(self, to: str, code: str, valid_minutes: int) -> None:
+            raise EmailError("smtp caído")
+
+    ctx = world.ctx(UNKNOWN_PHONE)
+    ctx.email_sender = BrokenSender()
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
+
+    result = run_tool(ctx, "start_email_verification", {"unit_id": world.unit_id})
+
+    assert result["status"] == "not_sent" and result["reason"] == "send_failed"
+    assert "no tiene" not in result["say"]
+
+
+@pytest.mark.parametrize(
+    ("minutes", "text"),
+    [(0.2, "1 minuto"), (40, "40 minutos"), (60, "1 hora"), (61, "2 horas"), (1440, "24 horas")],
+)
+def test_wait_text(minutes: float, text: str) -> None:
+    now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    assert tools.wait_text(now + timedelta(minutes=minutes), now) == text
 
 
 def test_already_verified_owner_gets_no_code(world: World) -> None:
@@ -393,9 +497,15 @@ def test_already_verified_owner_gets_no_code(world: World) -> None:
     assert result["status"] == "already_verified"
 
 
+def _building_id(world: World) -> int:
+    return world.session.get(Unit, world.unit_id).building_id
+
+
 def test_building_info_and_handoff_placeholders(world: World) -> None:
     ctx = world.ctx(OWNER_PHONE)
-    info = run_tool(ctx, "get_building_info", {"building_id": 1, "question": "¿Mascotas?"})
+    # The building of one of the phone's own units needs no find_unit.
+    args = {"building_id": _building_id(world), "question": "¿Mascotas?"}
+    info = run_tool(ctx, "get_building_info", args)
     assert info["status"] == "no_info"
     handoff = run_tool(
         ctx, "handoff_to_human", {"reason": "emergency", "summary": "pérdida de agua",
@@ -462,3 +572,47 @@ def test_trim_history_never_starts_with_a_tool_result() -> None:
     ]
     assert trim_history(history, 1) == []
     assert trim_history(history, 2)[0] == UserMessage("u1")
+
+
+def test_building_id_not_returned_by_find_unit_is_rejected(world: World) -> None:
+    other = f.building(world.session, "045 TORRE INVENTADA")
+    world.session.commit()
+    rodas = _building_id(world)
+
+    for phone, building_id in [(UNKNOWN_PHONE, rodas), (OWNER_PHONE, other.id)]:
+        ctx = world.ctx(phone)
+        result = run_tool(ctx, "get_building_info", {"building_id": building_id, "question": "x"})
+        assert result["status"] == "error", phone
+        assert result["reason"] == "building_not_confirmed", phone
+        assert "find_unit" in result["next_step"]
+    [*_, logged] = world.events("tool_call")
+    assert logged.payload["reason"] == "building_not_confirmed"
+
+    # A building alone (no unit) is enough for find_unit to offer its id.
+    ctx = world.ctx(UNKNOWN_PHONE)
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II"})
+    result = run_tool(ctx, "get_building_info", {"building_id": rodas, "question": "x"})
+    assert result["status"] == "no_info"
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_building_id_from_an_earlier_turn_is_not_accepted(name: str, world: World) -> None:
+    rodas = _building_id(world)
+    steps = [
+        Call("find_unit", {"building_text": "Rodas II"}),
+        Say("¿Qué querés saber del Rodas II?"),
+        Call("get_building_info", {"building_id": rodas, "question": "mascotas"}),
+        Say("Dame un segundo."),
+    ]
+    agent, script = make_agent(name, steps, world)
+
+    first = agent.reply(world.session, UNKNOWN_PHONE, "Una consulta del Rodas II")
+    agent.reply(world.session, UNKNOWN_PHONE, "¿se pueden tener perros?", first.history)
+
+    result = last_tool_result(name, script.requests[3])
+    assert "building_not_confirmed" in result
+
+
+def test_context_lists_the_building_id_of_own_units(world: World) -> None:
+    text = describe_identity(identify_by_phone(world.session, OWNER_PHONE))
+    assert f"unit_id {world.unit_id}, building_id {_building_id(world)}" in text

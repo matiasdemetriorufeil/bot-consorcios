@@ -7,9 +7,10 @@ debt and payment codes. Results are plain JSON with texts already formatted for 
 """
 
 import logging
+import math
 from collections.abc import Callable
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -26,7 +27,12 @@ from app.bot.identity import (
     identify_by_phone,
     to_e164,
 )
-from app.bot.unit_search import SearchStatus, display_building_name, search_unit
+from app.bot.unit_search import (
+    SearchStatus,
+    UnitCandidate,
+    display_building_name,
+    search_unit,
+)
 from app.db.models import BotEvent, Building, PersonRole, Unit
 from app.llm import ToolSpec
 from app.notify.email import EmailSender
@@ -82,6 +88,11 @@ class ToolContext:
     urgent_handoff_notice: str = DEFAULT_HANDOFF_NOTICE
     # Set by handoff_to_human.
     handoff: Handoff | None = None
+    # unit_ids find_unit returned in this turn. The history only keeps texts, so an id from
+    # an earlier turn is gone: one the model "remembers" may be another unit (see run_tool).
+    offered_unit_ids: set[int] = field(default_factory=set)
+    # The same for building_ids (find_unit's candidates and buildings).
+    offered_building_ids: set[int] = field(default_factory=set)
 
     @property
     def e164(self) -> str | None:
@@ -111,7 +122,11 @@ def _object(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
     }
 
 
-_UNIT_ID = {"type": "integer", "description": "unit_id devuelto por find_unit."}
+_UNIT_ID = {
+    "type": "integer",
+    "description": "unit_id que devolvió find_unit EN ESTE MENSAJE, o de una unidad propia "
+    "del contexto. Nunca uno recordado de un mensaje anterior.",
+}
 
 TOOLS: list[ToolSpec] = [
     ToolSpec(
@@ -140,7 +155,8 @@ TOOLS: list[ToolSpec] = [
         name="start_email_verification",
         description=(
             "Para un número NO verificado: manda un código de 6 dígitos al email de los "
-            "propietarios de la unidad. Devuelve los emails enmascarados o que no hay email."
+            "propietarios de la unidad. Devuelve status, reason (si no se mandó) y say: el "
+            "texto que tenés que decirle a la persona."
         ),
         parameters=_object({"unit_id": _UNIT_ID}, ["unit_id"]),
     ),
@@ -182,7 +198,11 @@ TOOLS: list[ToolSpec] = [
         description="Información y reglamento de un edificio (horarios, normas, contactos).",
         parameters=_object(
             {
-                "building_id": {"type": "integer", "description": "building_id del edificio."},
+                "building_id": {
+                    "type": "integer",
+                    "description": "building_id que devolvió find_unit EN ESTE MENSAJE, o el "
+                    "de una unidad propia del contexto. Nunca uno recordado.",
+                },
                 "question": {"type": "string", "description": "Qué quiere saber."},
             },
             ["building_id", "question"],
@@ -260,6 +280,33 @@ def _loggable(arguments: dict[str, Any]) -> dict[str, Any]:
     return {k: ("[omitido]" if k in _SECRET_ARGS else v) for k, v in arguments.items()}
 
 
+def _unconfirmed_id(ctx: ToolContext, arguments: dict[str, Any]) -> str | None:
+    """The reason when an id argument did not come from the code: find_unit in this turn,
+    or the phone's own units and their buildings (in the per-message context, and after
+    confirm_email_code). None when every id is fine."""
+    unit_id = arguments.get("unit_id")
+    building_id = arguments.get("building_id")
+    unit_ok = unit_id is None or unit_id in ctx.offered_unit_ids
+    building_ok = building_id is None or building_id in ctx.offered_building_ids
+    if unit_ok and building_ok:
+        return None
+    own = identify_by_phone(ctx.session, ctx.phone).units
+    if not unit_ok and all(u.unit_id != unit_id for u in own):
+        return "unit_not_confirmed"
+    if not building_ok and all(u.building_id != building_id for u in own):
+        return "building_not_confirmed"
+    return None
+
+
+_NOT_CONFIRMED_STEPS = {
+    "unit_not_confirmed": "Ese unit_id no lo devolvió find_unit en este mensaje. Llamá "
+    "find_unit con el edificio y la unidad que dijo la persona y usá el unit_id que devuelva.",
+    "building_not_confirmed": "Ese building_id no lo devolvió find_unit en este mensaje ni "
+    "es de una unidad del contexto. Llamá find_unit con el edificio que dijo la persona (o "
+    "preguntale cuál es) y usá el building_id que devuelva.",
+}
+
+
 def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Run one tool call from the model and log it in bot_events (never the code)."""
     spec = TOOLS_BY_NAME.get(name)
@@ -272,6 +319,14 @@ def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str
     except InvalidArguments as exc:
         ctx.log("tool_call", tool=name, args=_loggable(arguments), status="invalid_arguments")
         return {"status": "error", "error": str(exc)}
+    if reason := _unconfirmed_id(ctx, clean):
+        ctx.log("tool_call", tool=name, args=_loggable(clean), status="error", reason=reason)
+        logger.info("Conversation %s: tool %s -> error (%s)", ctx.conversation_id, name, reason)
+        return {
+            "status": "error",
+            "reason": reason,
+            "next_step": f"{_NOT_CONFIRMED_STEPS[reason]} No se lo cuentes a la persona.",
+        }
     try:
         result = _HANDLERS[name](ctx, **clean)
     except Exception as exc:
@@ -282,9 +337,13 @@ def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str
             "tool_call", tool=name, args=_loggable(clean), status="error", error=type(exc).__name__
         )
         return result
-    ctx.log("tool_call", tool=name, args=_loggable(clean), status=result.get("status"))
-    # Name and status only: arguments may carry codes or what the person wrote.
-    logger.info("Conversation %s: tool %s -> %s", ctx.conversation_id, name, result.get("status"))
+    status = result.get("status")
+    reason = result.get("reason")
+    extra = {"reason": reason} if reason else {}
+    ctx.log("tool_call", tool=name, args=_loggable(clean), status=status, **extra)
+    # Name, status and reason only: arguments may carry codes or what the person wrote.
+    shown = f"{status} ({reason})" if reason else status
+    logger.info("Conversation %s: tool %s -> %s", ctx.conversation_id, name, shown)
     return result
 
 
@@ -320,6 +379,11 @@ def find_unit(ctx: ToolContext, building_text: str, unit_text: str = "") -> dict
         }
         for c in found.candidates
     ]
+    ctx.offered_unit_ids.update(ids)
+    ctx.offered_building_ids.update(b["building_id"] for b in buildings)
+    ctx.offered_building_ids.update(
+        c["building_id"] for c in candidates if c["building_id"] is not None
+    )
     if found.status == SearchStatus.FOUND:
         return {"status": "found", "unit": candidates[0]}
     if found.status == SearchStatus.AMBIGUOUS:
@@ -338,32 +402,81 @@ def find_unit(ctx: ToolContext, building_text: str, unit_text: str = "") -> dict
     return result
 
 
+# Why start_email_verification sent no code: a closed list decided by the code. The model
+# says the `say` text of the result, never its own reading of the status.
+NOT_SENT_REASONS = {
+    StartStatus.NO_EMAIL: "no_owner_email",
+    StartStatus.RATE_LIMITED: "rate_limited",
+    StartStatus.SEND_FAILED: "send_failed",
+    StartStatus.NOT_FOUND: "unit_not_found",
+    StartStatus.AMBIGUOUS: "unit_not_found",  # not reachable with a unit_id
+    StartStatus.INVALID_PHONE: "invalid_phone",
+}
+
+
+def _unit_name(unit: UnitCandidate | None) -> str | None:
+    return f"{display_building_name(unit.building_name)} {unit.unit_label}" if unit else None
+
+
+def wait_text(retry_at: datetime, now: datetime) -> str:
+    """How long until retry_at, rounded up: "40 minutos", "1 hora", "5 horas"."""
+    minutes = max(1, math.ceil((retry_at - now).total_seconds() / 60))
+    if minutes < 60:
+        return "1 minuto" if minutes == 1 else f"{minutes} minutos"
+    hours = math.ceil(minutes / 60)
+    return "1 hora" if hours == 1 else f"{hours} horas"
+
+
 def start_email_verification(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
     if can_view_unit_finance(ctx.session, ctx.phone, unit_id):
-        return {"status": "already_verified", "message": "Este número ya está verificado."}
+        return {
+            "status": "already_verified",
+            "say": "Tu número ya está verificado para esa unidad.",
+        }
     started = identity.start_email_verification(
         ctx.session, ctx.phone, unit_id=unit_id, sender=ctx.email_sender
     )
-    match started.status:
-        case StartStatus.CODES_SENT:
-            return {
-                "status": "codes_sent",
-                "masked_emails": list(started.masked_emails),
-                "next_step": f"Pedile el código de {identity.CODE_DIGITS} dígitos que le "
-                f"llegó por email. Vence en {identity.CODE_VALID_MINUTES} minutos.",
-            }
-        case StartStatus.NO_EMAIL:
-            return {
-                "status": "sin_email",
-                "next_step": "La unidad no tiene email de propietario. Pedile su nombre "
-                "completo y usá request_operator_verification.",
-            }
-        case StartStatus.RATE_LIMITED:
-            return {"status": "rate_limited", "next_step": "Demasiados intentos hoy: derivá."}
-        case StartStatus.SEND_FAILED:
-            return {"status": "send_failed", "next_step": "No se pudo mandar el email: derivá."}
-        case _:
-            return {"status": started.status.value}
+    unit = _unit_name(started.unit)
+    if started.status == StartStatus.CODES_SENT:
+        emails = ", ".join(started.masked_emails)
+        return {
+            "status": "codes_sent",
+            "unit": unit,
+            "masked_emails": list(started.masked_emails),
+            "say": f"Listo, te mandé un código de {identity.CODE_DIGITS} dígitos a {emails}, "
+            f"el email del propietario de {unit}. Vence en {identity.CODE_VALID_MINUTES} "
+            "minutos: escribímelo acá.",
+            "next_step": "Cuando lo escriba, usá confirm_email_code.",
+        }
+    reason = NOT_SENT_REASONS[started.status]
+    result: dict[str, Any] = {"status": "not_sent", "reason": reason, "unit": unit}
+    match reason:
+        case "no_owner_email":
+            result["say"] = (
+                f"La unidad {unit} no tiene un email de propietario cargado, así que no puedo "
+                "mandarte el código. Si querés, decime tu nombre y apellido y le pido a una "
+                "persona del estudio que verifique tu número."
+            )
+            result["next_step"] = (
+                "Si da su nombre, usá request_operator_verification con este unit_id."
+            )
+        case "rate_limited":
+            wait = wait_text(started.retry_at, datetime.now(UTC)) if started.retry_at else None
+            result["say"] = (
+                "Ya enviamos varios códigos desde este número hoy; probá de nuevo "
+                f"{f'en {wait}' if wait else 'más tarde'} o te paso con una persona."
+            )
+            result["next_step"] = "Si quiere una persona, usá handoff_to_human."
+        case "send_failed":
+            result["say"] = "No pude mandar el email con el código en este momento."
+            result["next_step"] = "Derivá con handoff_to_human y sumá su tell_person."
+        case "unit_not_found":
+            result["say"] = "No encontré esa unidad. ¿Me confirmás el edificio y la unidad?"
+            result["next_step"] = "Volvé a buscarla con find_unit."
+        case _:  # invalid_phone
+            result["say"] = "No puedo verificar este número automáticamente."
+            result["next_step"] = "Derivá con handoff_to_human y sumá su tell_person."
+    return result
 
 
 def confirm_email_code(ctx: ToolContext, code: str) -> dict[str, Any]:
