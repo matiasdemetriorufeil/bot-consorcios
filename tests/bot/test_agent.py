@@ -256,6 +256,34 @@ def test_model_handoff_is_not_duplicated(name: str, world: World) -> None:
     assert len(world.events("handoff")) == 1
 
 
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_urgent_handoff_tells_the_emergency_contact_out_of_hours(name: str, world: World) -> None:
+    steps = [
+        Call("handoff_to_human", {"reason": "emergency", "summary": "x", "priority": "urgent"}),
+        Say("Cerrá la llave de paso."),
+    ]
+    provider, script = scripted_provider(name, steps)
+    saturday_night = datetime(2026, 10, 3, 22, 0, tzinfo=ZoneInfo("America/Argentina/Cordoba"))
+    agent = Agent(
+        provider,
+        settings=SETTINGS.model_copy(update={"emergency_contact_text": "llamá al 351 000-0000."}),
+        refresh_debt=world.refresh,
+        now=lambda: saturday_night,
+    )
+    agent.reply(world.session, UNKNOWN_PHONE, "se inunda el baño")
+    told = last_tool_result(name, script.requests[1])
+    assert "el lunes a partir de las 9" in told and "llamá al 351 000-0000." in told
+
+
+def test_normal_handoff_does_not_get_the_urgent_notice(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    ctx.handoff_notice, ctx.urgent_handoff_notice = "normal", "urgente"
+    args = {"reason": "payment_plan", "summary": "x", "priority": "normal"}
+    assert run_tool(ctx, "handoff_to_human", args)["tell_person"] == "normal"
+    args = {"reason": "emergency", "summary": "x", "priority": "urgent"}
+    assert run_tool(ctx, "handoff_to_human", args)["tell_person"] == "urgente"
+
+
 # --- Tools directly ------------------------------------------------------------------------
 
 

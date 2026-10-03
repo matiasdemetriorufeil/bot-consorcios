@@ -62,12 +62,31 @@ Derivá a una persona (handoff_to_human), sin preguntar, cuando:
 - reclama que la deuda está mal por otro motivo que un pago reciente (un cargo que no \
 reconoce, un débito duplicado, un monto mal calculado);
 - quiere un plan de pago o cuotas;
-- es una urgencia (pérdidas de agua o gas, incendio, ascensor con gente, seguridad): \
-priority "urgent";
+- es una urgencia (pérdidas de agua o gas, problemas eléctricos, incendio, ascensor con \
+gente, seguridad): priority "urgent" (ver "Urgencias" más abajo);
 - no sabés la respuesta o las herramientas no la tienen.
 Al derivar, avisale con el texto de tell_person que devuelve handoff_to_human (ya dice \
-cuándo le van a responder): no prometas otros tiempos. En urgencias graves recordá llamar \
-también a los servicios de emergencia.
+cuándo le van a responder y, en urgencias, a quién recurrir mientras tanto): copialo \
+completo y no prometas otros tiempos.
+
+Edificio y unidad al derivar: si el número NO está verificado y la persona todavía no dijo \
+su edificio y unidad, en el MISMO mensaje en que avisás la derivación pedíselos para que la \
+persona del estudio tenga el contexto (por ejemplo: "Para que te ayuden más rápido, decime \
+tu edificio y unidad."). No esperes la respuesta para derivar: derivá igual en ese mismo \
+turno. Si ya dijo que no quiere darlos, no los pidas. Si los dijo, ponelos en el summary.
+
+Urgencias: respondé en este orden, en un solo mensaje:
+1. Primero la indicación de seguridad. Gas: no prender luces ni hacer chispas, abrir \
+ventanas, cerrar la llave de paso si se puede y salir; llamar a la distribuidora de gas o \
+a bomberos (100). Agua: cerrar la llave de paso si se puede y alejarse de enchufes y \
+artefactos eléctricos mojados. Eléctrico o incendio: no tocar cables ni tableros, cortar \
+la luz desde la llave general solo si es seguro, y llamar a bomberos (100) si hay humo o \
+fuego. Gente encerrada en el ascensor: que no intenten salir por su cuenta; bomberos (100) \
+si hay riesgo. Seguridad (robo, intrusos, violencia): llamar al 911. Los únicos teléfonos \
+que podés dar son 100 y 911 (y los que traiga tell_person): nunca inventes números de \
+distribuidoras, guardias ni otros servicios.
+2. Después pedí edificio y unidad (con la regla de arriba).
+3. Al final, el texto de tell_person.
 """
 
 _WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -122,6 +141,19 @@ def handoff_notice(now: datetime, start: str, end: str, weekdays: list[int]) -> 
         f"atención ({describe_office_hours(start, end, weekdays)}), así que te van a responder "
         f"{next_opening(now, start, weekdays)}."
     )
+
+
+def urgent_handoff_notice(
+    now: datetime, start: str, end: str, weekdays: list[int], emergency_contact: str = ""
+) -> str:
+    """What the person is told when an urgency goes to a human. Outside office hours it adds
+    who to call meanwhile: EMERGENCY_CONTACT_TEXT or, if empty, the building's caretaker."""
+    notice = handoff_notice(now, start, end, weekdays)
+    if is_office_hours(now, start, end, weekdays):
+        return notice
+    if emergency_contact.strip():
+        return f"{notice} Para la urgencia, mientras tanto: {emergency_contact.strip()}"
+    return f"{notice} Mientras tanto, si podés, avisale al encargado del edificio."
 
 
 def describe_identity(who: Identity) -> str:

@@ -2,6 +2,7 @@
 #
 # phone:   alias from evals/seed.py PHONES.
 # now:     optional Córdoba local time (default: Thursday 01/10/2026 11:00, office hours).
+# settings: optional Settings overrides for the case (e.g. emergency_contact_text).
 # turns:   1 to 4 user messages. "{code}" = last verification code emailed in the case,
 #          "{wrong_code}" = a code that was not sent. A turn can be {text, before}, where
 #          before: expire_codes makes the pending codes expire before that message.
@@ -350,6 +351,7 @@
     handoff: true
     handoff_priority: urgent
     contains: [["emergencia", "911", "100", "bomberos", "ecogas"]]
+    not_matches: ['\b0800\b']  # no invented phone numbers (distribuidora, guardias)
 
 - id: urgencia_ascensor
   category: urgencia
@@ -367,6 +369,34 @@
   expect:
     handoff: true
     handoff_priority: urgent
+
+# Out of office hours without EMERGENCY_CONTACT_TEXT: safety advice first, asks building and
+# unit (unknown number), hands off as urgent, says when the studio answers and suggests
+# telling the caretaker.
+- id: urgencia_fuera_de_horario_sin_contacto
+  category: urgencia
+  phone: desconocido
+  now: "2026-10-03T22:00"  # Saturday
+  turns: ["Hay una pérdida de agua enorme en el baño, está saliendo por debajo de la puerta"]
+  expect:
+    handoff: true
+    handoff_priority: urgent
+    contains: ["llave de paso", "edificio", "unidad", "lunes", "encargado"]
+
+# With EMERGENCY_CONTACT_TEXT loaded, out of hours: the bot includes it.
+- id: urgencia_con_contacto_de_emergencia
+  category: urgencia
+  phone: desconocido
+  now: "2026-10-03T22:00"  # Saturday
+  settings:
+    emergency_contact_text: "llamá a la guardia del estudio al 351 000-0000."
+  turns: ["Hay olor a gas en la cocina de mi departamento"]
+  expect:
+    handoff: true
+    handoff_priority: urgent
+    contains: ["351 000-0000", "edificio", "unidad", ["ventana", "chispa", "llave"]]
+    not_contains: ["encargado"]
+    not_matches: ['\b0800\b']
 
 # --- Enojo ------------------------------------------------------------------------------------
 
@@ -406,6 +436,16 @@
   turns: ["¿Puedo pagar la deuda en cuotas?"]
   expect:
     handoff: true
+
+# Unknown number: hands off and, in the same message, asks building and unit.
+- id: plan_sin_identificar
+  category: plan_pagos
+  phone: desconocido
+  turns: ["Hola, quería saber si puedo hacer un plan de pagos por las expensas atrasadas"]
+  expect:
+    must_not_call: [start_email_verification, get_debt]
+    handoff: true
+    contains: ["edificio", "unidad"]
 
 - id: plan_despues_de_deuda
   category: plan_pagos
@@ -449,6 +489,20 @@
   expect:
     must_call: [get_debt]
     handoff: true
+
+# A handoff offered for another topic (paying the parking space by card) is not accepted by "pero ya
+# pagué hoy": that gets the accreditation explanation and no handoff.
+- id: oferta_cochera_ya_pague
+  category: pago_no_acreditado
+  phone: bruno
+  turns:
+    - "¿Cuánto debo de la cochera de Torre del Sol?"
+    - "¿La cochera la puedo pagar con tarjeta de crédito?"
+    - "pero ya pagué hoy"
+  expect:
+    must_call: [get_debt]
+    handoff: false
+    contains: ["12.300", "72"]
 
 - id: pago_doble_debito
   category: pago_no_acreditado

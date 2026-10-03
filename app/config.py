@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     office_hours_start: str = "09:00"
     office_hours_end: str = "17:00"
     office_weekdays: list[int] = [0, 1, 2, 3, 4]
+    # Who to call for an urgency outside office hours (said by the bot after the handoff
+    # notice, e.g. "llamá al encargado, Juan, al 351..."). Empty: it suggests the caretaker.
+    emergency_contact_text: str = ""
 
     consorplus_base_url: str = "https://consorplus.drufeilccios.com.ar/"
     consorplus_user: str = ""

@@ -7,7 +7,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.bot.identity import Identity, UnitAccess
-from app.bot.prompts import describe_office_hours, handoff_notice, next_opening
+from app.bot.prompts import (
+    describe_office_hours,
+    handoff_notice,
+    next_opening,
+    urgent_handoff_notice,
+)
 from app.bot.tools import Handoff
 from app.chatwoot.handoff import contact_attributes, handoff_labels, slug
 from app.chatwoot.history import build_history
@@ -93,6 +98,18 @@ def test_handoff_notice() -> None:
     assert "a la brevedad" in inside and "fuera" not in inside
     assert "fuera del horario de atención (de lunes a viernes de 9 a 17)" in outside
     assert outside.endswith("el lunes a partir de las 9.")
+
+
+def test_urgent_handoff_notice() -> None:
+    contact = "llamá a la guardia al 351 000-0000."
+    inside = urgent_handoff_notice(at(7, 10), "09:00", "17:00", WEEKDAYS, contact)
+    outside = urgent_handoff_notice(at(10, 22), "09:00", "17:00", WEEKDAYS, contact)
+    no_contact = urgent_handoff_notice(at(10, 22), "09:00", "17:00", WEEKDAYS, "  ")
+
+    assert inside == handoff_notice(at(7, 10), "09:00", "17:00", WEEKDAYS)
+    assert "el lunes a partir de las 9." in outside and outside.endswith(contact)
+    assert "el lunes a partir de las 9." in no_contact
+    assert no_contact.endswith("avisale al encargado del edificio.")
 
 
 # --- Labels and contact -------------------------------------------------------------------

@@ -78,6 +78,8 @@ class ToolContext:
     conversation_id: int | None = None
     # What to tell the person on handoff (depends on office hours, set by the agent).
     handoff_notice: str = DEFAULT_HANDOFF_NOTICE
+    # The same for priority "urgent" (adds who to call outside office hours).
+    urgent_handoff_notice: str = DEFAULT_HANDOFF_NOTICE
     # Set by handoff_to_human.
     handoff: Handoff | None = None
 
@@ -482,7 +484,8 @@ def handoff_to_human(
     )
     if ctx.handoff is None or (priority == "urgent" and ctx.handoff.priority != "urgent"):
         ctx.handoff = Handoff(reason=reason, summary=summary, priority=priority)
-    return {"status": "ok", "tell_person": ctx.handoff_notice}
+    notice = ctx.urgent_handoff_notice if priority == "urgent" else ctx.handoff_notice
+    return {"status": "ok", "tell_person": notice}
 
 
 def _units_of(who: identity.Identity) -> list[dict[str, Any]]:

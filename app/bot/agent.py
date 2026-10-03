@@ -28,6 +28,7 @@ from app.bot.prompts import (
     describe_office_hours,
     handoff_notice,
     is_office_hours,
+    urgent_handoff_notice,
 )
 from app.bot.tools import TOOLS, Handoff, ToolContext, run_tool
 from app.config import Settings, get_settings
@@ -126,6 +127,7 @@ class Agent:
             email_sender=self._email_sender,
             conversation_id=conversation_id,
             handoff_notice=handoff_notice(now, *hours),
+            urgent_handoff_notice=urgent_handoff_notice(now, *hours, s.emergency_contact_text),
         )
         user_turn = build_user_turn(
             text,

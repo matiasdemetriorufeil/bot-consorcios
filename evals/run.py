@@ -91,10 +91,12 @@ class Case:
     turns: tuple[Turn, ...]
     expect: Expect
     now: datetime = DEFAULT_NOW
+    # Settings changed for this case only, e.g. (("emergency_contact_text", "..."),).
+    settings: tuple[tuple[str, Any], ...] = ()
 
 
 _EXPECT_KEYS = {f for f in Expect.__dataclass_fields__}
-_CASE_KEYS = {"id", "category", "phone", "turns", "expect", "now"}
+_CASE_KEYS = {"id", "category", "phone", "turns", "expect", "now", "settings"}
 
 
 def load_cases(path: Path = CASES_PATH) -> list[Case]:
@@ -144,7 +146,15 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
                 if "now" in item
                 else DEFAULT_NOW
             )
-            cases.append(Case(cid, item["category"], item["phone"], turns, expect, now))
+            overrides = item.get("settings") or {}
+            if unknown := set(overrides) - set(Settings.model_fields):
+                raise ValueError(f"settings con claves desconocidas {unknown}")
+            cases.append(
+                Case(
+                    cid, item["category"], item["phone"], turns, expect, now,
+                    tuple(overrides.items()),
+                )
+            )  # fmt: skip
         except (KeyError, TypeError, ValueError, re.error) as exc:
             raise ValueError(f"caso {cid}: {exc}") from exc
     return cases
@@ -285,7 +295,7 @@ def run_case(engine: Engine, provider: LLMProvider, settings: Settings, case: Ca
             sender = CapturingSender()
             agent = Agent(
                 provider,
-                settings=settings,
+                settings=settings.model_copy(update=dict(case.settings)),
                 refresh_debt=lambda uid: DebtResult(get_latest_debt(session, uid), stale=False),
                 email_sender=sender,
                 now=lambda: case.now,

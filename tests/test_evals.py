@@ -57,6 +57,19 @@ def test_bad_case_is_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="herramienta inexistente"):
         load_cases(path)
+    path.write_text(
+        "- {id: z, category: c, phone: ana, turns: [hola], expect: {}, settings: {nada: 1}}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="settings con claves desconocidas"):
+        load_cases(path)
+
+
+def test_case_settings_are_loaded() -> None:
+    cases = {c.id: c for c in load_cases()}
+    contact = dict(cases["urgencia_con_contacto_de_emergencia"].settings)
+    assert contact["emergency_contact_text"]
+    assert cases["deuda_simple"].settings == ()
 
 
 def _case(**expect) -> Case:
