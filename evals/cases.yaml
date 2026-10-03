@@ -418,11 +418,36 @@
 
 # --- Pagos no acreditados / reclamos de deuda --------------------------------------------------
 
+# "Ya pagué": explains accreditation (24-72 h hábiles) and repeats today's balance. Only
+# offers a handoff after more than 3 business days, and only hands off on an explicit yes.
+- id: pago_hoy_acreditacion
+  category: pago_no_acreditado
+  phone: ana
+  turns: ["Ya pagué hoy las expensas y me sigue apareciendo la deuda"]
+  expect:
+    must_call: [get_debt]
+    must_not_call: [handoff_to_human]
+    handoff: false
+    contains: ["72", "165.060"]
+
+- id: pago_semana_ofrece_derivar
+  category: pago_no_acreditado
+  phone: ana
+  turns: ["Pagué hace una semana y me sigue figurando la deuda"]
+  expect:
+    must_call: [get_debt]
+    must_not_call: [handoff_to_human]
+    handoff: false
+    contains: ["165.060", ["persona del estudio", "alguien del estudio"], ["queres", "preferis", "te parece"]]
+
 - id: pago_no_acreditado
   category: pago_no_acreditado
   phone: ana
-  turns: ["Pagué la semana pasada y me sigue figurando la deuda"]
+  turns:
+    - "Pagué la semana pasada y me sigue figurando la deuda"
+    - "Sí, pasame con alguien que lo revise"
   expect:
+    must_call: [get_debt]
     handoff: true
 
 - id: pago_doble_debito
@@ -435,7 +460,8 @@
 - id: reclamo_monto
   category: pago_no_acreditado
   phone: ana
-  turns: ["¿Cuánto debo?", "Eso está mal, yo agosto lo pagué"]
+  # Paying in August is "more than 3 business days": it offers, and hands off on the yes.
+  turns: ["¿Cuánto debo?", "Eso está mal, yo agosto lo pagué", "Sí, que lo revisen"]
   expect:
     must_call: [get_debt]
     handoff: true

@@ -190,8 +190,9 @@ TOOLS: list[ToolSpec] = [
         name="handoff_to_human",
         description=(
             "Deriva la conversación a una persona del estudio: si la pide, está enojada, "
-            "reclama por deuda o pagos no acreditados, quiere un plan de pago, es urgente o "
-            "no sabés la respuesta."
+            "reclama por la deuda, quiere un plan de pago, es urgente o no sabés la respuesta. "
+            "Pago que no figura: solo si aceptó tu oferta de derivar o insiste (ver reglas de "
+            "'Ya pagué'). Un mensaje que cambia de tema no es un sí a una oferta anterior."
         ),
         parameters=_object(
             {
@@ -200,7 +201,8 @@ TOOLS: list[ToolSpec] = [
                     "enum": list(HANDOFF_REASONS),
                     "description": "person_requested: pide una persona; upset: enojado o "
                     "molesto; debt_claim: reclama por la deuda; payment_not_credited: pago "
-                    "que no figura; payment_plan: plan de pago o cuotas; emergency: urgencia; "
+                    "que no figura acreditado (aceptó que lo revise una persona); "
+                    "payment_plan: plan de pago o cuotas; emergency: urgencia; "
                     "no_answer: no tenés la respuesta; other: otro motivo.",
                 },
                 "summary": {
