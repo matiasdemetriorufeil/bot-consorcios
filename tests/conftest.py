@@ -12,6 +12,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.bot.bot_config import invalidate_bot_config
 from app.config import Settings, get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -59,8 +60,11 @@ def _isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
             monkeypatch.delenv(name)
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
+    # The admin panel's bot settings are cached for a minute: no test sees another's row.
+    invalidate_bot_config()
     yield
     get_settings.cache_clear()
+    invalidate_bot_config()
 
 
 class NetworkAccessError(RuntimeError):

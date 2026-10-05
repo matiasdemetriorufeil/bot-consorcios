@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Building,
+    BuildingInfo,
+    BuildingInfoCategory,
     DataSource,
     DebtLine,
     DebtSnapshot,
@@ -34,6 +36,75 @@ PHONES = {
 }
 
 FETCHED_AT = datetime(2026, 9, 30, 14, 5, tzinfo=ZoneInfo("America/Argentina/Cordoba"))
+
+# Building texts, as an operator would load them in the admin panel. Rodas II says nothing
+# about pets nor a pool: questions about them have no answer. Los Algarrobos has no texts.
+RODAS2_RULES = """\
+Artículo 1 - Ruidos: entre las 22 y las 8 h se debe guardar silencio. No se permite música \
+fuerte ni trabajos ruidosos en ese horario.
+Artículo 2 - Mudanzas: se hacen de lunes a viernes de 9 a 18 h y los sábados de 9 a 13 h. \
+Hay que avisar al encargado con 48 horas de anticipación.
+Artículo 3 - Residuos: la basura se saca en bolsas cerradas al contenedor del subsuelo, de \
+20 a 22 h.
+Artículo 4 - SUM: se reserva con el encargado y se puede usar hasta la 1 de la madrugada.
+"""
+RODAS2_CONTACTS = """\
+Encargado: en la portería de planta baja, de lunes a viernes de 8 a 16 h. Se lo llama desde \
+el portero eléctrico, interno 10.
+"""
+RODAS1_HOURS = "Encargado: de lunes a sábados de 7 a 14 h, en la portería."
+
+# Torre del Sol: a long rules text (well over the 8,000-token budget of get_building_info),
+# so only the relevant articles reach the model.
+_SOL_ARTICLES = [
+    (
+        "Mascotas",
+        "Se permiten mascotas domésticas. En los espacios comunes deben circular "
+        "con correa y por el ascensor de servicio.",
+    ),
+    (
+        "Mudanzas",
+        "Las mudanzas se hacen de lunes a viernes de 8 a 17 h, solo por el ascensor "
+        "de servicio y con aviso a la administración con 72 horas de anticipación.",
+    ),
+    (
+        "Pileta",
+        "La pileta abre del 1 de diciembre al 31 de marzo, de 10 a 20 h. Cada unidad "
+        "puede llevar hasta dos invitados.",
+    ),
+    ("SUM", "El salón de usos múltiples se reserva en portería y se puede usar hasta las 23 h."),
+    (
+        "Ropa en balcones",
+        "Está prohibido tender ropa en los balcones o ventanas que den al "
+        "frente del edificio. Se puede usar el tendedero de la terraza de 8 a 20 h.",
+    ),
+    (
+        "Aires acondicionados",
+        "Los equipos de aire acondicionado solo se instalan en el "
+        "contrafrente, con el desagüe conectado a la cañería pluvial. En el frente no se permiten.",
+    ),
+    (
+        "Obras",
+        "Las obras y refacciones dentro de las unidades se hacen de lunes a viernes de "
+        "9 a 13 h y de 15 a 18 h, con aviso previo a la administración.",
+    ),
+]
+_SOL_FILLER = (
+    "Disposiciones generales. Los copropietarios y ocupantes deben respetar el destino de las "
+    "unidades y de las partes comunes, conservar el buen estado del edificio y cumplir las "
+    "resoluciones de la asamblea. Cualquier daño a las partes comunes será reparado a cargo "
+    "de quien lo cause. Las comunicaciones a la administración se hacen por escrito. "
+)
+
+
+def _sol_rules() -> str:
+    """40 generic articles (~13,000 tokens) with the specific ones spread among them."""
+    articles = [("Disposiciones generales", _SOL_FILLER * 3)] * 40
+    for offset, article in enumerate(_SOL_ARTICLES):
+        articles.insert(5 + offset * 6, article)
+    return "\n".join(
+        f"Artículo {n} - {title}: {text_}" for n, (title, text_) in enumerate(articles, start=1)
+    )
 
 
 def _debt(unit: Unit, lines: list[tuple[str, str, str]]) -> DebtSnapshot:
@@ -118,6 +189,18 @@ def seed(session: Session) -> None:
             UnitPerson(unit_id=u.id, person_id=p.id, role=role, source=DataSource.CONSORPLUS)
         )
 
+    session.add_all(
+        [
+            BuildingInfo(building=rodas2, title="Reglamento interno", content=RODAS2_RULES,
+                         category=BuildingInfoCategory.REGLAMENTO),
+            BuildingInfo(building=rodas2, title="Contacto del encargado",
+                         content=RODAS2_CONTACTS, category=BuildingInfoCategory.CONTACTOS),
+            BuildingInfo(building=rodas1, title="Horario del encargado", content=RODAS1_HOURS,
+                         category=BuildingInfoCategory.HORARIOS),
+            BuildingInfo(building=sol, title="Reglamento de copropiedad", content=_sol_rules(),
+                         category=BuildingInfoCategory.REGLAMENTO),
+        ]
+    )  # fmt: skip
     session.add_all(
         [
             _debt(r2_4c, [("08/2026", "EXPENSAS ORDINARIAS", "82530"),

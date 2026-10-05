@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     Enum,
     ForeignKey,
     Index,
@@ -47,6 +48,14 @@ class SyncStatus(StrEnum):
     FAILED = "failed"
 
 
+class BuildingInfoCategory(StrEnum):
+    REGLAMENTO = "reglamento"
+    HORARIOS = "horarios"
+    CONTACTOS = "contactos"
+    EMERGENCIAS = "emergencias"
+    OTROS = "otros"
+
+
 def _str_enum(enum_cls: type[StrEnum], name: str) -> Enum:
     """VARCHAR + CHECK constraint instead of a native Postgres ENUM (easier to migrate)."""
     return Enum(
@@ -73,6 +82,32 @@ class Building(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     units: Mapped[list["Unit"]] = relationship(back_populates="building")
+    infos: Mapped[list["BuildingInfo"]] = relationship(
+        back_populates="building", cascade="all, delete-orphan"
+    )
+
+    def __str__(self) -> str:  # shown in the admin panel's selects
+        return self.name
+
+
+class BuildingInfo(Base):
+    """Information about a building loaded in the admin panel (rules, hours, contacts...)."""
+
+    __tablename__ = "building_infos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    building_id: Mapped[int] = mapped_column(
+        ForeignKey("buildings.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    category: Mapped[BuildingInfoCategory] = mapped_column(
+        _str_enum(BuildingInfoCategory, "category_valid")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    building: Mapped[Building] = relationship(back_populates="infos")
 
 
 class Unit(Base):
@@ -272,6 +307,27 @@ class VerificationRequest(Base):
     resolved_by: Mapped[str | None] = mapped_column(String(100))
     # The owner the phone was linked to (only when approved).
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
+
+    unit: Mapped[Unit] = relationship()
+
+
+class BotSettings(Base):
+    """Bot texts and office hours set in the admin panel: one row (id 1). An empty value
+    falls back to the .env setting of the same name (see app.bot.bot_config)."""
+
+    __tablename__ = "bot_settings"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    welcome_message: Mapped[str | None] = mapped_column(Text)
+    office_hours_start: Mapped[str | None] = mapped_column(String(5))  # "HH:MM"
+    office_hours_end: Mapped[str | None] = mapped_column(String(5))
+    office_weekdays: Mapped[str | None] = mapped_column(String(20))  # "0,1,2,3,4", 0 = Monday
+    out_of_hours_text: Mapped[str | None] = mapped_column(Text)
+    autogestion_url: Mapped[str | None] = mapped_column(String(500))
+    emergency_contact_text: Mapped[str | None] = mapped_column(Text)
+    payment_code_how_to: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
 class ChatwootProcessedMessage(Base):

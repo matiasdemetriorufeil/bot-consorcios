@@ -210,15 +210,11 @@ def _match_building(
     )
 
 
-def search_unit(session: Session, building_text: str, unit_text: str = "") -> UnitSearchResult:
-    """Find an active unit. If unit_text is empty, building_text may hold both parts."""
-    q_roman, q_plain = _aligned_tokens(building_text)
-    if not q_roman:
-        return UnitSearchResult(SearchStatus.NOT_FOUND)
+def _best_buildings(
+    session: Session, q_roman: list[str], q_plain: list[str]
+) -> list[_BuildingMatch]:
+    """The active buildings that best match the query tokens (empty when none does)."""
     query = " ".join(q_roman)
-    unit_query = tokens(unit_text)
-    combined = not unit_query
-
     matches: list[_BuildingMatch] = []
     for building in session.scalars(select(Building).where(Building.active.is_(True))):
         name = _building_tokens(building.name)
@@ -227,16 +223,38 @@ def search_unit(session: Session, building_text: str, unit_text: str = "") -> Un
             if match.score >= BUILDING_MIN_SCORE:
                 matches.append(match)
     if not matches:
-        return UnitSearchResult(SearchStatus.NOT_FOUND)
+        return []
     best = max(m.score for m in matches)
     close = [m for m in matches if m.score >= best - BUILDING_SCORE_MARGIN]
     # Among similar scores, the names that explain more of the text without being split
     # apart: "Rodas 2" prefers "Rodas II" over "Rodas"; "Rodas" alone stays ambiguous.
     best_fit = max((m.explained, not m.broken) for m in close)
-    top = sorted(
+    return sorted(
         (m for m in close if (m.explained, not m.broken) == best_fit),
         key=lambda m: (-m.score, m.building.name),
     )
+
+
+def search_building(session: Session, building_text: str) -> list[Building]:
+    """Active buildings matching what a person typed ("rodas 2", "la torre del sol"): one
+    when it is clear, several when it is ambiguous, none when nothing is close enough."""
+    q_roman, q_plain = _aligned_tokens(building_text)
+    if not q_roman:
+        return []
+    return [m.building for m in _best_buildings(session, q_roman, q_plain)][:MAX_CANDIDATES]
+
+
+def search_unit(session: Session, building_text: str, unit_text: str = "") -> UnitSearchResult:
+    """Find an active unit. If unit_text is empty, building_text may hold both parts."""
+    q_roman, q_plain = _aligned_tokens(building_text)
+    if not q_roman:
+        return UnitSearchResult(SearchStatus.NOT_FOUND)
+    unit_query = tokens(unit_text)
+    combined = not unit_query
+
+    top = _best_buildings(session, q_roman, q_plain)
+    if not top:
+        return UnitSearchResult(SearchStatus.NOT_FOUND)
 
     exact: list[UnitCandidate] = []
     fuzzy: list[tuple[float, UnitCandidate]] = []

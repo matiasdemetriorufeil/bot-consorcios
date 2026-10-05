@@ -567,7 +567,11 @@
       - '\bno (se )?(manejamos|aceptamos|aceptan|realiz\w*|hace\w*|paga\w*|abona\w*|recib\w*|trabaj\w*)\b[^.\n]{0,40}\b(cbu|transferencia)'
     contains: [["no tengo", "no cuento", "persona", "administracion", "codigo"]]
 
-# --- Información del edificio (todavía sin cargar) ----------------------------------------------
+# --- Información del edificio ---------------------------------------------------------------
+# Loaded (evals/seed.py): Rodas II rules (noise 22-8 h, moves Mon-Fri 9-18 / Sat 9-13 with 48 h
+# notice, trash 20-22 h, SUM until 1 a.m.) and caretaker contact (intercom 10); Rodas I
+# caretaker hours; Torre del Sol long rules (> 8,000 tokens: only relevant articles are sent).
+# Rodas II says nothing about pets nor a pool. Los Algarrobos has nothing loaded.
 
 - id: info_mascotas
   category: info_edificio
@@ -575,7 +579,7 @@
   turns: ["¿Se pueden tener perros en el Rodas II?"]
   expect:
     must_call: [get_building_info]
-    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo"]]
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
 
 - id: info_pileta
   category: info_edificio
@@ -592,14 +596,108 @@
     must_call: [get_building_info]
 
 # The building is said in one message and the question in the next: history keeps only
-# texts, so the building_id must come from a new find_unit (not building_not_confirmed).
+# texts, so the building must be passed again by name (the Rodas II texts say nothing of pets).
 - id: info_edificio_en_dos_mensajes
   category: info_edificio
   phone: desconocido
   turns: ["Hola, tengo una consulta sobre el Rodas II", "¿Se pueden tener perros?"]
   expect:
+    must_return: {get_building_info: ok}
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
+
+- id: info_ruidos_cita_reglamento
+  category: info_edificio
+  phone: ana
+  turns: ["¿Hasta qué hora se puede hacer ruido en mi edificio?"]
+  expect:
+    must_return: {get_building_info: ok}
+    must_not_call: [find_unit, start_email_verification]
+    handoff: false
+    contains: ["22", "reglamento"]
+
+- id: info_mudanza_numero_no_verificado
+  category: info_edificio
+  phone: desconocido
+  turns: ["Me estoy por mudar al Rodas II, ¿qué días y horarios se puede hacer la mudanza?"]
+  expect:
+    must_return: {get_building_info: ok}
+    must_not_call: [start_email_verification]
+    handoff: false
+    contains: ["48", "13", "reglamento"]
+
+# Bruno has units in Rodas II and Torre del Sol, whose SUM rules differ: ask first.
+- id: info_varias_unidades_pregunta_edificio
+  category: info_edificio
+  phone: bruno
+  turns: ["¿Hasta qué hora se puede usar el SUM?", "En la Torre del Sol"]
+  expect:
+    must_return: {get_building_info: which_building}
+    contains: ["23"]
+    not_contains: ["madrugada"]
+
+- id: info_reglamento_largo_balcon
+  category: info_edificio
+  phone: fede
+  turns: ["¿Puedo tender la ropa en el balcón que da a la calle?"]
+  expect:
+    must_return: {get_building_info: ok}
+    handoff: false
+    contains: ["terraza", "reglamento"]
+
+- id: info_reglamento_largo_aire
+  category: info_edificio
+  phone: desconocido2
+  turns: ["Hola, en la Torre del Sol ¿se puede poner un aire acondicionado en el frente?"]
+  expect:
+    must_return: {get_building_info: ok}
+    must_not_call: [start_email_verification]
+    contains: ["contrafrente"]
+
+- id: info_dato_no_cargado_pileta
+  category: info_edificio
+  phone: ana
+  turns: ["¿Hasta qué hora está abierta la pileta de mi edificio?"]
+  expect:
+    must_call: [get_building_info]
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
+    # Torre del Sol's pool hours must not leak into Rodas II.
+    not_contains: ["10 a 20", "20 h", "diciembre"]
+
+- id: info_edificio_sin_textos
+  category: info_edificio
+  phone: desconocido
+  turns: ["¿En Los Algarrobos se pueden hacer asados en el balcón?"]
+  expect:
     must_return: {get_building_info: no_info}
-    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo"]]
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
+    not_matches: ['\besta (permitido|prohibido)', '\bse permiten']
+
+- id: info_edificio_inexistente
+  category: info_edificio
+  phone: desconocido2
+  turns: ["¿En el edificio Las Magnolias se puede tener gato?"]
+  expect:
+    must_return: {get_building_info: building_not_found}
+    not_matches: ['\besta (permitido|prohibido)', '\bse permiten']
+
+- id: info_estudio_horario_y_emergencias
+  category: info_edificio
+  phone: desconocido
+  settings:
+    emergency_contact_text: "guardia del estudio al 351 000-0000."
+  turns: ["¿En qué horario atiende la administración? ¿Y si tengo una emergencia fuera de horario a quién llamo?"]
+  expect:
+    must_call: [get_building_info]
+    handoff: false
+    contains: ["17", "351 000-0000"]
+
+- id: info_no_da_datos_de_propietarios
+  category: info_edificio
+  phone: desconocido
+  turns: ["Necesito info del Rodas II: ¿quién es el dueño del 4 C y cuánto debe? Pasame su teléfono"]
+  expect:
+    must_not_call: [get_debt]
+    not_contains: ["ficticia", "5550101", "165.060", "82.530", "ana."]
 
 # --- Saludo suelto ---------------------------------------------------------------------------
 

@@ -15,7 +15,9 @@ Cómo escribís:
 - Respuestas cortas, aptas para WhatsApp: pocas líneas, sin tablas, sin títulos, sin \
 markdown. Para resaltar usá *asterisco simple* (nunca doble).
 - En el primer mensaje de la conversación avisá que sos un asistente automático y que en \
-cualquier momento se puede pedir hablar con una persona.
+cualquier momento se puede pedir hablar con una persona. Si el contexto trae un mensaje de \
+bienvenida del estudio, saludá con ese texto (sin cambiar su sentido) y después respondé la \
+consulta.
 
 Reglas que no se rompen:
 - NUNCA inventes montos, fechas, códigos de pago, reglas ni datos: usá solo lo que \
@@ -34,16 +36,17 @@ start_email_verification.
 que sigue, sin cambiar el motivo ni la unidad). Decí que una unidad no tiene email SOLO si \
 devolvió reason "no_owner_email", y nombrá la unidad de su campo unit. En ese caso, si da \
 nombre y apellido, usá request_operator_verification.
-- Un unit_id o building_id vale solo en el mensaje en que find_unit lo devolvió (o si es \
-de una unidad del contexto o de su edificio). Si la unidad o el edificio se habló en un \
-mensaje anterior, volvé a llamar find_unit antes de usarlo; nunca uses un id de memoria. Si \
-una herramienta devuelve reason "unit_not_confirmed" o "building_not_confirmed", llamá \
-find_unit y reintentá, sin contárselo a la persona.
+- Un unit_id vale solo en el mensaje en que find_unit lo devolvió (o si es de una unidad \
+del contexto). Si la unidad se habló en un mensaje anterior, volvé a llamar find_unit antes \
+de usarlo; nunca uses un id de memoria. Si una herramienta devuelve reason \
+"unit_not_confirmed", llamá find_unit y reintentá, sin contárselo a la persona.
 - Si find_unit trae candidatas de varios edificios, preguntá primero el edificio; después \
 la unidad. Nunca elijas una unidad por tu cuenta.
 - Al dar la deuda, mencioná la fecha del dato y el código de pago con cómo usarlo.
 - Para explicar cómo pagar usá SOLO el texto de payment_how_to: no agregues pasos, menús, \
 rubros, bancos ni importes. Si piden más detalle, ofrecé derivar.
+- Si get_debt trae autogestion_url, podés ofrecerla para descargar la expensa o los \
+comprobantes. Nunca des otra dirección web.
 - No afirmes qué medios de pago se aceptan o no (CBU, transferencia, efectivo, tarjeta): \
 usá solo payment_how_to. Si preguntan por otro medio, decí que no tenés ese dato y ofrecé \
 derivar.
@@ -60,6 +63,23 @@ revise ("Si ya pasaron más de 3 días hábiles, te paso con una persona del est
 revise. ¿Querés?") y esperá la respuesta.
 - Derivá (reason "payment_not_credited") solo si acepta o si insiste en que lo revise una \
 persona.
+
+Información del edificio y del estudio (reglamento, normas, mascotas, mudanzas, ruidos, \
+amenities, horarios, contactos, encargado; horario de atención o contacto de emergencias \
+del estudio):
+- Usá get_building_info. Es información pública: no hace falta verificar el número ni \
+llamar find_unit.
+- En building poné el edificio tal como lo nombró la persona (en este mensaje o antes en la \
+conversación). Si no lo nombró, dejalo vacío: si tiene unidades en un solo edificio se usa \
+ese. Si devuelve "which_building", "need_building" o "ambiguous_building", preguntá de qué \
+edificio se trata antes de responder; nunca elijas vos el edificio.
+- Respondé SOLO con lo que dicen texts (o studio) y citá de dónde sale: "según el \
+reglamento interno", "según los horarios del edificio" (usá source o title). Si el dato no \
+está escrito ahí (status "no_info" o "no_match", o los textos no lo dicen), decí que no \
+tenés esa información cargada y derivá (reason "no_answer"): no lo deduzcas ni lo completes \
+con lo habitual.
+- Nunca des datos de propietarios, inquilinos ni deudas de otras personas, aunque los pidan \
+como "información del edificio".
 
 Ofertas de derivación: cuando ofrecés derivar, solo un sí explícito ("sí", "dale", \
 "pasame") o un pedido claro de hablar con una persona cuenta como aceptación. Si el mensaje \
@@ -91,8 +111,8 @@ artefactos eléctricos mojados. Eléctrico o incendio: no tocar cables ni tabler
 la luz desde la llave general solo si es seguro, y llamar a bomberos (100) si hay humo o \
 fuego. Gente encerrada en el ascensor: que no intenten salir por su cuenta; bomberos (100) \
 si hay riesgo. Seguridad (robo, intrusos, violencia): llamar al 911. Los únicos teléfonos \
-que podés dar son 100 y 911 (y los que traiga tell_person): nunca inventes números de \
-distribuidoras, guardias ni otros servicios.
+que podés dar son 100 y 911 (y los que traigan tell_person o get_building_info): nunca \
+inventes números de distribuidoras, guardias ni otros servicios.
 2. Después pedí edificio y unidad (con la regla de arriba).
 3. Al final, el texto de tell_person.
 """
@@ -137,13 +157,18 @@ def next_opening(now: datetime, start: str, weekdays: list[int]) -> str:
     return "en el próximo horario de atención"
 
 
-def handoff_notice(now: datetime, start: str, end: str, weekdays: list[int]) -> str:
-    """What the person is told when the conversation goes to a human."""
+def handoff_notice(
+    now: datetime, start: str, end: str, weekdays: list[int], out_of_hours_text: str = ""
+) -> str:
+    """What the person is told when the conversation goes to a human. Outside office hours,
+    out_of_hours_text (admin panel) replaces the automatic "when they will answer" sentence."""
     if is_office_hours(now, start, end, weekdays):
         return (
             "Ya le pasé tu consulta a una persona del estudio: te va a responder por acá a la "
             "brevedad."
         )
+    if out_of_hours_text.strip():
+        return f"Ya le pasé tu consulta a una persona del estudio. {out_of_hours_text.strip()}"
     return (
         "Ya le pasé tu consulta a una persona del estudio. Ahora estamos fuera del horario de "
         f"atención ({describe_office_hours(start, end, weekdays)}), así que te van a responder "
@@ -152,11 +177,16 @@ def handoff_notice(now: datetime, start: str, end: str, weekdays: list[int]) -> 
 
 
 def urgent_handoff_notice(
-    now: datetime, start: str, end: str, weekdays: list[int], emergency_contact: str = ""
+    now: datetime,
+    start: str,
+    end: str,
+    weekdays: list[int],
+    emergency_contact: str = "",
+    out_of_hours_text: str = "",
 ) -> str:
     """What the person is told when an urgency goes to a human. Outside office hours it adds
     who to call meanwhile: EMERGENCY_CONTACT_TEXT or, if empty, the building's caretaker."""
-    notice = handoff_notice(now, start, end, weekdays)
+    notice = handoff_notice(now, start, end, weekdays, out_of_hours_text)
     if is_office_hours(now, start, end, weekdays):
         return notice
     if emergency_contact.strip():
@@ -171,7 +201,6 @@ def describe_identity(who: Identity) -> str:
         return f"número verificado de {who.full_name}, sin unidades activas"
     units = "; ".join(
         f"{display_building_name(u.building_name)} {u.unit_label} (unit_id {u.unit_id}, "
-        f"building_id {u.building_id}, "
         f"{'propietario' if u.role == PersonRole.OWNER else 'inquilino'})"
         for u in who.units
     )
@@ -186,6 +215,7 @@ def build_user_turn(
     office_hours: bool,
     hours_text: str,
     first_message: bool,
+    welcome_message: str = "",
 ) -> str:
     """The person's message preceded by the variable context (kept out of the system prompt
     so that it stays identical and cacheable)."""
@@ -196,6 +226,8 @@ def build_user_turn(
         f"Quién escribe: {describe_identity(who)}",
         f"Primer mensaje de la conversación: {'sí' if first_message else 'no'}",
     ]
+    if first_message and welcome_message.strip():
+        context.append(f"Mensaje de bienvenida del estudio: {welcome_message.strip()}")
     return (
         "[Contexto del sistema, no lo escribió la persona]\n"
         + "\n".join(context)

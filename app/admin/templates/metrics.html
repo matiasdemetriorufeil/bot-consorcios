@@ -1,0 +1,70 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-sm-6 col-lg-4">
+  <div class="card">
+    <div class="card-body">
+      <div class="subheader">Conversaciones del mes</div>
+      <div class="h1 mb-0" id="month-conversations">{{ m.month_conversations }}</div>
+      <div class="text-muted">desde el {{ m.month_start.strftime("%d/%m/%Y") }}</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-4">
+  <div class="card">
+    <div class="card-body">
+      <div class="subheader">Derivadas a una persona</div>
+      <div class="h1 mb-0" id="handed-off">
+        {% if m.handed_off_percent is none %}–{% else %}{{ "%.0f" | format(m.handed_off_percent) }} %{% endif %}
+      </div>
+      <div class="text-muted">{{ m.month_handed_off }} de {{ m.month_conversations }} conversaciones</div>
+    </div>
+  </div>
+</div>
+<div class="col-sm-6 col-lg-4">
+  <div class="card">
+    <div class="card-body">
+      <div class="subheader">Costo de IA del mes (estimado)</div>
+      <div class="h1 mb-0" id="month-cost">US$ {{ "%.2f" | format(m.month_cost_usd) }}</div>
+      <div class="text-muted">
+        {% if m.month_calls_without_cost %}{{ m.month_calls_without_cost }} llamadas sin precio cargado (LLM_PRICE_*){% else %}según LLM_PRICE_*{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+<div class="col-lg-8">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Conversaciones por día (últimos 30 días)</h3></div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter">
+        <tbody>
+          {% for day, count in m.conversations_per_day | reverse %}
+          <tr>
+            <td class="w-1 text-nowrap">{{ day.strftime("%d/%m") }}</td>
+            <td>
+              <div class="progress progress-sm" title="{{ count }}">
+                <div class="progress-bar" style="width: {{ (100 * count / peak) | round(1) }}%"></div>
+              </div>
+            </td>
+            <td class="w-1 text-end">{{ count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div class="col-lg-4">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Herramientas más usadas (mes)</h3></div>
+    <table class="table card-table table-vcenter" id="top-tools">
+      <tbody>
+        {% for tool, count in m.top_tools %}
+        <tr><td>{{ tool }}</td><td class="w-1 text-end">{{ count }}</td></tr>
+        {% else %}
+        <tr><td class="text-muted">Sin datos este mes.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

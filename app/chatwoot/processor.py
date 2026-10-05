@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.bot.agent import FALLBACK_REPLY, Agent
+from app.bot.bot_config import load_bot_config
 from app.bot.identity import Identity, identify_by_phone, to_e164
 from app.bot.prompts import handoff_notice
 from app.bot.tools import Handoff
@@ -157,7 +158,7 @@ class ChatwootBot:
 
         if who.known and not in_pilot(session, who):
             logger.info("Conversation %s: building outside the pilot, handing off", conversation_id)
-            notice = f"{NON_PILOT_GREETING} {self._notice()}"
+            notice = f"{NON_PILOT_GREETING} {self._notice(session)}"
             handoff = Handoff("non_pilot", "Propietario de un edificio fuera de la prueba piloto.")
             self._log(session, message, phone, "handoff", **_handoff_payload(handoff))
             self._finish(session, message, phone, trusted, notice, handoff)
@@ -249,7 +250,8 @@ class ChatwootBot:
         try:
             if not self._still_pending(message.conversation_id):
                 return
-            self.client.send_message(message.conversation_id, f"{FALLBACK_REPLY} {self._notice()}")
+            notice = self._notice(session)
+            self.client.send_message(message.conversation_id, f"{FALLBACK_REPLY} {notice}")
             handoff = Handoff("technical_error", "El bot falló al procesar el mensaje.")
             self._hand_off(message.conversation_id, handoff, Identity(), trusted=False)
             self._log(session, message, None, "handoff", **_handoff_payload(handoff))
@@ -263,11 +265,9 @@ class ChatwootBot:
     def _still_pending(self, conversation_id: int) -> bool:
         return self.client.get_conversation(conversation_id).get("status") == "pending"
 
-    def _notice(self) -> str:
-        s = self.settings
-        return handoff_notice(
-            self._now(), s.office_hours_start, s.office_hours_end, s.office_weekdays
-        )
+    def _notice(self, session: Session) -> str:
+        cfg = load_bot_config(session, self.settings)
+        return handoff_notice(self._now(), *cfg.hours, cfg.out_of_hours_text)
 
     def _history(self, message: IncomingMessage) -> list[Message]:
         if not self.client.can_read_history:

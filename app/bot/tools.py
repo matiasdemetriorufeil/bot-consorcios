@@ -3,9 +3,12 @@
 The phone of whoever is writing comes from ToolContext (set by the code from the incoming
 message), NEVER from the model: no tool has a phone parameter and unknown arguments are
 rejected. Every tool checks permissions itself; can_view_unit_finance is the only gate to
-debt and payment codes. Results are plain JSON with texts already formatted for the chat.
+debt and payment codes. Building information is public (get_building_info needs no
+verification) and never carries data of people or debts. Results are plain JSON with texts
+already formatted for the chat.
 """
 
+import json
 import logging
 import math
 from collections.abc import Callable
@@ -19,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.bot import identity
+from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
 from app.bot.identity import (
     ConfirmStatus,
     RequestStatus,
@@ -31,9 +35,11 @@ from app.bot.unit_search import (
     SearchStatus,
     UnitCandidate,
     display_building_name,
+    search_building,
     search_unit,
 )
-from app.db.models import BotEvent, Building, PersonRole, Unit
+from app.config import Settings
+from app.db.models import BotEvent, Building, BuildingInfo, PersonRole, Unit
 from app.llm import ToolSpec
 from app.notify.email import EmailSender
 from app.sync.live import DebtResult
@@ -41,9 +47,8 @@ from app.sync.live import DebtResult
 logger = logging.getLogger(__name__)
 
 MAX_DEBT_LINES = 12
-PAYMENT_CODE_HOW_TO = (
-    "Con este código podés pagar por Pago Mis Cuentas o Red Link (home banking o cajero)."
-)
+# The admin panel and .env can change it (app.bot.bot_config): this is only the default.
+PAYMENT_CODE_HOW_TO: str = Settings.model_fields["payment_code_how_to"].default
 NO_PAYMENT_CODE = "La unidad no tiene código de pago cargado: pedilo a la administración."
 # Arguments never written to bot_events.
 _SECRET_ARGS = frozenset({"code"})
@@ -86,13 +91,18 @@ class ToolContext:
     handoff_notice: str = DEFAULT_HANDOFF_NOTICE
     # The same for priority "urgent" (adds who to call outside office hours).
     urgent_handoff_notice: str = DEFAULT_HANDOFF_NOTICE
+    # How to use the payment code and the self-service page (app.bot.bot_config).
+    payment_how_to: str = PAYMENT_CODE_HOW_TO
+    autogestion_url: str = ""
+    # About the studio (not a building), for get_building_info: "de lunes a viernes de 9 a
+    # 17" and who to call in an emergency outside office hours (admin panel / .env).
+    office_hours_text: str = ""
+    emergency_contact: str = ""
     # Set by handoff_to_human.
     handoff: Handoff | None = None
     # unit_ids find_unit returned in this turn. The history only keeps texts, so an id from
     # an earlier turn is gone: one the model "remembers" may be another unit (see run_tool).
     offered_unit_ids: set[int] = field(default_factory=set)
-    # The same for building_ids (find_unit's candidates and buildings).
-    offered_building_ids: set[int] = field(default_factory=set)
 
     @property
     def e164(self) -> str | None:
@@ -195,17 +205,26 @@ TOOLS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="get_building_info",
-        description="Información y reglamento de un edificio (horarios, normas, contactos).",
+        description=(
+            "Información pública de un edificio cargada por el estudio (reglamento interno, "
+            "horarios, contactos, emergencias) y datos del estudio (horario de atención, "
+            "contacto de emergencias). No requiere verificar el número. Respondé solo con lo "
+            "que devuelve, citando de dónde sale."
+        ),
         parameters=_object(
             {
-                "building_id": {
-                    "type": "integer",
-                    "description": "building_id que devolvió find_unit EN ESTE MENSAJE, o el "
-                    "de una unidad propia del contexto. Nunca uno recordado.",
+                "question": {
+                    "type": "string",
+                    "description": "Qué quiere saber, con sus palabras (ej. 'se pueden tener "
+                    "perros', 'horario de mudanzas').",
                 },
-                "question": {"type": "string", "description": "Qué quiere saber."},
+                "building": {
+                    "type": "string",
+                    "description": "Edificio tal como lo nombró la persona en la conversación "
+                    "(ej. 'Rodas 2'). Vacío si no lo nombró: nunca lo elijas vos.",
+                },
             },
-            ["building_id", "question"],
+            ["question"],
         ),
     ),
     ToolSpec(
@@ -281,29 +300,21 @@ def _loggable(arguments: dict[str, Any]) -> dict[str, Any]:
 
 
 def _unconfirmed_id(ctx: ToolContext, arguments: dict[str, Any]) -> str | None:
-    """The reason when an id argument did not come from the code: find_unit in this turn,
-    or the phone's own units and their buildings (in the per-message context, and after
-    confirm_email_code). None when every id is fine."""
+    """The reason when a unit_id did not come from the code: find_unit in this turn, or the
+    phone's own units (in the per-message context, and after confirm_email_code). None when
+    it is fine."""
     unit_id = arguments.get("unit_id")
-    building_id = arguments.get("building_id")
-    unit_ok = unit_id is None or unit_id in ctx.offered_unit_ids
-    building_ok = building_id is None or building_id in ctx.offered_building_ids
-    if unit_ok and building_ok:
+    if unit_id is None or unit_id in ctx.offered_unit_ids:
         return None
     own = identify_by_phone(ctx.session, ctx.phone).units
-    if not unit_ok and all(u.unit_id != unit_id for u in own):
+    if all(u.unit_id != unit_id for u in own):
         return "unit_not_confirmed"
-    if not building_ok and all(u.building_id != building_id for u in own):
-        return "building_not_confirmed"
     return None
 
 
 _NOT_CONFIRMED_STEPS = {
     "unit_not_confirmed": "Ese unit_id no lo devolvió find_unit en este mensaje. Llamá "
     "find_unit con el edificio y la unidad que dijo la persona y usá el unit_id que devuelva.",
-    "building_not_confirmed": "Ese building_id no lo devolvió find_unit en este mensaje ni "
-    "es de una unidad del contexto. Llamá find_unit con el edificio que dijo la persona (o "
-    "preguntale cuál es) y usá el building_id que devuelva.",
 }
 
 
@@ -350,44 +361,22 @@ def run_tool(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> dict[str
 # --- Handlers ---------------------------------------------------------------------------
 
 
-def _building_ids(session: Session, names: tuple[str, ...]) -> list[dict[str, Any]]:
-    if not names:
-        return []
-    rows = session.execute(
-        select(Building.id, Building.name).where(
-            Building.name.in_(names), Building.active.is_(True)
-        )
-    ).all()
-    order = {n: i for i, n in enumerate(names)}
-    rows = sorted(rows, key=lambda r: order.get(r[1], 0))
-    return [{"building_id": bid, "name": display_building_name(n)} for bid, n in rows]
-
-
 def find_unit(ctx: ToolContext, building_text: str, unit_text: str = "") -> dict[str, Any]:
     found = search_unit(ctx.session, building_text, unit_text)
-    buildings = _building_ids(ctx.session, found.buildings)
-    ids = [c.unit_id for c in found.candidates]
-    unit_building = dict(
-        ctx.session.execute(select(Unit.id, Unit.building_id).where(Unit.id.in_(ids))).all()
-    )
+    buildings = [display_building_name(n) for n in found.buildings]
     candidates = [
         {
             "unit_id": c.unit_id,
-            "building_id": unit_building.get(c.unit_id),
             "building": display_building_name(c.building_name),
             "unit": c.unit_label,
         }
         for c in found.candidates
     ]
-    ctx.offered_unit_ids.update(ids)
-    ctx.offered_building_ids.update(b["building_id"] for b in buildings)
-    ctx.offered_building_ids.update(
-        c["building_id"] for c in candidates if c["building_id"] is not None
-    )
+    ctx.offered_unit_ids.update(c.unit_id for c in found.candidates)
     if found.status == SearchStatus.FOUND:
         return {"status": "found", "unit": candidates[0]}
     if found.status == SearchStatus.AMBIGUOUS:
-        several = len({c["building_id"] for c in candidates}) > 1
+        several = len({c.building_name for c in found.candidates}) > 1
         result: dict[str, Any] = {"status": "ambiguous", "candidates": candidates}
         if several:
             result["buildings"] = buildings
@@ -552,10 +541,12 @@ def get_debt(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
         result["note"] = "No se pudo actualizar ahora: es el último dato guardado (ver data_date)."
     if unit.payment_code:
         result["payment_code"] = unit.payment_code
-        result["payment_how_to"] = PAYMENT_CODE_HOW_TO
+        result["payment_how_to"] = ctx.payment_how_to
     else:
         result["payment_code"] = None
         result["payment_how_to"] = NO_PAYMENT_CODE
+    if ctx.autogestion_url:
+        result["autogestion_url"] = ctx.autogestion_url
     return result
 
 
@@ -581,9 +572,116 @@ def _debt_denied(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
     }
 
 
-def get_building_info(ctx: ToolContext, building_id: int, question: str) -> dict[str, Any]:
-    # Stage 5 loads the rules of each building.
-    return {"status": "no_info", "message": "Sin información cargada para este edificio."}
+HOW_TO_ANSWER = (
+    "Respondé SOLO con lo que dicen texts (o studio si la pregunta es sobre el estudio) y "
+    "decí de dónde sale (ej. 'según el reglamento interno', con el source o el title). Si el "
+    "dato no está escrito ahí, decí que no tenés esa información cargada y derivá: no lo "
+    "deduzcas ni lo completes con lo que suele pasar en otros edificios."
+)
+
+
+def _studio(ctx: ToolContext) -> dict[str, str]:
+    studio = {"name": "Estudio Diego Rufeil (administración del consorcio)"}
+    if ctx.office_hours_text:
+        studio["office_hours"] = ctx.office_hours_text
+    if ctx.emergency_contact:
+        studio["emergency_contact"] = ctx.emergency_contact
+    return studio
+
+
+def _resolve_building(
+    ctx: ToolContext, building: str
+) -> tuple[Building | None, dict[str, Any] | None]:
+    """The building asked about, or the result to return when it is not clear which one.
+    Named: tolerant search over every active building (the information is public).
+    Not named: the phone's own building, when all its units are in one."""
+    if building.strip():
+        found = search_building(ctx.session, building)
+        if len(found) == 1:
+            return found[0], None
+        if found:
+            return None, {
+                "status": "ambiguous_building",
+                "buildings": [display_building_name(b.name) for b in found],
+                "next_step": "Preguntá cuál de estos edificios es.",
+            }
+        return None, {
+            "status": "building_not_found",
+            "next_step": "No encontré ese edificio entre los que administra el estudio: "
+            "pedí que lo confirme (nombre o dirección). No respondas sobre él.",
+        }
+    own: dict[int, str] = {}
+    for u in identify_by_phone(ctx.session, ctx.phone).units:
+        own.setdefault(u.building_id, u.building_name)
+    if len(own) == 1:
+        return ctx.session.get(Building, next(iter(own))), None
+    if own:
+        return None, {
+            "status": "which_building",
+            "buildings": [display_building_name(n) for n in own.values()],
+            "next_step": "La persona tiene unidades en varios edificios: si la pregunta es "
+            "sobre un edificio, preguntá de cuál antes de responder. Si es sobre el estudio, "
+            "respondé con studio.",
+        }
+    return None, {
+        "status": "need_building",
+        "next_step": "Si la pregunta es sobre un edificio, preguntá cuál es. Si es sobre el "
+        "estudio, respondé con studio.",
+    }
+
+
+def get_building_info(ctx: ToolContext, question: str, building: str = "") -> dict[str, Any]:
+    """Public: no verification. Only BuildingInfo texts, the building's name and address and
+    the studio settings: never people, units or debts."""
+    found, problem = _resolve_building(ctx, building)
+    result: dict[str, Any] = problem or {}
+    stats: dict[str, Any] = {}
+    if found is not None:
+        infos = list(
+            ctx.session.scalars(
+                select(BuildingInfo)
+                .where(BuildingInfo.building_id == found.id)
+                .order_by(BuildingInfo.id)
+            )
+        )
+        result = {"status": "ok", "building": display_building_name(found.name)}
+        if found.address:
+            result["address"] = found.address
+        stats = {"building_id": found.id, "texts_total": len(infos)}
+        if not infos:
+            result["status"] = "no_info"
+            result["next_step"] = (
+                "El estudio no cargó información de este edificio: decí que no tenés ese dato "
+                "y derivá. Si la pregunta es sobre el estudio, respondé con studio."
+            )
+        else:
+            chosen = select_texts(infos, question, TOKEN_BUDGET)
+            stats |= {
+                "mode": chosen.mode,
+                "texts_tokens": chosen.texts_tokens,
+                "sections_sent": chosen.sections_sent,
+                "sections_total": chosen.sections_total,
+            }
+            if chosen.texts:
+                result["texts"] = chosen.texts
+                result["how_to_answer"] = HOW_TO_ANSWER
+            else:
+                result["status"] = "no_match"
+                result["next_step"] = (
+                    "Ningún texto cargado del edificio habla de eso: decí que no tenés esa "
+                    "información y derivá. Si la pregunta es sobre el estudio, respondé con "
+                    "studio."
+                )
+            if chosen.other_titles:
+                result["other_texts"] = chosen.other_titles
+    result["studio"] = _studio(ctx)
+    tokens = estimate_tokens(json.dumps(result, ensure_ascii=False))
+    ctx.log("building_info", status=result["status"], tokens=tokens, **stats)
+    logger.info(
+        "Conversation %s: get_building_info -> %s, ~%d tokens",
+        ctx.conversation_id, result["status"], tokens,
+    )  # fmt: skip
+    return result
 
 
 def handoff_to_human(

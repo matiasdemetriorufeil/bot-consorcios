@@ -1,0 +1,44 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-lg-8">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Verificación #{{ verification.id }}</h3>
+    </div>
+    <div class="card-body">
+      <dl class="row">
+        <dt class="col-4">Edificio</dt><dd class="col-8">{{ building }}</dd>
+        <dt class="col-4">Unidad</dt><dd class="col-8">{{ verification.unit.label }}</dd>
+        <dt class="col-4">Nombre declarado</dt><dd class="col-8">{{ verification.claimed_name }}</dd>
+        <dt class="col-4">Teléfono</dt><dd class="col-8">{{ verification.phone_e164 }}</dd>
+        <dt class="col-4">Fecha</dt><dd class="col-8">{{ created_at }}</dd>
+      </dl>
+      {% if error %}
+      <div class="alert alert-danger" role="alert">{{ error }}</div>
+      {% endif %}
+      {% if not pending %}
+      <div class="alert alert-info" role="alert">Esta solicitud ya está resuelta ({{ verification.status.value }}).</div>
+      {% elif not owners %}
+      <div class="alert alert-warning" role="alert">
+        La unidad no tiene propietarios cargados: no se puede asociar el teléfono. Podés rechazarla desde el listado.
+      </div>
+      {% else %}
+      <form method="POST">
+        <p>Elegí el propietario al que se asocia el teléfono (queda verificado, origen "manual"):</p>
+        {% for owner in owners %}
+        <label class="form-check">
+          <input class="form-check-input" type="radio" name="person_id" value="{{ owner.id }}"
+            {% if owners | length == 1 %}checked{% endif %} required>
+          <span class="form-check-label">{{ owner.full_name }}</span>
+        </label>
+        {% endfor %}
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary">Aprobar</button>
+          <a href="{{ list_url }}" class="btn">Cancelar</a>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

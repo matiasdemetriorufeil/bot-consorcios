@@ -626,6 +626,7 @@ def approve_verification_request(
         unit_id=request.unit_id,
         person_id=person_id,
         reassigned_from_person_id=reassigned_from,
+        resolved_by=resolved_by,
     )
     session.commit()
     return request
@@ -645,6 +646,7 @@ def reject_verification_request(
         result="rejected",
         request_id=request.id,
         unit_id=request.unit_id,
+        resolved_by=resolved_by,
     )
     session.commit()
     return request

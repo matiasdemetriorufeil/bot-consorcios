@@ -132,6 +132,39 @@ El teléfono del contacto solo identifica en las bandejas de `CHATWOOT_TRUSTED_P
 - Configuración, Agent Bot y prueba con el chat web (`/dev/chat`): [docs/chatwoot.md](docs/chatwoot.md)
 - Conectar WhatsApp cuando Meta apruebe: [docs/whatsapp.md](docs/whatsapp.md)
 
+## Panel de administración (`app/admin/`, `/admin`)
+
+Panel SQLAdmin para los operadores en `http://localhost:8000/admin`:
+
+- **Edificios**: nombre, dirección, activo y piloto (los edificios los crea la sincronización).
+- **Información de edificios**: reglamento, horarios, contactos, emergencias y otros, por edificio.
+- **Teléfonos**: todos los teléfonos, con búsqueda por número (se comparan los dígitos, así que
+  sirve `0351 555-0000`) o por nombre, filtros por verificado, a revisar, en conflicto y fuente,
+  y las unidades de cada persona. No se crean ni editan; **Desvincular** borra el teléfono
+  (número que cambió de dueño o mal asociado). Si el número sigue en ConsorPlus, la
+  sincronización nocturna lo vuelve a crear: hay que corregirlo también allá.
+- **Teléfonos a revisar** (característica supuesta al importar): aprobar o eliminar.
+- **Verificaciones pendientes** (unidades sin email de propietario): aprobar eligiendo el
+  propietario (el teléfono queda asociado con origen `manual`) o rechazar.
+- **Sincronizaciones**: historial de `sync_runs`, solo lectura.
+- **Configuración general**: bienvenida, horario, texto fuera de horario, contacto de
+  urgencias, URL de autogestión y cómo pagar. El valor del panel tiene prioridad sobre `.env`
+  (vacío = se usa el de `.env`) y el bot lo toma en menos de un minuto, sin reiniciar.
+- **Métricas**: conversaciones por día, porcentaje derivado, herramientas más usadas y costo
+  de IA del mes (de `bot_events`).
+
+Ingreso con un único usuario de `.env`:
+
+```powershell
+uv run python scripts/hash_admin_password.py   # pide la contraseña e imprime el hash
+```
+
+Completar en `.env` `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (el hash, nunca la contraseña) y
+`ADMIN_SECRET_KEY`. Tras 5 intentos fallidos el ingreso se bloquea 15 minutos. Todas las
+acciones del panel quedan en `bot_events` (`event_type = 'admin_action'`, con el usuario y los
+campos cambiados, sin sus valores). El panel nunca muestra códigos de verificación ni valores
+de `.env`.
+
 ## Tests y lint
 
 Los tests de base de datos usan un Postgres real: la base `<POSTGRES_DB>_test` en el mismo

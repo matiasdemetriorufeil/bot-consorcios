@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.bot import tools
+from app.bot.bot_config import load_bot_config
 from app.bot.identity import identify_by_phone
 from app.bot.prompts import (
     SYSTEM_PROMPT,
@@ -117,8 +118,9 @@ class Agent:
     ) -> AgentReply:
         past = trim_history(list(history or []))
         now = self._now().astimezone(ZoneInfo(self.settings.timezone))
-        s = self.settings
-        hours = (s.office_hours_start, s.office_hours_end, s.office_weekdays)
+        # Admin panel values over .env, re-read at most every minute.
+        cfg = load_bot_config(session, self.settings)
+        hours = cfg.hours
         ctx = ToolContext(
             session=session,
             phone=phone,
@@ -126,8 +128,14 @@ class Agent:
             timezone=self.settings.timezone,
             email_sender=self._email_sender,
             conversation_id=conversation_id,
-            handoff_notice=handoff_notice(now, *hours),
-            urgent_handoff_notice=urgent_handoff_notice(now, *hours, s.emergency_contact_text),
+            handoff_notice=handoff_notice(now, *hours, cfg.out_of_hours_text),
+            urgent_handoff_notice=urgent_handoff_notice(
+                now, *hours, cfg.emergency_contact_text, cfg.out_of_hours_text
+            ),
+            payment_how_to=cfg.payment_code_how_to,
+            autogestion_url=cfg.autogestion_url,
+            office_hours_text=describe_office_hours(*hours),
+            emergency_contact=cfg.emergency_contact_text,
         )
         user_turn = build_user_turn(
             text,
@@ -136,6 +144,7 @@ class Agent:
             office_hours=is_office_hours(now, *hours),
             hours_text=describe_office_hours(*hours),
             first_message=not any(isinstance(m, UserMessage) for m in past),
+            welcome_message=cfg.welcome_message,
         )
         # The stored history keeps the plain text; the context only goes in this call.
         turn: list[Message] = []

@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # Who to call for an urgency outside office hours (said by the bot after the handoff
     # notice, e.g. "llamá al encargado, Juan, al 351..."). Empty: it suggests the caretaker.
     emergency_contact_text: str = ""
+    # Self-service web page (download expensas, receipts). get_debt offers it. Empty: never.
+    autogestion_url: str = ""
+    # How to use the Siro payment code, said with the debt (copied verbatim by the bot).
+    payment_code_how_to: str = (
+        "Con este código podés pagar por Pago Mis Cuentas o Red Link (home banking o cajero)."
+    )
+    # These texts can also be set in the admin panel (Configuración general), which wins
+    # over the values here when not empty: see app.bot.bot_config.
 
     consorplus_base_url: str = "https://consorplus.drufeilccios.com.ar/"
     consorplus_user: str = ""
@@ -86,6 +94,13 @@ class Settings(BaseSettings):
     verification_email_exclude: str = "estudiodiegorufeil@gmail.com"
 
     timezone: str = "America/Argentina/Cordoba"
+
+    # Admin panel (/admin). With any of the three missing, every login is rejected.
+    admin_username: str = ""
+    # Generate with: uv run python scripts/hash_admin_password.py (never the plain password).
+    admin_password_hash: SecretStr | None = None
+    # Signs the panel's session cookie.
+    admin_secret_key: SecretStr | None = None
 
     @field_validator("chatwoot_trusted_phone_inbox_ids", mode="before")
     @classmethod

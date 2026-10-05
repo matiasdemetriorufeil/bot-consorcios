@@ -8,8 +8,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.bot.building_info import TOKEN_BUDGET, select_texts
 from app.bot.identity import can_view_unit_finance, identify_by_phone
-from app.db.models import DebtSnapshot, Unit
+from app.db.models import Building, DebtSnapshot, Unit
 from app.llm import (
     AssistantMessage,
     LLMError,
@@ -153,6 +154,11 @@ def test_seed_is_consistent(db_session: Session) -> None:
         )
     }
     assert totals["101-04-C"] == Decimal("165060") and totals["103-05-A"] == Decimal("87250.50")
+    # Torre del Sol's rules are over the budget: only the relevant article goes.
+    sol = db_session.scalar(select(Building).where(Building.name == "103 TORRE DEL SOL"))
+    chosen = select_texts(sol.infos, "¿Puedo tender la ropa en el balcón?")
+    assert chosen.mode == "sections" and chosen.texts_tokens <= TOKEN_BUDGET
+    assert "terraza" in chosen.texts[0]["content"]
 
 
 def test_retrying_provider_retries_only_transient_errors() -> None:
@@ -230,7 +236,7 @@ def test_must_return_checks_the_tool_status() -> None:
     case = _case(must_return=(("get_building_info", "no_info"),))
     ok = _result(case, ["No tengo esa info."])
     ok.tool_calls = [
-        ToolCallRecord("get_building_info", {}, "error", 0, "building_not_confirmed"),
+        ToolCallRecord("get_building_info", {}, "error", 0, "invalid_arguments"),
         ToolCallRecord("get_building_info", {}, "no_info", 0),
     ]
     assert check(case, ok) == []

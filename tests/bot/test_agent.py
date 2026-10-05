@@ -14,11 +14,20 @@ from sqlalchemy.orm import Session
 
 from app.bot import identity, tools
 from app.bot.agent import FALLBACK_REPLY, MAX_ROUNDS, Agent, trim_history
+from app.bot.bot_config import invalidate_bot_config
 from app.bot.identity import identify_by_phone
 from app.bot.prompts import SYSTEM_PROMPT, describe_identity
 from app.bot.tools import ToolContext, run_tool
 from app.config import Settings
-from app.db.models import BotEvent, DebtLine, DebtSnapshot, PersonRole, SyncKind, Unit
+from app.db.models import (
+    BotEvent,
+    BotSettings,
+    DebtLine,
+    DebtSnapshot,
+    PersonRole,
+    SyncKind,
+    Unit,
+)
 from app.llm import (
     AssistantMessage,
     LLMError,
@@ -262,7 +271,7 @@ def test_real_sdk_error_also_falls_back(name: str, world: World) -> None:
 
 @pytest.mark.parametrize("name", PROVIDERS)
 def test_loop_exhausted(name: str, world: World) -> None:
-    steps = [Call("get_building_info", {"building_id": 1, "question": "?"})] * (MAX_ROUNDS + 1)
+    steps = [Call("get_building_info", {"question": "?"})] * (MAX_ROUNDS + 1)
     agent, script = make_agent(name, steps, world)
 
     reply = agent.reply(world.session, OWNER_PHONE, "¿Se puede tener perro?")
@@ -303,6 +312,48 @@ def test_urgent_handoff_tells_the_emergency_contact_out_of_hours(name: str, worl
     agent.reply(world.session, UNKNOWN_PHONE, "se inunda el baño")
     told = last_tool_result(name, script.requests[1])
     assert "el lunes a partir de las 9" in told and "llamá al 351 000-0000." in told
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_admin_panel_settings_reach_the_agent(name: str, world: World) -> None:
+    """Values of the admin panel (bot_settings) win over .env, without restarting."""
+    row = world.session.get(BotSettings, 1)
+    row.welcome_message = "¡Hola! Te atiende el asistente del estudio inventado."
+    row.payment_code_how_to = "Pagalo con el código en el banco inventado."
+    row.autogestion_url = "https://autogestion.example.com"
+    row.out_of_hours_text = "Te contestamos el próximo día hábil."
+    world.session.commit()
+    invalidate_bot_config()
+    steps = [
+        Call("get_debt", {"unit_id": world.unit_id}),
+        Call("handoff_to_human", {"reason": "payment_plan", "summary": "x", "priority": "normal"}),
+        Say("Listo."),
+    ]
+    provider, script = scripted_provider(name, steps)
+    saturday_night = datetime(2026, 10, 3, 22, 0, tzinfo=ZoneInfo("America/Argentina/Cordoba"))
+    agent = Agent(
+        provider,
+        settings=SETTINGS.model_copy(update={"payment_code_how_to": "texto de .env"}),
+        refresh_debt=world.refresh,
+        now=lambda: saturday_night,
+    )
+
+    agent.reply(world.session, OWNER_PHONE, "hola, ¿cuánto debo?")
+
+    first_turn = last_user_text(name, script.requests[0])
+    assert "Mensaje de bienvenida del estudio: ¡Hola! Te atiende el asistente" in first_turn
+    debt = last_tool_result(name, script.requests[1])
+    assert "Pagalo con el código en el banco inventado." in debt
+    assert "texto de .env" not in debt
+    assert "https://autogestion.example.com" in debt
+    told = last_tool_result(name, script.requests[2])
+    assert "Te contestamos el próximo día hábil." in told
+    assert "el lunes a partir de las 9" not in told
+
+
+def test_get_debt_without_autogestion_url_does_not_mention_it(world: World) -> None:
+    result = run_tool(world.ctx(OWNER_PHONE), "get_debt", {"unit_id": world.unit_id})
+    assert "autogestion_url" not in result
 
 
 def test_normal_handoff_does_not_get_the_urgent_notice(world: World) -> None:
@@ -362,7 +413,7 @@ def test_find_unit_several_buildings_asks_building_first(world: World) -> None:
     f.unit(world.session, f.building(world.session, "032 RODAS I"), "04-C")
     result = run_tool(world.ctx(UNKNOWN_PHONE), "find_unit", {"building_text": "Rodas 4C"})
     assert result["status"] == "ambiguous"
-    assert {b["name"] for b in result["buildings"]} == {"RODAS I", "RODAS II"}
+    assert set(result["buildings"]) == {"RODAS I", "RODAS II"}
     assert "edificio" in result["next_step"]
     dumped = json.dumps(result, ensure_ascii=False)
     assert "Ana" not in dumped and "Tito" not in dumped
@@ -374,7 +425,7 @@ def test_find_unit_found(world: World) -> None:
     )
     assert result["status"] == "found"
     assert result["unit"]["unit_id"] == world.unit_id
-    assert set(result["unit"]) == {"unit_id", "building_id", "building", "unit"}
+    assert set(result["unit"]) == {"unit_id", "building", "unit"}
 
 
 @dataclass
@@ -497,16 +548,8 @@ def test_already_verified_owner_gets_no_code(world: World) -> None:
     assert result["status"] == "already_verified"
 
 
-def _building_id(world: World) -> int:
-    return world.session.get(Unit, world.unit_id).building_id
-
-
-def test_building_info_and_handoff_placeholders(world: World) -> None:
+def test_handoff_is_recorded(world: World) -> None:
     ctx = world.ctx(OWNER_PHONE)
-    # The building of one of the phone's own units needs no find_unit.
-    args = {"building_id": _building_id(world), "question": "¿Mascotas?"}
-    info = run_tool(ctx, "get_building_info", args)
-    assert info["status"] == "no_info"
     handoff = run_tool(
         ctx, "handoff_to_human", {"reason": "emergency", "summary": "pérdida de agua",
                                   "priority": "urgent"}
@@ -574,45 +617,6 @@ def test_trim_history_never_starts_with_a_tool_result() -> None:
     assert trim_history(history, 2)[0] == UserMessage("u1")
 
 
-def test_building_id_not_returned_by_find_unit_is_rejected(world: World) -> None:
-    other = f.building(world.session, "045 TORRE INVENTADA")
-    world.session.commit()
-    rodas = _building_id(world)
-
-    for phone, building_id in [(UNKNOWN_PHONE, rodas), (OWNER_PHONE, other.id)]:
-        ctx = world.ctx(phone)
-        result = run_tool(ctx, "get_building_info", {"building_id": building_id, "question": "x"})
-        assert result["status"] == "error", phone
-        assert result["reason"] == "building_not_confirmed", phone
-        assert "find_unit" in result["next_step"]
-    [*_, logged] = world.events("tool_call")
-    assert logged.payload["reason"] == "building_not_confirmed"
-
-    # A building alone (no unit) is enough for find_unit to offer its id.
-    ctx = world.ctx(UNKNOWN_PHONE)
-    run_tool(ctx, "find_unit", {"building_text": "Rodas II"})
-    result = run_tool(ctx, "get_building_info", {"building_id": rodas, "question": "x"})
-    assert result["status"] == "no_info"
-
-
-@pytest.mark.parametrize("name", PROVIDERS)
-def test_building_id_from_an_earlier_turn_is_not_accepted(name: str, world: World) -> None:
-    rodas = _building_id(world)
-    steps = [
-        Call("find_unit", {"building_text": "Rodas II"}),
-        Say("¿Qué querés saber del Rodas II?"),
-        Call("get_building_info", {"building_id": rodas, "question": "mascotas"}),
-        Say("Dame un segundo."),
-    ]
-    agent, script = make_agent(name, steps, world)
-
-    first = agent.reply(world.session, UNKNOWN_PHONE, "Una consulta del Rodas II")
-    agent.reply(world.session, UNKNOWN_PHONE, "¿se pueden tener perros?", first.history)
-
-    result = last_tool_result(name, script.requests[3])
-    assert "building_not_confirmed" in result
-
-
-def test_context_lists_the_building_id_of_own_units(world: World) -> None:
+def test_context_lists_the_unit_id_of_own_units(world: World) -> None:
     text = describe_identity(identify_by_phone(world.session, OWNER_PHONE))
-    assert f"unit_id {world.unit_id}, building_id {_building_id(world)}" in text
+    assert f"RODAS II 04-C (unit_id {world.unit_id}, propietario)" in text
