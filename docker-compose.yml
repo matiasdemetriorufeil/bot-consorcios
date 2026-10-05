@@ -27,8 +27,13 @@ x-chatwoot-base: &chatwoot-base
     # docs/chatwoot.md) is one. This lets the Agent Bot call our api here. NEVER in
     # production: there the webhook goes to a public HTTPS URL and this protection must stay on.
     SAFE_FETCH_ALLOW_PRIVATE_NETWORK: "true"
+    # ⚠️ DEVELOPMENT ONLY. "from:to,..." pairs that rewrite the WhatsApp recipient, for Meta's
+    # test number with Argentine numbers (549... vs 54...15...). Empty = no-op. Used by the
+    # initializer mounted below; see docs/whatsapp.md. Leave empty in production.
+    CHATWOOT_DEV_WA_RECIPIENT_REWRITE: ${CHATWOOT_DEV_WA_RECIPIENT_REWRITE:-}
   volumes:
     - chatwoot_storage:/app/storage
+    - ./chatwoot/initializers/zz_dev_whatsapp_recipient_rewrite.rb:/app/config/initializers/zz_dev_whatsapp_recipient_rewrite.rb:ro
   depends_on:
     chatwoot-db:
       condition: service_healthy

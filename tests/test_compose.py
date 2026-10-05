@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 COMPOSE = Path(__file__).resolve().parents[1] / "docker-compose.yml"
@@ -30,6 +31,40 @@ def test_tunnel_image_is_pinned() -> None:
     image = services()["cloudflared"]["image"]
     assert image.startswith("cloudflare/cloudflared:")
     assert "latest" not in image and ":-" in image  # ${CLOUDFLARED_VERSION:-x.y.z}
+
+
+@pytest.mark.parametrize("name", ["chatwoot-rails", "chatwoot-sidekiq"])
+def test_chatwoot_frontend_url_comes_from_env(name: str) -> None:
+    # Chatwoot registers the WhatsApp webhook in Meta as FRONTEND_URL/webhooks/whatsapp/...:
+    # it must follow CHATWOOT_FRONTEND_URL (the tunnel) and fall back to localhost.
+    service = services()[name]
+    assert service["environment"]["FRONTEND_URL"] == (
+        "${CHATWOOT_FRONTEND_URL:-http://localhost:3000}"
+    )
+    assert "env_file" not in service  # nothing else may override it
+
+
+REWRITE_INITIALIZER = "zz_dev_whatsapp_recipient_rewrite.rb"
+
+
+@pytest.mark.parametrize("name", ["chatwoot-rails", "chatwoot-sidekiq"])
+def test_chatwoot_mounts_dev_recipient_rewrite_read_only(name: str) -> None:
+    # Rails sends from both processes (web replies and Sidekiq jobs): both need the patch.
+    mount = (
+        f"./chatwoot/initializers/{REWRITE_INITIALIZER}"
+        f":/app/config/initializers/{REWRITE_INITIALIZER}:ro"
+    )
+    assert mount in services()[name]["volumes"]
+    assert (COMPOSE.parent / "chatwoot" / "initializers" / REWRITE_INITIALIZER).is_file()
+
+
+@pytest.mark.parametrize("name", ["chatwoot-rails", "chatwoot-sidekiq"])
+def test_chatwoot_dev_recipient_rewrite_defaults_to_empty(name: str) -> None:
+    # Empty = the initializer does nothing. No real numbers in the repo.
+    environment = services()[name]["environment"]
+    assert environment["CHATWOOT_DEV_WA_RECIPIENT_REWRITE"] == (
+        "${CHATWOOT_DEV_WA_RECIPIENT_REWRITE:-}"
+    )
 
 
 def test_published_ports_stay_on_localhost() -> None:
