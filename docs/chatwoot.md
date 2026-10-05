@@ -381,4 +381,6 @@ docker compose exec db psql -U postgres -d bot_consorcios -c "DELETE FROM phones
   **En producción no va**: ahí el webhook apunta a una URL pública con HTTPS.
 - **Sin email:** no hay SMTP configurado, así que Chatwoot no manda invitaciones, recuperación de
   contraseña ni notificaciones por mail.
-- **Solo local:** todo se publica en `127.0.0.1`; desde otra PC de la red no se accede.
+- **Solo local:** todo se publica en `127.0.0.1`; desde otra PC de la red no se accede. La
+  excepción es el túnel del perfil `tunnel`, que publica Chatwoot en internet para que Meta le
+  mande los mensajes de WhatsApp ([docs/whatsapp.md](whatsapp.md)).

@@ -142,6 +142,23 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # --- Túnel HTTPS hacia Chatwoot (SOLO DESARROLLO) ---
+  # Cloudflare "quick tunnel": publishes chatwoot-rails at a random https://*.trycloudflare.com
+  # so Meta can deliver WhatsApp webhooks. Own profile, never started by default: while it
+  # runs, the Chatwoot panel is reachable from the internet. Our api is NOT published.
+  #   docker compose --profile chatwoot --profile tunnel up -d cloudflared
+  #   docker compose logs cloudflared   (the URL is in the "trycloudflare.com" line)
+  # The URL changes every time the container starts: no restart policy, so it never changes
+  # behind our back. Step by step: docs/whatsapp.md
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:-2026.9.2}
+    profiles: ["tunnel"]
+    command: ["tunnel", "--no-autoupdate", "--url", "http://chatwoot-rails:3000"]
+    depends_on:
+      chatwoot-rails:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   pgdata:
   chatwoot_pgdata:
