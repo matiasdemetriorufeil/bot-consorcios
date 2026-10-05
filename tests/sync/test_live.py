@@ -1,6 +1,7 @@
 """Live debt refresh with a fake ConsorPlus, against the Postgres test database."""
 
 import threading
+from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -175,6 +176,38 @@ def test_pending_fetch_of_the_same_unit_is_joined(db_session, unit, refresher, s
     source.gate.set()
     refresher.shutdown(wait=True)
     assert source.debt_calls == [("7", "7001")]
+
+
+class InlineExecutor:
+    """Runs the task on submit: the future is already done when it is returned."""
+
+    def submit(self, fn, *args) -> Future:
+        future: Future = Future()
+        try:
+            future.set_result(fn(*args))
+        except Exception as exc:
+            future.set_exception(exc)
+        return future
+
+    def shutdown(self, wait: bool = True) -> None:
+        pass
+
+
+@pytest.mark.timeout(5)
+@pytest.mark.parametrize("fails", [False, True], ids=["ok", "error"])
+def test_fetch_that_ends_before_submit_returns_does_not_deadlock(
+    db_session, unit, refresher, source, fails
+) -> None:
+    # The worker may finish before _submit registers its done callback (ConsorPlus failing
+    # at once). The callback then runs in the caller thread and takes the lock.
+    refresher._executor = InlineExecutor()
+    if fails:
+        source.debts[("7", "7001")] = ConsorPlusUnavailableError("sin respuesta")
+
+    result = refresher.refresh_unit(unit.id)
+
+    assert result.stale is fails
+    assert refresher._pending == {}
 
 
 def test_unknown_unit_raises(refresher) -> None:

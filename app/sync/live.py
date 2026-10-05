@@ -155,11 +155,14 @@ class LiveRefresher:
         """Queue the fetch, or join the one already queued/running for the same unit."""
         with self._lock:
             future = self._pending.get(unit_id)
-            if future is None or future.done():
-                future = self._executor.submit(self._fetch, unit_id, building_code, unit_value)
-                self._pending[unit_id] = future
-                future.add_done_callback(lambda f: self._forget(unit_id, f))
-            return future
+            if future is not None and not future.done():
+                return future
+            future = self._executor.submit(self._fetch, unit_id, building_code, unit_value)
+            self._pending[unit_id] = future
+        # Outside the lock: if the fetch already ended, the callback runs right here, and
+        # _forget takes the lock (not reentrant) — inside it, this thread would deadlock.
+        future.add_done_callback(lambda f: self._forget(unit_id, f))
+        return future
 
     def _forget(self, unit_id: int, future: Future[int]) -> None:
         with self._lock:

@@ -117,16 +117,7 @@ def test_http_and_network_errors() -> None:
         make_client(FakeHttp(error=requests.ConnectionError())).send_message(7, "x")
 
 
-def test_from_settings_requires_url_and_account(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The container's environment may define them; Settings reads it despite _env_file=None.
-    for name in (
-        "CHATWOOT_BASE_URL",
-        "CHATWOOT_ACCOUNT_ID",
-        "CHATWOOT_BOT_TOKEN",
-        "CHATWOOT_API_TOKEN",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
+def test_from_settings_requires_url_and_account() -> None:
     with pytest.raises(ChatwootError):
         ChatwootClient.from_settings(Settings(_env_file=None))
     client = ChatwootClient.from_settings(
