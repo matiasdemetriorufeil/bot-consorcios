@@ -40,6 +40,9 @@ class FakeChatwoot:
     def send_message(self, conversation_id: int, content: str, *, private: bool = False) -> None:
         self._call("note" if private else "send_message", conversation_id, content)
 
+    def send_choices(self, conversation_id: int, text: str, options: list[tuple[str, str]]) -> None:
+        self._call("send_choices", conversation_id, text, [tuple(o) for o in options])
+
     def add_private_note(self, conversation_id: int, content: str) -> None:
         self.send_message(conversation_id, content, private=True)
 
@@ -88,6 +91,8 @@ def message_payload(
     contact_id: int = 55,
     phone: str | None = None,
     custom_attributes: dict[str, Any] | None = None,
+    channel: str = "Channel::WebWidget",
+    content_attributes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A message_created payload shaped like Chatwoot v4.18's (invented data)."""
     contact = {
@@ -107,7 +112,7 @@ def message_payload(
         "id": message_id,
         "content": content,
         "content_type": content_type,
-        "content_attributes": {},
+        "content_attributes": content_attributes or {},
         "additional_attributes": {},
         "message_type": message_type,
         "private": private,
@@ -120,7 +125,7 @@ def message_payload(
             "id": conversation_id,
             "inbox_id": inbox_id,
             "status": status,
-            "channel": "Channel::WebWidget",
+            "channel": channel,
             "labels": [],
             "meta": {"sender": {**contact, "type": "contact"}, "assignee": None},
             "messages": [],
@@ -136,17 +141,32 @@ def message_payload(
 
 
 def history_message(
-    message_id: int, content: str, message_type: int, *, private: bool = False
+    message_id: int,
+    content: str,
+    message_type: int,
+    *,
+    private: bool = False,
+    content_type: str = "text",
+    content_attributes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A message as GET .../messages returns it (message_type is an integer there)."""
     return {
         "id": message_id,
         "content": content,
         "message_type": message_type,
-        "content_type": "text",
+        "content_type": content_type,
+        "content_attributes": content_attributes or {},
         "private": private,
         "created_at": 1_790_000_000 + message_id,
     }
+
+
+def options_attributes(titles: list[str], chosen: str | None = None) -> dict[str, Any]:
+    """content_attributes of a bot "input_select" message; chosen = tapped in the widget."""
+    attributes: dict[str, Any] = {"items": [{"title": t, "value": t} for t in titles]}
+    if chosen is not None:
+        attributes["submitted_values"] = [{"title": chosen, "value": chosen}]
+    return attributes
 
 
 def signed_headers(body: bytes, secret: str = SECRET, timestamp: int | None = None) -> dict:

@@ -71,3 +71,19 @@ def test_published_ports_stay_on_localhost() -> None:
     for name, service in services().items():
         for port in service.get("ports", []):
             assert str(port).startswith("127.0.0.1:"), name
+
+
+LOCALE_OVERRIDES = "zz_bot_overrides.yml"
+
+
+@pytest.mark.parametrize("name", ["chatwoot-rails", "chatwoot-sidekiq"])
+def test_chatwoot_mounts_the_spanish_list_button_label(name: str) -> None:
+    # Sidekiq sends WhatsApp lists, with the label of the button that opens them.
+    mount = f"./chatwoot/locales/{LOCALE_OVERRIDES}:/app/config/locales/{LOCALE_OVERRIDES}:ro"
+    assert mount in services()[name]["volumes"]
+    overrides = yaml.safe_load(
+        (COMPOSE.parent / "chatwoot" / "locales" / LOCALE_OVERRIDES).read_text(encoding="utf-8")
+    )
+    for locale in ("en", "es"):  # Sidekiq uses the default locale (en)
+        whatsapp = overrides[locale]["conversations"]["messages"]["whatsapp"]
+        assert whatsapp == {"list_button_label": "Ver opciones"}

@@ -86,3 +86,13 @@ def test_phone_state_restores_an_existing_phone(db_session: Session, unit) -> No
     db_session.refresh(row)
     assert (row.person_id, row.source) == (other.id, DataSource.CONSORPLUS)
     assert state.restore(db_session) is None  # nothing left to undo
+
+
+def test_options_show_numbered_and_a_number_picks_one() -> None:
+    titles = ["Sí, pasame", "No, gracias"]
+
+    assert chat_cli.show_options(titles) == "[1] Sí, pasame  [2] No, gracias"
+    assert chat_cli.pick("2", titles) == "No, gracias"  # as WhatsApp delivers a tap
+    assert chat_cli.pick("3", titles) == "3"
+    assert chat_cli.pick("sí", titles) == "sí"
+    assert chat_cli.pick("1", []) == "1"

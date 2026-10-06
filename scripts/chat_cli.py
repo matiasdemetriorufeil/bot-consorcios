@@ -11,7 +11,9 @@ Usage (from the repo root, with the db running):
                     local numbers never start with 0) is linked to an owner with
                     source="manual" and deleted on exit.
 
-Commands: /reset (new conversation), /exit.
+Commands: /reset (new conversation), /exit. When the bot offers options (WhatsApp buttons or
+a list) they show as [1] [2] [3]: type the number to "tap" one (the agent gets its title, as
+from WhatsApp) or write anything else.
 
 ConsorPlus is only READ: debt comes from app.sync.live.refresh_unit (read-only client) or
 the database. Whatever the conversation changes in the simulated phone (e.g. an email
@@ -173,8 +175,21 @@ def describe(reply: AgentReply, prices: Prices) -> list[str]:
     return lines
 
 
+def show_options(titles: list[str]) -> str:
+    """ "[1] Sí, pasame  [2] No, gracias" """
+    return "  ".join(f"[{n}] {title}" for n, title in enumerate(titles, 1))
+
+
+def pick(text: str, titles: list[str]) -> str:
+    """The title of option `text` (a number) as WhatsApp sends a tap; otherwise the text."""
+    if text.isdigit() and 1 <= int(text) <= len(titles):
+        return titles[int(text) - 1]
+    return text
+
+
 def chat(agent: Agent, session: Session, phone: str, prices: Prices) -> None:
     history: list = []
+    titles: list[str] = []  # options of the last reply
     print(gray("Escribí tu mensaje. /reset = conversación nueva, /exit = salir."))
     while True:
         try:
@@ -187,14 +202,23 @@ def chat(agent: Agent, session: Session, phone: str, prices: Prices) -> None:
         if text == "/exit":
             return
         if text == "/reset":
-            history = []
+            history, titles = [], []
             print(gray("— conversación nueva —"))
             continue
+        if (chosen := pick(text, titles)) != text:
+            print(gray(f"  ↳ tocaste «{chosen}»"))
+            text = chosen
         reply = agent.reply(session, phone, text, history)
         history = reply.history
         for line in describe(reply, prices):
             print(gray(line))
+        # As in WhatsApp: the debt messages built by the code go first, each on its own.
+        for message in reply.debt_messages:
+            print(f"🤖 {message}\n")
         print(f"🤖 {reply.text}")
+        titles = [c.title for c in reply.choices]
+        if titles:
+            print(f"   {show_options(titles)}")
 
 
 def banner(lines: list[str]) -> None:

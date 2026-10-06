@@ -34,6 +34,8 @@ x-chatwoot-base: &chatwoot-base
   volumes:
     - chatwoot_storage:/app/storage
     - ./chatwoot/initializers/zz_dev_whatsapp_recipient_rewrite.rb:/app/config/initializers/zz_dev_whatsapp_recipient_rewrite.rb:ro
+    # Spanish label of the button that opens a WhatsApp list (see the file).
+    - ./chatwoot/locales/zz_bot_overrides.yml:/app/config/locales/zz_bot_overrides.yml:ro
   depends_on:
     chatwoot-db:
       condition: service_healthy

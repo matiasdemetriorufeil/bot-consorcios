@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.bot import identity, tools
 from app.bot.agent import FALLBACK_REPLY, MAX_ROUNDS, Agent, trim_history
 from app.bot.bot_config import invalidate_bot_config
+from app.bot.choices import Choice, with_options
+from app.bot.debt_message import FIRST_GREETING
 from app.bot.identity import identify_by_phone
 from app.bot.prompts import SYSTEM_PROMPT, describe_identity
 from app.bot.tools import ToolContext, run_tool
@@ -146,7 +148,7 @@ def test_tool_loop_gets_debt_for_verified_owner(name: str, world: World) -> None
     result = last_tool_result(name, script.requests[1])
     assert "$165.060,00" in result
     assert PAYMENT_CODE in result
-    assert "30/09/2026 14:05" in result
+    assert "30/09/2026 a las 14:05" in result
     # Fixed system prompt; the variable context goes in the user message.
     first = script.requests[0]
     assert system_of(name, first) == SYSTEM_PROMPT
@@ -167,6 +169,95 @@ def test_tool_loop_gets_debt_for_verified_owner(name: str, world: World) -> None
     assert turn.payload["rounds"] == 2
     assert turn.payload["input_tokens"] == 2000
     assert turn.payload["cost_usd"] > 0
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_debt_message_goes_before_the_agent_text(name: str, world: World) -> None:
+    steps = [Call("get_debt", {"unit_id": world.unit_id}), Say("¿Te ayudo con algo más?")]
+    agent, script = make_agent(name, steps, world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "¿cuánto debo?")
+
+    [message] = reply.debt_messages
+    # First message of the conversation: the fixed greeting goes before the block, and the
+    # model is told so (it must not introduce itself again).
+    assert message.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nSaldo total: *$165.060,00*")
+    assert tools.GREETED_STEP.strip() in last_tool_result(name, script.requests[1])
+    assert reply.text == "¿Te ayudo con algo más?"
+    # The history keeps what the person saw, as Chatwoot gives it back next time.
+    assert reply.history[-1] == AssistantMessage(f"{message}\n¿Te ayudo con algo más?")
+    assert world.events("debt_amount_mismatch") == []
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_no_greeting_after_the_first_message(name: str, world: World) -> None:
+    steps = [Call("get_debt", {"unit_id": world.unit_id}), Say("Listo.")]
+    agent, script = make_agent(name, steps, world)
+    past = [UserMessage("hola"), AssistantMessage("¡Hola! ¿En qué te ayudo?")]
+
+    reply = agent.reply(world.session, OWNER_PHONE, "¿cuánto debo?", past)
+
+    [message] = reply.debt_messages
+    assert message.startswith("*RODAS II 04-C*\n")
+    assert FIRST_GREETING not in message
+    assert tools.GREETED_STEP.strip() not in last_tool_result(name, script.requests[1])
+
+
+def test_one_debt_message_per_unit_in_call_order(world: World) -> None:
+    unit = world.session.get(Unit, world.unit_id)
+    garage = f.unit(world.session, unit.building, "COC.3")
+    owner = f.person(world.session, "Otra Ficticia", phone="+5493515550111")
+    f.link(world.session, unit, owner)
+    f.link(world.session, garage, owner)
+    world.session.commit()
+    steps = [
+        Call("get_debt", {"unit_id": garage.id}),
+        Call("get_debt", {"unit_id": world.unit_id}),
+        Say("Listo, ahí tenés las dos."),
+    ]
+    agent, _ = make_agent("anthropic", steps, world)
+
+    reply = agent.reply(world.session, "+5493515550111", "la deuda de mis dos unidades")
+
+    first, second = reply.debt_messages
+    # Only the first one carries the greeting (first message of the conversation).
+    assert first.startswith(f"{FIRST_GREETING}\n\n*RODAS II COC.3*\n")
+    assert second.startswith("*RODAS II 04-C*\n")
+
+
+@pytest.mark.parametrize(
+    ("text", "logged"),
+    [
+        ("Debés *$165.060,00* en total.", None),  # repeats an amount of the message: fine
+        ("Debés $160.000,00 en total.", ["$160.000,00"]),
+    ],
+)
+def test_amount_not_in_the_debt_message_is_logged(
+    text: str, logged: list[str] | None, world: World
+) -> None:
+    steps = [Call("get_debt", {"unit_id": world.unit_id}), Say(text)]
+    agent, _ = make_agent("anthropic", steps, world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "¿cuánto debo?")
+
+    assert reply.text == text  # never blocked: the debt message already has the right data
+    events = world.events("debt_amount_mismatch")
+    if logged is None:
+        assert events == []
+    else:
+        [event] = events
+        assert event.payload == {"amounts": logged, "debt_messages": 1}
+        assert event.phone_e164 == OWNER_PHONE
+
+
+def test_no_debt_message_when_the_turn_fails(world: World) -> None:
+    steps = [Call("get_debt", {"unit_id": world.unit_id})] * MAX_ROUNDS
+    agent, _ = make_agent("anthropic", steps, world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "¿cuánto debo?")
+
+    assert reply.error == "max_rounds"
+    assert reply.debt_messages == []
 
 
 @pytest.mark.parametrize("name", PROVIDERS)
@@ -368,25 +459,77 @@ def test_normal_handoff_does_not_get_the_urgent_notice(world: World) -> None:
 # --- Tools directly ------------------------------------------------------------------------
 
 
-def test_get_debt_owner_formats_everything(world: World) -> None:
-    result = run_tool(world.ctx(OWNER_PHONE), "get_debt", {"unit_id": world.unit_id})
-    assert result["status"] == "ok"
-    assert result["unit"] == "RODAS II 04-C"
-    assert result["total_debt"] == "$165.060,00"
-    assert result["data_date"] == "30/09/2026 14:05"
-    assert result["detail"] == ["09/2026 Expensas ordinarias: $165.060,00"]
-    assert result["payment_code"] == PAYMENT_CODE
-    assert "Pago Mis Cuentas" in result["payment_how_to"]
-    assert "note" not in result
+def test_get_debt_owner_builds_the_debt_message(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    result = run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    [message] = ctx.debt_messages.values()
+    assert message.splitlines()[:4] == [
+        "*RODAS II 04-C*",
+        "Saldo total: *$165.060,00*",
+        "• 09/2026 Expensas ordinarias: $165.060,00",
+        "Dato al 30/09/2026 a las 14:05.",
+    ]
+    assert f"Código de pago Siro: *{PAYMENT_CODE}*" in message
+    assert "Pago Mis Cuentas" in message
+    assert "último dato guardado" not in message
+    # The model learns that it went out and is told not to repeat it.
+    assert result["status"] == "ok" and result["unit"] == "RODAS II 04-C"
+    assert result["already_sent"] == message
+    assert result["next_step"] == tools.DEBT_SENT_STEP
+    assert not {"total_debt", "detail", "payment_code", "payment_how_to"} & set(result)
 
 
 def test_get_debt_stale_and_without_payment_code(world: World) -> None:
     world.stale = True
     world.session.get(Unit, world.unit_id).payment_code = None
-    result = run_tool(world.ctx(OWNER_PHONE), "get_debt", {"unit_id": world.unit_id})
-    assert "último dato guardado" in result["note"]
-    assert result["payment_code"] is None
-    assert "pedilo a la administración" in result["payment_how_to"]
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    [message] = ctx.debt_messages.values()
+    assert "No se pudo actualizar ahora: es el último dato guardado." in message
+    assert "Código de pago" not in message
+    assert message.endswith(tools.NO_PAYMENT_CODE)
+
+
+def test_get_debt_cuts_the_detail_and_says_how_many_more(world: World) -> None:
+    world.snapshot.lines = [
+        DebtLine(
+            concept="Expensas ordinarias",
+            period=f"{month:02d}/2025",
+            concept_amount=Decimal("1000"),
+            balance_due=Decimal("1000"),
+            accumulated=Decimal("1000"),
+        )
+        for month in range(1, 13)
+    ] + [
+        DebtLine(
+            concept="Fondo de reserva",
+            period=f"{month:02d}/2026",
+            concept_amount=Decimal("500"),
+            balance_due=Decimal("500"),
+            accumulated=Decimal("500"),
+        )
+        for month in range(1, 4)
+    ]
+    world.session.commit()
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    [message] = ctx.debt_messages.values()
+    bullets = [line for line in message.splitlines() if line.startswith("• ")]
+    assert len(bullets) == tools.MAX_DEBT_LINES + 1
+    assert bullets[-1] == "• y 3 más"
+
+
+def test_get_debt_twice_for_the_same_unit_sends_one_message(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    assert list(ctx.debt_messages) == [world.unit_id]
+
+
+def test_get_debt_denied_builds_no_message(world: World) -> None:
+    ctx = world.ctx(TENANT_PHONE)
+    assert run_tool(ctx, "get_debt", {"unit_id": world.unit_id})["status"] == "denied"
+    assert ctx.debt_messages == {}
 
 
 def test_get_debt_owner_of_another_unit(world: World) -> None:
@@ -620,3 +763,129 @@ def test_trim_history_never_starts_with_a_tool_result() -> None:
 def test_context_lists_the_unit_id_of_own_units(world: World) -> None:
     text = describe_identity(identify_by_phone(world.session, OWNER_PHONE))
     assert f"RODAS II 04-C (unit_id {world.unit_id}, propietario)" in text
+
+
+# --- Options to tap (offer_choices) --------------------------------------------------------
+
+YES_NO = {"text": "¿Querés que te pase con una persona?", "options": ["Sí, pasame", "No, gracias"]}
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_offer_choices_ends_the_turn(name: str, world: World) -> None:
+    agent, script = make_agent(name, [Call("offer_choices", YES_NO)], world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "pagué hace dos semanas y sigue la deuda")
+
+    assert len(script.requests) == 1  # no model call after it
+    assert reply.text == "¿Querés que te pase con una persona?"
+    assert reply.choices == (
+        Choice("Sí, pasame", "Sí, pasame"),
+        Choice("No, gracias", "No, gracias"),
+    )
+    assert reply.tools_called == [("offer_choices", "ok")]
+    assert not reply.handed_off and reply.error is None
+    # The history keeps the titles offered, so the next turn knows what "Sí, pasame" answers.
+    assert reply.history[-1] == AssistantMessage(
+        with_options(reply.text, ["Sí, pasame", "No, gracias"])
+    )
+
+
+@pytest.mark.parametrize("name", PROVIDERS)
+def test_options_that_do_not_fit_go_back_to_the_model(name: str, world: World) -> None:
+    too_long = {"text": "¿Querés?", "options": ["Sí, pasame con una persona", "No"]}
+    steps = [Call("offer_choices", too_long), Call("offer_choices", YES_NO)]
+    agent, script = make_agent(name, steps, world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "hola")
+
+    told = last_tool_result(name, script.requests[1])
+    assert "invalid_options" in told and "20 caracteres" in told
+    assert [c.title for c in reply.choices] == ["Sí, pasame", "No, gracias"]
+    assert reply.tools_called == [("offer_choices", "error"), ("offer_choices", "ok")]
+
+
+def test_offer_choices_after_a_handoff_or_twice_is_rejected(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "offer_choices", YES_NO)
+    assert run_tool(ctx, "offer_choices", YES_NO)["reason"] == "already_offered"
+
+    ctx = world.ctx(OWNER_PHONE)
+    args = {"reason": "person_requested", "summary": "x", "priority": "normal"}
+    run_tool(ctx, "handoff_to_human", args)
+    assert run_tool(ctx, "offer_choices", YES_NO)["reason"] == "handed_off"
+    assert ctx.offer is None
+
+
+def test_offer_choices_needs_a_list_of_texts(world: World) -> None:
+    result = run_tool(world.ctx(OWNER_PHONE), "offer_choices", {"text": "¿?", "options": "Sí"})
+    assert result == {"status": "error", "error": "options tiene que ser una lista de textos"}
+
+
+def test_debt_message_with_options_after_it(world: World) -> None:
+    steps = [Call("get_debt", {"unit_id": world.unit_id}), Call("offer_choices", YES_NO)]
+    agent, _ = make_agent("anthropic", steps, world)
+    past = [UserMessage("hola"), AssistantMessage("¡Hola!")]
+
+    reply = agent.reply(world.session, OWNER_PHONE, "pagué y sigue la deuda", past)
+
+    [message] = reply.debt_messages
+    assert reply.history[-1] == AssistantMessage(
+        f"{message}\n{with_options(reply.text, ['Sí, pasame', 'No, gracias'])}"
+    )
+
+
+# --- get_payment_info and the self-service link ---------------------------------------------
+
+
+def test_get_payment_info_sends_the_code_without_the_balance(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    ctx.autogestion_url = "https://autogestion.example.com"
+
+    result = run_tool(ctx, "get_payment_info", {"unit_id": world.unit_id})
+
+    [message] = ctx.debt_messages.values()
+    assert message.splitlines() == [
+        "*RODAS II 04-C*",
+        f"Código de pago Siro: *{PAYMENT_CODE}*",
+        tools.PAYMENT_CODE_HOW_TO,
+        "Expensas y comprobantes: https://autogestion.example.com",
+    ]
+    assert "$" not in message and "Saldo" not in message
+    assert world.refreshed == []  # no ConsorPlus refresh for this
+    assert result["status"] == "ok" and result["already_sent"] == message
+    assert result["next_step"] == tools.PAYMENT_SENT_STEP
+
+
+@pytest.mark.parametrize(
+    ("phone", "reason"), [(TENANT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")]
+)
+def test_get_payment_info_has_the_permissions_of_get_debt(
+    world: World, phone: str, reason: str
+) -> None:
+    ctx = world.ctx(phone)
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
+
+    result = run_tool(ctx, "get_payment_info", {"unit_id": world.unit_id})
+
+    assert result["status"] == "denied" and result["reason"] == reason
+    assert ctx.debt_messages == {}
+
+
+def test_get_payment_info_after_get_debt_sends_one_message(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+    run_tool(ctx, "get_payment_info", {"unit_id": world.unit_id})
+
+    [message] = ctx.debt_messages.values()
+    assert "Saldo total" in message
+
+
+def test_get_debt_puts_the_self_service_link_in_the_message(world: World) -> None:
+    ctx = world.ctx(OWNER_PHONE)
+    ctx.autogestion_url = "https://autogestion.example.com"
+
+    result = run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+
+    [message] = ctx.debt_messages.values()
+    assert message.endswith("\nExpensas y comprobantes: https://autogestion.example.com")
+    assert "autogestion_url" not in result  # the model does not handle it

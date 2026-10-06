@@ -11,10 +11,12 @@ Conversation ids are the display ids Chatwoot shows in the panel and sends in we
 """
 
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 import requests
 
+from app.bot.choices import problems
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -91,6 +93,30 @@ class ChatwootClient:
             "POST",
             f"/conversations/{conversation_id}/messages",
             json={"content": content, "message_type": "outgoing", "private": private},
+        )
+
+    def send_choices(
+        self, conversation_id: int, text: str, options: Sequence[tuple[str, str]]
+    ) -> None:
+        """An "input_select" message: Chatwoot sends it to WhatsApp Cloud as reply buttons (up
+        to 3) or a list (more), and the web widget shows the options. (title, value) pairs;
+        titles must fit WhatsApp's limits (app.bot.choices): Chatwoot does not cut them and
+        Meta rejects the message later, when this call already returned. ValueError if not."""
+        titles = [title for title, _ in options]
+        if found := problems(text, titles):
+            raise ValueError("; ".join(found))
+        self._bot(
+            "POST",
+            f"/conversations/{conversation_id}/messages",
+            json={
+                "content": text,
+                "content_type": "input_select",
+                "content_attributes": {
+                    "items": [{"title": title, "value": value} for title, value in options]
+                },
+                "message_type": "outgoing",
+                "private": False,
+            },
         )
 
     def add_private_note(self, conversation_id: int, content: str) -> None:

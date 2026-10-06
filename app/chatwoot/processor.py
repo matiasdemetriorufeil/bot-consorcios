@@ -9,8 +9,15 @@
 3. Known people of a building outside the pilot go straight to a human.
 4. Audio, stickers, locations... get a fixed "escribilo" reply; images and files a fixed
    thanks. Text goes to the agent with the last 20 messages read from Chatwoot.
-5. The reply is sent only if the conversation is still pending. Then the handoff, if any:
+5. The reply is sent only if the conversation is still pending: first the debt messages
+   built by the code (one message each, as is), then the agent's text. Then the handoff, if any:
    private note, labels and status "open" (Chatwoot's bot handoff).
+6. A reply with options (offer_choices) goes as buttons or a list in WhatsApp and the web
+   widget (INTERACTIVE_CHANNELS). In any other inbox, or if Chatwoot rejects it, the options
+   go numbered in the text. Chatwoot answers before sending to WhatsApp, so a rejection by
+   Meta (after our checks of app.bot.choices, unlikely) only shows in the Chatwoot panel.
+   A widget tap arrives as message_updated (app.chatwoot.events): the history then includes
+   the message with the options.
 
 Messages of one conversation are processed one at a time (lock per conversation, in this
 process).
@@ -28,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.agent import FALLBACK_REPLY, Agent
 from app.bot.bot_config import load_bot_config
+from app.bot.choices import Choice, numbered_text
 from app.bot.identity import Identity, identify_by_phone, to_e164
 from app.bot.prompts import handoff_notice
 from app.bot.tools import Handoff
@@ -56,6 +64,8 @@ ATTACHMENT_REPLY = (
     "persona del estudio, ella sí lo va a ver. ¿Me contás por escrito qué necesitás?"
 )
 NON_PILOT_GREETING = "Hola, soy el asistente automático del Estudio Diego Rufeil."
+# Inboxes where Chatwoot shows "input_select" messages as options to tap.
+INTERACTIVE_CHANNELS = frozenset({"Channel::Whatsapp", "Channel::WebWidget"})
 
 _LOCKS = [threading.Lock() for _ in range(64)]
 
@@ -190,7 +200,16 @@ class ChatwootBot:
             self._history(message),
             conversation_id=conversation_id,
         )
-        self._finish(session, message, phone, trusted, answer.text, answer.handoff)
+        self._finish(
+            session,
+            message,
+            phone,
+            trusted,
+            answer.text,
+            answer.handoff,
+            answer.debt_messages,
+            answer.choices,
+        )
 
     def _finish(
         self,
@@ -200,8 +219,11 @@ class ChatwootBot:
         trusted: bool,
         reply: str,
         handoff: Handoff | None,
+        debt_messages: list[str] | None = None,
+        choices: tuple[Choice, ...] = (),
     ) -> None:
-        """Send the reply (if still pending), carry out the handoff, update the contact."""
+        """Send the debt messages and the reply (if still pending), carry out the handoff,
+        update the contact."""
         conversation_id = message.conversation_id
         if not self._still_pending(conversation_id):
             # An operator took the conversation while the bot was thinking.
@@ -210,8 +232,13 @@ class ChatwootBot:
             )
             self._log(session, message, phone, "chatwoot_reply_dropped")
             return
-        self.client.send_message(conversation_id, reply)
-        logger.info("Conversation %s: reply sent", conversation_id)
+        for debt_message in debt_messages or []:
+            self.client.send_message(conversation_id, debt_message)
+        self._send_reply(message, reply, choices)
+        logger.info(
+            "Conversation %s: reply sent (%d debt message(s) before it, %d option(s))",
+            conversation_id, len(debt_messages or []), len(choices),
+        )  # fmt: skip
         who = identify_by_phone(session, phone) if phone else Identity()  # may have verified
         if handoff is not None:
             try:
@@ -221,6 +248,24 @@ class ChatwootBot:
                 logger.exception("Handoff of conversation %s failed", conversation_id)
                 self._log(session, message, phone, "chatwoot_handoff_failed")
         self._update_contact(message, who)
+
+    def _send_reply(
+        self, message: IncomingMessage, reply: str, choices: tuple[Choice, ...]
+    ) -> None:
+        conversation_id = message.conversation_id
+        if not choices:
+            self.client.send_message(conversation_id, reply)
+            return
+        if message.channel in INTERACTIVE_CHANNELS:
+            try:
+                self.client.send_choices(conversation_id, reply, choices)
+                return
+            except (ChatwootError, ValueError) as exc:
+                logger.warning(
+                    "Conversation %s: options not sent as buttons (%s), sending them numbered",
+                    conversation_id, exc,
+                )  # fmt: skip
+        self.client.send_message(conversation_id, numbered_text(reply, [c.title for c in choices]))
 
     def _hand_off(
         self, conversation_id: int, handoff: Handoff, who: Identity, trusted: bool
@@ -273,14 +318,16 @@ class ChatwootBot:
         if not self.client.can_read_history:
             logger.warning("CHATWOOT_API_TOKEN missing: answering without history")
             return []
+        # A widget tap: the message with the options (its id) is part of the history.
+        before = message.message_id + 1 if message.selection_of else message.message_id
         try:
-            raw = self.client.get_messages(message.conversation_id, before=message.message_id)
+            raw = self.client.get_messages(message.conversation_id, before=before)
         except ChatwootError as exc:
             logger.warning(
                 "History of conversation %s unavailable: %s", message.conversation_id, exc
             )
             return []
-        return build_history(raw, before_id=message.message_id)
+        return build_history(raw, before_id=before, pending_selection=message.selection_of)
 
     def _update_contact(self, message: IncomingMessage, who: Identity) -> None:
         if message.contact_id is None or not self.client.can_read_history:

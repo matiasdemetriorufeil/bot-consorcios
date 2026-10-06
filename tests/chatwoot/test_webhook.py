@@ -1,10 +1,11 @@
 """Chatwoot webhook and bot: invented payloads, Chatwoot API faked, LLM scripted, real
 Postgres test database. All data is invented."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.bot.agent import FALLBACK_REPLY, Agent
+from app.bot.debt_message import FIRST_GREETING
 from app.chatwoot.events import parse_incoming
 from app.chatwoot.processor import (
     ATTACHMENT_REPLY,
@@ -25,9 +27,17 @@ from app.chatwoot.processor import (
 )
 from app.chatwoot.webhook import get_chatwoot_bot, verify_signature
 from app.config import Settings, get_settings
-from app.db.models import BotEvent, ChatwootProcessedMessage
+from app.db.models import (
+    BotEvent,
+    ChatwootProcessedMessage,
+    DebtLine,
+    DebtSnapshot,
+    SyncKind,
+    Unit,
+)
 from app.db.session import get_session
 from app.main import app
+from app.sync.live import DebtResult
 from tests.bot import factories as f
 from tests.chatwoot.fakes import (
     ACCOUNT_ID,
@@ -38,6 +48,7 @@ from tests.chatwoot.fakes import (
     body_of,
     history_message,
     message_payload,
+    options_attributes,
     signed_headers,
 )
 from tests.llm.fakes import (
@@ -104,6 +115,7 @@ def make_harness(
     provider: str = "anthropic",
     chatwoot: FakeChatwoot | None = None,
     now: datetime = WEDNESDAY_11,
+    refresh_debt: Callable[[int], DebtResult] | None = None,
 ) -> Harness:
     llm, script = scripted_provider(provider, steps)
     chatwoot = chatwoot or FakeChatwoot()
@@ -111,7 +123,7 @@ def make_harness(
     def no_debt(unit_id: int) -> Any:
         raise LookupError(unit_id)
 
-    agent = Agent(llm, settings=SETTINGS, refresh_debt=no_debt, now=lambda: now)
+    agent = Agent(llm, settings=SETTINGS, refresh_debt=refresh_debt or no_debt, now=lambda: now)
     warm_ups: list[bool] = []
     bot = ChatwootBot(
         chatwoot,  # type: ignore[arg-type]
@@ -501,6 +513,44 @@ def test_text_with_image_goes_to_the_agent_with_a_note(db_session: Session, peop
     assert "te mando el comprobante" in user_turn and "adjunto (image)" in user_turn
 
 
+# --- Debt message -------------------------------------------------------------------------
+
+
+def test_debt_message_is_sent_before_the_agent_text(db_session: Session, people: None) -> None:
+    unit = db_session.scalar(select(Unit).where(Unit.label == "04-C"))
+    snapshot = DebtSnapshot(
+        unit_id=unit.id,
+        fetched_at=datetime(2026, 9, 30, 10, 0, tzinfo=TZ),
+        source=SyncKind.LIVE,
+        total_amount=Decimal("1234.50"),
+        is_up_to_date=False,
+        lines=[
+            DebtLine(
+                concept="Expensas ordinarias",
+                period="09/2026",
+                concept_amount=Decimal("1234.50"),
+                balance_due=Decimal("1234.50"),
+                accumulated=Decimal("1234.50"),
+            )
+        ],
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+    h = make_harness(
+        db_session,
+        [Call("get_debt", {"unit_id": unit.id}), Say("¿Te ayudo con algo más?")],
+        refresh_debt=lambda unit_id: DebtResult(snapshot, stale=False),
+    )
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, content="¿cuánto debo?")
+
+    debt, text = h.chatwoot.sent()
+    # First message of the conversation: the fixed greeting goes before the block.
+    assert debt.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nSaldo total: *$1.234,50*")
+    assert "Dato al 30/09/2026 a las 10:00." in debt
+    assert text == "¿Te ayudo con algo más?"
+
+
 # --- History ------------------------------------------------------------------------------
 
 
@@ -563,3 +613,148 @@ def test_no_warm_up_for_unknown_or_non_pilot(
     h.handle(**kwargs)
 
     assert h.warm_ups == []
+
+
+# --- Options to tap (offer_choices) -------------------------------------------------------
+
+OFFER = Call(
+    "offer_choices",
+    {"text": "¿Querés que te pase con una persona?", "options": ["Sí, pasame", "No, gracias"]},
+)
+
+
+@pytest.mark.parametrize("channel", ["Channel::Whatsapp", "Channel::WebWidget"])
+def test_options_go_as_buttons_where_chatwoot_shows_them(
+    channel: str, db_session: Session, people: None
+) -> None:
+    h = make_harness(db_session, [OFFER])
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel=channel)
+
+    assert h.chatwoot.args_of("send_choices") == [
+        (
+            7,
+            "¿Querés que te pase con una persona?",
+            [("Sí, pasame", "Sí, pasame"), ("No, gracias", "No, gracias")],
+        )
+    ]
+    assert h.chatwoot.sent() == []
+    assert h.llm_calls == 1  # offer_choices ends the turn
+
+
+def test_options_go_numbered_in_other_inboxes(db_session: Session, people: None) -> None:
+    h = make_harness(db_session, [OFFER])
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Api")
+
+    assert "send_choices" not in h.chatwoot.names()
+    assert h.chatwoot.sent() == [
+        "¿Querés que te pase con una persona?\n\n1. Sí, pasame\n2. No, gracias\n\n"
+        "Respondé con el número o escribí la opción."
+    ]
+
+
+def test_options_go_numbered_when_chatwoot_rejects_them(db_session: Session, people: None) -> None:
+    h = make_harness(db_session, [OFFER], chatwoot=FakeChatwoot(fail_on={"send_choices"}))
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
+
+    [text] = h.chatwoot.sent()
+    assert text.startswith("¿Querés que te pase con una persona?\n\n1. Sí, pasame\n")
+    assert h.chatwoot.args_of("send_choices")  # tried first
+
+
+def test_debt_messages_go_before_the_options(db_session: Session, people: None) -> None:
+    unit = db_session.scalar(select(Unit).where(Unit.label == "04-C"))
+    db_session.add(
+        DebtSnapshot(
+            unit_id=unit.id,
+            fetched_at=datetime(2026, 9, 30, 10, 0, tzinfo=TZ),
+            source=SyncKind.LIVE,
+            total_amount=Decimal("0"),
+            is_up_to_date=True,
+            lines=[],
+        )
+    )
+    db_session.commit()
+    snapshot = db_session.scalar(select(DebtSnapshot).where(DebtSnapshot.unit_id == unit.id))
+    h = make_harness(
+        db_session,
+        [Call("get_debt", {"unit_id": unit.id}), OFFER],
+        refresh_debt=lambda unit_id: DebtResult(snapshot, stale=False),
+    )
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
+
+    assert [name for name in h.chatwoot.names() if name.startswith("send")] == [
+        "send_message",
+        "send_choices",
+    ]
+
+
+def test_widget_tap_is_answered_as_the_chosen_title(db_session: Session, people: None) -> None:
+    offered = options_attributes(["Sí, pasame", "No, gracias"], chosen="Sí, pasame")
+    chatwoot = FakeChatwoot(
+        history=[
+            history_message(90, "Pagué hace dos semanas y sigue la deuda", 0),
+            history_message(
+                91,
+                "¿Querés que te pase con una persona?",
+                1,
+                content_type="input_select",
+                content_attributes=offered,
+            ),
+        ]
+    )
+    h = make_harness(db_session, [Say("Listo")], chatwoot=chatwoot)
+
+    h.handle(
+        event="message_updated",
+        message_id=91,
+        message_type="outgoing",
+        content="¿Querés que te pase con una persona?",
+        content_type="input_select",
+        content_attributes=offered,
+        inbox_id=WEB_INBOX,
+    )
+
+    # The message with the options is part of the history; the tap is the current message.
+    assert h.chatwoot.args_of("get_messages") == [(7, 92)]
+    request = str(h.script.requests[0])
+    assert "[Opciones: Sí, pasame / No, gracias]" in request
+    assert last_user_text("anthropic", h.script.requests[0]).endswith("\nSí, pasame")
+    # The choice is the current message, not also a history turn.
+    roles = [m["role"] for m in h.script.requests[0]["messages"]]
+    assert roles == ["user", "assistant", "user"]
+    assert h.chatwoot.sent() == ["Listo"]
+
+
+def test_webhook_accepts_a_widget_tap_once(client: TestClient, harness: Harness) -> None:
+    payload = message_payload(
+        event="message_updated",
+        message_id=91,
+        message_type="outgoing",
+        content="¿Qué querés hacer?",
+        content_type="input_select",
+        content_attributes=options_attributes(["Mi deuda", "Hablar con alguien"], "Mi deuda"),
+    )
+
+    assert post(client, payload).json() == {"status": "accepted"}
+    # Later updates of the same message (e.g. its status) carry the choice again.
+    assert post(client, payload).json() == {"status": "ignored", "reason": "duplicate"}
+    assert harness.llm_calls == 1
+    assert last_user_text("anthropic", harness.script.requests[0]).endswith("\nMi deuda")
+
+
+def test_webhook_ignores_updates_without_a_choice(client: TestClient, harness: Harness) -> None:
+    not_chosen = message_payload(
+        event="message_updated",
+        message_type="outgoing",
+        content_type="input_select",
+        content_attributes=options_attributes(["Mi deuda", "Hablar con alguien"]),
+    )
+    plain = message_payload(event="message_updated", message_type="outgoing")
+
+    assert post(client, not_chosen).json()["status"] == "ignored"
+    assert post(client, plain).json()["status"] == "ignored"
+    assert harness.llm_calls == 0

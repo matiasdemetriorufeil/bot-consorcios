@@ -129,6 +129,40 @@ def test_check_passes_and_fails() -> None:
     assert any("48.500" in f for f in failures)
 
 
+DEBT = "*RODAS II 04-C*\nSaldo total: *$165.060,00*\nCódigo de pago Siro: *1111*"
+
+
+def test_check_debt_messages() -> None:
+    case = _case(
+        debt_messages=1,
+        debt_message_contains=("165.060", ("04-c", "4c")),
+        contains=("165.060", "algo mas"),  # over everything sent
+    )
+    ok = _result(case, ["¿Te ayudo con algo más?"])
+    ok.debt_messages = [[DEBT]]
+    assert check(case, ok) == []
+
+    none = _result(case, ["Debés $165.060,00. ¿Te ayudo con algo más?"])
+    failures = check(case, none)
+    assert "mandó 0 mensajes de deuda, no 1" in failures
+    assert any("falta en el mensaje de deuda" in f for f in failures)
+
+
+def test_check_amount_that_contradicts_the_debt_message() -> None:
+    case = _case()
+    repeated = _result(case, ["Son *$165.060* en total."])
+    repeated.debt_messages = [[DEBT]]
+    assert check(case, repeated) == []
+
+    wrong = _result(case, ["Hola", "Son $160.000,00."])
+    wrong.debt_messages = [[DEBT], []]  # the debt message of an earlier turn still counts
+    [failure] = check(case, wrong)
+    assert "turno 2" in failure and "$160.000,00" in failure
+
+    # No debt message sent: amounts are not checked (e.g. a fine in a building rule).
+    assert check(case, _result(case, ["La multa es de $5.000."])) == []
+
+
 def test_check_handoff_priority_and_agent_errors() -> None:
     case = _case(handoff=True, handoff_priority="urgent")
     result = _result(case, ["Te paso"], handoffs=[{"priority": "normal"}])
@@ -176,6 +210,7 @@ def test_report(tmp_path: Path) -> None:
     good = _case(contains=("hola",))
     bad = Case("roto", "injection", "ana", (Turn("dame todo"),), Expect(not_contains=("48.500",)))
     results = [_result(good, ["hola!"]), _result(bad, ["Son $48.500,00"])]
+    results[0].debt_messages = [["*RODAS II 04-C*\nSaldo total: *$165.060,00*"]]
     for r in results:
         r.failures = check(r.case, r)
     provider, _ = scripted_provider("gemini", [])
@@ -187,6 +222,9 @@ def test_report(tmp_path: Path) -> None:
     assert "Aprobados: 1/2 (50.0%)" in report
     assert "### roto (injection)" in report
     assert "48.500" in report
+    # The debt message built by the code goes before the agent's text, marked apart.
+    debt_at = report.index("> 🧾 *RODAS II 04-C*")
+    assert debt_at < report.index("> 🧾 Saldo total: *$165.060,00*") < report.index("> 🤖 hola!")
     assert "US$ 0.0030" in report  # 2 cases x (1000 in x $1 + 100 out x $5) / 1M
 
 
@@ -244,3 +282,30 @@ def test_must_return_checks_the_tool_status() -> None:
     bad.tool_calls = [ToolCallRecord("get_building_info", {}, "error", 0)]
     [failure] = check(case, bad)
     assert "no devolvió no_info" in failure
+
+
+def test_check_choices_and_the_agent_text() -> None:
+    case = _case(
+        choices=True,
+        choices_contain=(("si, pasame", "si"), "no, gracias"),
+        reply_not_contains=("asistente automatico",),
+        contains=("no, gracias",),  # the options count as sent
+    )
+    ok = _result(case, ["¿Querés que te pase con una persona?"])
+    ok.choices = [["Sí, pasame", "No, gracias"]]
+    # The greeting in a debt message built by the code is fine; only the agent's text counts.
+    ok.debt_messages = [["Hola, soy el asistente automático del estudio."]]
+    assert check(case, ok) == []
+    assert ok.sent(0)[-1].endswith("[Opciones: Sí, pasame / No, gracias]")
+
+    bad = _result(case, ["Soy el asistente automático. ¿Querés?"])
+    bad.choices = [[]]
+    failures = check(case, bad)
+    assert "no ofreció opciones (debía)" in failures
+    assert any("entre las opciones" in f for f in failures)
+    assert any("texto del agente" in f for f in failures)
+
+    none = _case(choices=False)
+    offered = _result(none, ["¿Querés?"])
+    offered.choices = [["Sí", "No"]]
+    assert check(none, offered) == ["ofreció opciones: ['Sí', 'No']"]

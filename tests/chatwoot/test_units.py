@@ -20,7 +20,7 @@ from app.config import Settings, get_settings
 from app.db.models import PersonRole
 from app.llm import AssistantMessage, UserMessage
 from app.main import app
-from tests.chatwoot.fakes import history_message
+from tests.chatwoot.fakes import history_message, options_attributes
 
 TZ = ZoneInfo("America/Argentina/Cordoba")
 WEEKDAYS = [0, 1, 2, 3, 4]
@@ -66,6 +66,29 @@ def test_build_history_limit_and_attachments() -> None:
 
 
 # --- Office hours -------------------------------------------------------------------------
+
+
+def test_build_history_keeps_the_options_and_the_widget_choice() -> None:
+    offered = history_message(
+        11,
+        "¿Querés que te pase con una persona?",
+        1,
+        content_type="input_select",
+        content_attributes=options_attributes(["Sí, pasame", "No, gracias"], chosen="No, gracias"),
+    )
+    messages = [history_message(10, "Pagué y sigue la deuda", 0), offered]
+
+    shown = "¿Querés que te pase con una persona?\n[Opciones: Sí, pasame / No, gracias]"
+
+    assert build_history(messages, before_id=20) == [
+        UserMessage("Pagué y sigue la deuda"),
+        AssistantMessage(shown),
+        UserMessage("No, gracias"),  # tapped in the widget: no incoming message exists
+    ]
+    # The choice being answered now is the current message, not history.
+    assert build_history(messages, before_id=12, pending_selection=11)[-1] == (
+        AssistantMessage(shown)
+    )
 
 
 def test_describe_office_hours() -> None:

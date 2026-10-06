@@ -13,6 +13,16 @@
 #   contains / not_contains: text in ANY bot reply (case and accents ignored, "*" removed).
 #            A nested list in `contains` means "at least one of these".
 #   not_matches: regular expressions that must not match (same normalized text).
+#   contains / not_contains / not_matches look at everything sent: the debt messages built
+#            by the code and the agent's text.
+#   debt_message_contains: text in the debt messages built by the code (same rules).
+#   debt_messages: how many debt messages the whole case sends.
+#   choices: true / false: whether some reply offered options to tap (offer_choices).
+#   choices_contain: titles among the options offered (same rules as contains).
+#   reply_not_contains: text that must not be in the agent's own text (not the debt messages).
+#   A turn that "taps" an option is written as its title (that is what WhatsApp delivers).
+#   Always checked: once a debt message went out, the agent's text has no "$" amount that is
+#   not in one of them.
 #
 # Reference values: Rodas II 04-C (Ana) $165.060,00 code 1111222233334444001 ·
 # Rodas II 04-B (Bruno) $48.500,00 code ...002 · Torre del Sol COC.3 (Bruno) $12.300,00
@@ -28,6 +38,10 @@
   phone: ana
   turns: ["¿Cuánto debo de expensas?"]
   expect:
+    debt_messages: 1
+    # First message: the fixed greeting goes before the block and the agent does not repeat it.
+    debt_message_contains: ["hola, soy el asistente automatico del estudio diego rufeil", "rodas ii 04-c", "saldo total: $165.060,00", "codigo de pago siro: 1111222233334444001", "dato al 30/09/2026"]
+    reply_not_contains: ["asistente automatico", "soy el asistente"]
     must_call: [get_debt]
     handoff: false
     contains: ["165.060", "1111222233334444001"]
@@ -37,15 +51,54 @@
   phone: ana
   turns: ["Pasame el código para pagar las expensas"]
   expect:
-    must_call: [get_debt]
+    debt_messages: 1
+    debt_message_contains: ["codigo de pago siro: 1111222233334444001", "pago mis cuentas"]
+    must_call: [get_payment_info]
+    must_not_call: [get_debt]
     handoff: false
     contains: ["1111222233334444001"]
+    not_contains: ["165.060", "saldo"]
+
+- id: como_pago_sin_deuda
+  category: deuda
+  phone: ana
+  turns: ["¿Cómo pago las expensas?"]
+  settings: {autogestion_url: "https://autogestion.example.com"}
+  expect:
+    debt_messages: 1
+    debt_message_contains: ["codigo de pago siro: 1111222233334444001", "https://autogestion.example.com"]
+    must_call: [get_payment_info]
+    must_not_call: [get_debt]
+    not_contains: ["165.060", "82.530"]
+
+- id: deuda_con_link_autogestion
+  category: deuda
+  phone: ana
+  turns: ["¿Cuánto debo?"]
+  settings: {autogestion_url: "https://autogestion.example.com"}
+  expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060", "expensas y comprobantes: https://autogestion.example.com"]
+    must_call: [get_debt]
+    # The link goes only in the block built by the code.
+    reply_not_contains: ["http", "www."]
+
+- id: pago_info_desconocido
+  category: deuda
+  phone: desconocido
+  turns: ["¿Cuál es el código de pago del 1A del Rodas II?"]
+  expect:
+    debt_messages: 0
+    must_not_call: [start_email_verification]
+    not_contains: ["1111222233334444004", "230.400"]
 
 - id: deuda_tras_saludo
   category: deuda
   phone: ana
   turns: ["Hola, buenas", "quiero saber mi deuda"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     handoff: false
     contains: [["automatico", "virtual"], "165.060"]
@@ -55,6 +108,8 @@
   phone: ana
   turns: ["¿Cuánto debo y cómo lo pago?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060", "pago mis cuentas"]
     must_call: [get_debt]
     contains: ["165.060", "pago mis cuentas"]
 
@@ -63,6 +118,8 @@
   phone: ana
   turns: ["¿Cuánto tengo pendiente? ¿de qué fecha es el dato?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["dato al 30/09/2026"]
     must_call: [get_debt]
     contains: ["165.060", "30/09/2026"]
 
@@ -71,6 +128,8 @@
   phone: fede
   turns: ["¿Tengo alguna deuda?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["estas al dia"]
     must_call: [get_debt]
     handoff: false
     contains: [["al dia", "no tenes deuda", "no registra", "$0,00", "no tenes saldo", "sin deuda"]]
@@ -80,6 +139,8 @@
   phone: ana
   turns: ["¿Qué meses debo?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["08/2026 expensas ordinarias: $82.530,00", "09/2026 expensas ordinarias: $82.530,00"]
     must_call: [get_debt]
     contains: ["08/2026", "09/2026"]
 
@@ -90,6 +151,8 @@
   phone: carla
   turns: ["¿Cuánto debo?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["87.250,50", "no tiene codigo de pago cargado"]
     must_call: [get_debt]
     contains: ["87.250,50", "administracion"]
     not_contains: ["11112222333344440"]
@@ -99,7 +162,8 @@
   phone: carla
   turns: ["Necesito el código de pago Siro para pagar por home banking"]
   expect:
-    must_call: [get_debt]
+    debt_message_contains: ["no tiene codigo de pago cargado"]
+    must_call: [get_payment_info]
     # Saying "pedilo a la administración" or handing off to get it are both right.
     contains: [["administracion", "persona del estudio", "deriv"]]
     not_contains: ["11112222333344440"]
@@ -119,6 +183,8 @@
   phone: bruno
   turns: ["¿Cuánto debo de la cochera?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["torre del sol coc.3", "12.300"]
     must_call: [get_debt]
     contains: ["12.300"]
     not_contains: ["48.500"]
@@ -128,6 +194,8 @@
   phone: bruno
   turns: ["Cuánto debo del 4B del Rodas"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["rodas ii 04-b", "48.500"]
     must_call: [get_debt]
     contains: ["48.500"]
     not_contains: ["12.300"]
@@ -137,6 +205,8 @@
   phone: bruno
   turns: ["Pasame la deuda de mis dos unidades"]
   expect:
+    debt_messages: 2
+    debt_message_contains: ["48.500", "1111222233334444002", "12.300", "1111222233334444003"]
     must_call: [get_debt]
     contains: ["48.500", "12.300"]
 
@@ -145,6 +215,8 @@
   phone: bruno
   turns: ["Quiero saber cuánto debo", "la del departamento"]
   expect:
+    # Giving both units on the first message is also right: no count of debt messages.
+    debt_message_contains: ["48.500"]
     must_call: [get_debt]
     contains: ["48.500"]
 
@@ -224,6 +296,7 @@
     - "{code}"
     - "¿Cuánto debo entonces?"
   expect:
+    debt_message_contains: ["230.400", "1111222233334444004"]
     must_call: [find_unit, start_email_verification, confirm_email_code, get_debt]
     contains: ["230.400"]
 
@@ -469,6 +542,7 @@
   phone: ana
   turns: ["¿Cuánto debo?", "Uh, es mucho. ¿Lo puedo financiar?"]
   expect:
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     handoff: true
     contains: ["165.060"]
@@ -482,6 +556,7 @@
   phone: ana
   turns: ["Ya pagué hoy las expensas y me sigue apareciendo la deuda"]
   expect:
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     must_not_call: [handoff_to_human]
     handoff: false
@@ -492,6 +567,7 @@
   phone: ana
   turns: ["Pagué hace una semana y me sigue figurando la deuda"]
   expect:
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     must_not_call: [handoff_to_human]
     handoff: false
@@ -517,6 +593,7 @@
     - "¿La cochera la puedo pagar con tarjeta de crédito?"
     - "pero ya pagué hoy"
   expect:
+    debt_message_contains: ["12.300"]
     must_call: [get_debt]
     handoff: false
     contains: ["12.300", "72"]
@@ -534,6 +611,7 @@
   # Paying in August is "more than 3 business days": it offers, and hands off on the yes.
   turns: ["¿Cuánto debo?", "Eso está mal, yo agosto lo pagué", "Sí, que lo revisen"]
   expect:
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     handoff: true
     contains: ["165.060"]
@@ -708,7 +786,9 @@
   expect:
     must_not_call: [get_debt, handoff_to_human, start_email_verification]
     handoff: false
-    contains: [["automatico", "virtual"], "persona"]
+    contains: [["automatico", "virtual"], ["persona", "alguien"]]
+    choices: true
+    choices_contain: ["mi deuda", "info del edificio", "hablar con alguien"]
 
 - id: saludo_desconocido
   category: saludo
@@ -718,6 +798,32 @@
     must_not_call: [get_debt, handoff_to_human, start_email_verification]
     handoff: false
     contains: [["automatico", "virtual"]]
+
+- id: saludo_toca_mi_deuda
+  category: botones
+  phone: ana
+  turns: ["Hola", "Mi deuda"]
+  expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060"]
+    must_call: [get_debt]
+    handoff: false
+
+- id: saludo_toca_hablar_con_alguien
+  category: botones
+  phone: ana
+  turns: ["Buenas tardes", "Hablar con alguien"]
+  expect:
+    handoff: true
+    must_not_call: [get_debt]
+
+- id: saludo_toca_info_edificio
+  category: botones
+  phone: ana
+  turns: ["Hola", "Info del edificio"]
+  expect:
+    handoff: false
+    must_not_call: [get_debt, start_email_verification]
 
 - id: saludo_y_gracias
   category: saludo
@@ -734,6 +840,8 @@
   phone: ana
   turns: ["cuanto devo d espensas"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     contains: ["165.060"]
 
@@ -742,6 +850,8 @@
   phone: ana
   turns: ["Che culiau, ¿cuánto la debo al consorcio?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     handoff: false
     contains: ["165.060"]
@@ -751,6 +861,8 @@
   phone: bruno
   turns: ["Ey loco, ¿cuánto tengo que garpar de la cochera?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["12.300"]
     must_call: [get_debt]
     contains: ["12.300"]
 
@@ -768,6 +880,8 @@
   phone: ana
   turns: ["deuda?"]
   expect:
+    debt_messages: 1
+    debt_message_contains: ["165.060"]
     must_call: [get_debt]
     contains: ["165.060"]
 
@@ -840,3 +954,92 @@
   expect:
     handoff: true
     contains: [["habil", "proximo", "lunes", "manana"]]
+
+# --- Botones y listas (offer_choices) --------------------------------------------------------
+# A tap arrives as the option's title, as WhatsApp delivers it.
+
+- id: botones_oferta_derivar
+  category: botones
+  phone: ana
+  turns: ["Pagué hace dos semanas y me sigue figurando la deuda"]
+  expect:
+    must_call: [get_debt, offer_choices]
+    handoff: false
+    choices_contain: ["si, pasame", "no, gracias"]
+
+- id: botones_oferta_derivar_toca_si
+  category: botones
+  phone: ana
+  turns: ["Pagué hace dos semanas y me sigue figurando la deuda", "Sí, pasame"]
+  expect:
+    must_call: [get_debt]
+    handoff: true
+
+- id: botones_oferta_derivar_toca_no
+  category: botones
+  phone: ana
+  turns: ["Pagué hace dos semanas y me sigue figurando la deuda", "No, gracias"]
+  expect:
+    must_call: [get_debt]
+    handoff: false
+
+- id: botones_oferta_derivar_cambia_de_tema
+  category: botones
+  phone: ana
+  turns: ["Pagué hace dos semanas y me sigue figurando la deuda", "¿Hasta qué hora se puede hacer ruido?"]
+  expect:
+    handoff: false
+
+- id: botones_mandar_codigo_email
+  category: botones
+  phone: desconocido
+  turns: ["Soy el dueño del 1A del Rodas II, ¿cuánto debo?"]
+  expect:
+    must_call: [find_unit]
+    must_not_call: [start_email_verification, get_debt]
+    choices_contain: [["si, mandalo", "si, mandamelo"], "no"]
+    not_contains: ["230.400"]
+
+- id: botones_mandar_codigo_toca_si
+  category: botones
+  phone: desconocido
+  turns: ["Soy el dueño del 1A del Rodas II, ¿cuánto debo?", "Sí, mandalo"]
+  expect:
+    must_call: [start_email_verification]
+    contains: ["d***@example.com"]
+    not_contains: ["230.400"]
+
+- id: botones_mandar_codigo_toca_no
+  category: botones
+  phone: desconocido
+  turns: ["Soy el dueño del 1A del Rodas II, ¿cuánto debo?", "No"]
+  expect:
+    must_not_call: [start_email_verification, get_debt]
+    not_contains: ["230.400"]
+
+- id: lista_edificio_ambiguo
+  category: botones
+  phone: desconocido
+  turns: ["Quiero saber la deuda del 4C del Rodas"]
+  expect:
+    must_call: [find_unit]
+    must_not_call: [start_email_verification, get_debt]
+    choices: true
+    choices_contain: ["rodas i", "rodas ii"]
+
+- id: lista_edificio_ambiguo_toca
+  category: botones
+  phone: desconocido
+  turns: ["Quiero saber la deuda del 4C del Rodas", "RODAS II"]
+  expect:
+    must_call: [find_unit]
+    contains: [["codigo", "email", "correo", "verific"]]
+    not_contains: ["165.060", "70.400"]
+
+- id: botones_no_en_urgencia
+  category: botones
+  phone: ana
+  turns: ["Hay olor a gas en el palier del Rodas II"]
+  expect:
+    handoff: true
+    choices: false

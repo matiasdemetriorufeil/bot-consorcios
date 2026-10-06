@@ -129,3 +129,59 @@ def test_from_settings_requires_url_and_account() -> None:
         )
     )
     assert client.account_id == 1 and not client.can_read_history
+
+
+# --- Options to tap -----------------------------------------------------------------------
+
+
+def test_send_choices_posts_an_input_select_message() -> None:
+    http = FakeHttp()
+
+    make_client(http).send_choices(
+        7, "¿Te paso con una persona?", [("Sí, pasame", "yes"), ("No", "no")]
+    )
+
+    [req] = http.requests
+    assert req["url"].endswith("/conversations/7/messages")
+    assert req["headers"] == {"api_access_token": "bot-token"}
+    assert req["json"] == {
+        "content": "¿Te paso con una persona?",
+        "content_type": "input_select",
+        "content_attributes": {
+            "items": [{"title": "Sí, pasame", "value": "yes"}, {"title": "No", "value": "no"}]
+        },
+        "message_type": "outgoing",
+        "private": False,
+    }
+
+
+def test_button_titles_are_20_characters_at_most() -> None:
+    http = FakeHttp()
+    client = make_client(http)
+
+    client.send_choices(7, "¿Cuál?", [("a" * 20, "a"), ("b", "b"), ("c", "c")])
+    with pytest.raises(ValueError, match="20 caracteres"):
+        client.send_choices(7, "¿Cuál?", [("a" * 21, "a"), ("b", "b")])
+
+    assert len(http.requests) == 1  # the rejected one never reached Chatwoot
+
+
+def test_more_than_3_options_go_as_a_list_with_titles_up_to_24() -> None:
+    http = FakeHttp()
+    client = make_client(http)
+    four = [(f"{n} " + "x" * 22, str(n)) for n in range(4)]  # 24 characters
+
+    client.send_choices(7, "¿Cuál?", four)
+    with pytest.raises(ValueError, match="24 caracteres"):
+        client.send_choices(7, "¿Cuál?", [*four[:3], ("y" * 25, "y")])
+    with pytest.raises(ValueError, match="entre 2 y 10"):
+        client.send_choices(7, "¿Cuál?", [(str(n), str(n)) for n in range(11)])
+
+    assert len(http.requests) == 1
+
+
+def test_send_choices_errors_are_chatwoot_errors() -> None:
+    http = FakeHttp([FakeResponse(status_code=422)])
+
+    with pytest.raises(ChatwootError, match="HTTP 422"):
+        make_client(http).send_choices(7, "¿Cuál?", [("Sí", "sí"), ("No", "no")])

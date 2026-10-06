@@ -31,6 +31,8 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app.bot.agent import Agent
+from app.bot.choices import with_options
+from app.bot.debt_message import amounts_not_in
 from app.bot.tools import TOOLS_BY_NAME
 from app.config import Settings, get_settings
 from app.db.models import BotEvent, VerificationCode
@@ -63,6 +65,8 @@ PRICES = {
     "claude-haiku-4-5": Prices(input=1, output=5, cache_read=0.10, cache_write=1.25),
 }
 MAX_TURNS = 4
+# In the transcripts: a debt message built by the code (the agent's text is 🤖).
+DEBT_MARK = "🧾"
 
 
 # --- Cases ----------------------------------------------------------------------------------
@@ -85,6 +89,14 @@ class Expect:
     not_matches: tuple[str, ...] = ()  # regexes over the normalized replies
     # (tool, status): at least one call of that tool returned that status.
     must_return: tuple[tuple[str, str], ...] = ()
+    # The debt messages built by the code (not the agent's text).
+    debt_message_contains: tuple[str | tuple[str, ...], ...] = ()
+    debt_messages: int | None = None  # how many in the whole case
+    # Options to tap (offer_choices): whether some turn offered any, and titles offered.
+    choices: bool | None = None
+    choices_contain: tuple[str | tuple[str, ...], ...] = ()
+    # Only the agent's own text (not the debt messages built by the code).
+    reply_not_contains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -145,6 +157,16 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
                 not_contains=tuple(exp.get("not_contains", [])),
                 not_matches=tuple(exp.get("not_matches", [])),
                 must_return=tuple(must_return.items()),
+                debt_message_contains=tuple(
+                    tuple(c) if isinstance(c, list) else c
+                    for c in exp.get("debt_message_contains", [])
+                ),
+                debt_messages=exp.get("debt_messages"),
+                choices=exp.get("choices"),
+                choices_contain=tuple(
+                    tuple(c) if isinstance(c, list) else c for c in exp.get("choices_contain", [])
+                ),
+                reply_not_contains=tuple(exp.get("reply_not_contains", [])),
             )
             for pattern in expect.not_matches:
                 re.compile(pattern)
@@ -198,7 +220,11 @@ NO_EMAIL_CLAIM = re.compile(
 class CaseResult:
     case: Case
     user_texts: list[str] = field(default_factory=list)
-    replies: list[str] = field(default_factory=list)
+    replies: list[str] = field(default_factory=list)  # the agent's text of each turn
+    # The debt messages sent before each reply (one list per turn).
+    debt_messages: list[list[str]] = field(default_factory=list)
+    # The titles of the options offered with each reply (one list per turn, empty: none).
+    choices: list[list[str]] = field(default_factory=list)
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     handoffs: list[dict[str, Any]] = field(default_factory=list)
     usage: list[Usage] = field(default_factory=list)
@@ -210,6 +236,14 @@ class CaseResult:
     @property
     def passed(self) -> bool:
         return not self.failures
+
+    def sent(self, turn: int) -> list[str]:
+        """Everything the person got in that turn: debt messages, then the agent's text (with
+        the options offered, if any)."""
+        before = self.debt_messages[turn] if turn < len(self.debt_messages) else []
+        titles = self.choices[turn] if turn < len(self.choices) else []
+        reply = self.replies[turn]
+        return [*before, with_options(reply, titles) if titles else reply]
 
     def total_usage(self) -> Usage:
         return Usage(
@@ -239,15 +273,46 @@ def check(case: Case, result: CaseResult) -> list[str]:
         priorities = {h.get("priority") for h in result.handoffs}
         if exp.handoff_priority not in priorities:
             failures.append(f"derivó con prioridad {sorted(priorities)}, no {exp.handoff_priority}")
-    bot_text = normalize("\n".join(result.replies))
+    bot_text = normalize("\n".join(m for t in range(len(result.replies)) for m in result.sent(t)))
     for wanted in exp.contains:
         options = wanted if isinstance(wanted, tuple) else (wanted,)
         if not any(normalize(o) in bot_text for o in options):
             shown = " | ".join(options)
             failures.append(f"falta en las respuestas: {shown!r}")
+    debts = [m for turn in result.debt_messages for m in turn]
+    if exp.debt_messages is not None and len(debts) != exp.debt_messages:
+        failures.append(f"mandó {len(debts)} mensajes de deuda, no {exp.debt_messages}")
+    debt_text = normalize("\n".join(debts))
+    for wanted in exp.debt_message_contains:
+        options = wanted if isinstance(wanted, tuple) else (wanted,)
+        if not any(normalize(o) in debt_text for o in options):
+            failures.append(f"falta en el mensaje de deuda: {' | '.join(options)!r}")
+    # In every case: once a debt message went out, the agent's text never brings an amount
+    # that is not in one of them (a repeated amount is fine, a different one contradicts it).
+    for turn, reply in enumerate(result.replies):
+        so_far = [m for t in result.debt_messages[: turn + 1] for m in t]
+        if so_far and (wrong := amounts_not_in(reply, so_far)):
+            failures.append(
+                f"el texto del agente del turno {turn + 1} tiene montos que no están en el "
+                f"mensaje de deuda: {wrong}"
+            )
     for banned in exp.not_contains:
         if normalize(banned) in bot_text:
             failures.append(f"apareció lo prohibido: {banned!r}")
+    agent_text = normalize("\n".join(result.replies))
+    for banned in exp.reply_not_contains:
+        if normalize(banned) in agent_text:
+            failures.append(f"el texto del agente dice lo prohibido: {banned!r}")
+    offered = [t for turn in result.choices for t in turn]
+    if exp.choices is not None and bool(offered) != exp.choices:
+        failures.append(
+            "no ofreció opciones (debía)" if exp.choices else f"ofreció opciones: {offered}"
+        )
+    titles = [normalize(t) for t in offered]
+    for wanted in exp.choices_contain:
+        options = wanted if isinstance(wanted, tuple) else (wanted,)
+        if not any(normalize(o) in t for o in options for t in titles):
+            failures.append(f"falta entre las opciones: {' | '.join(options)!r} ({offered})")
     for pattern in exp.not_matches:
         if found := re.search(pattern, bot_text):
             failures.append(f"apareció lo prohibido: {found.group(0)!r} (patrón {pattern!r})")
@@ -354,6 +419,8 @@ def run_case(engine: Engine, provider: LLMProvider, settings: Settings, case: Ca
                 history = text_only(reply.history)
                 result.user_texts.append(user_text)
                 result.replies.append(reply.text)
+                result.debt_messages.append(list(reply.debt_messages))
+                result.choices.append([c.title for c in reply.choices])
                 result.usage += reply.usage
                 if reply.error:
                     result.agent_errors.append(reply.error)
@@ -438,11 +505,14 @@ def _transcript(r: CaseResult) -> list[str]:
             "- derivaciones: "
             + "; ".join(f"{h.get('priority')}: {h.get('reason')}" for h in r.handoffs)
         )
-    lines += ["", "Conversación:", ""]
-    for user, bot in zip(r.user_texts, r.replies, strict=False):
+    lines += ["", f"Conversación ({DEBT_MARK} = mensaje de deuda armado por el código):", ""]
+    for turn, user in enumerate(r.user_texts[: len(r.replies)]):
         lines.append(f"> 👤 {user}")
-        lines.append(">")
-        lines += [f"> 🤖 {line}" if line else ">" for line in bot.splitlines()]
+        sent = r.sent(turn)
+        for index, bot in enumerate(sent):
+            mark = "🤖" if index == len(sent) - 1 else DEBT_MARK
+            lines.append(">")
+            lines += [f"> {mark} {line}" if line else ">" for line in bot.splitlines()]
         lines.append("")
     return lines
 

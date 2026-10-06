@@ -327,7 +327,31 @@ docker compose --profile chatwoot --profile tunnel logs -f chatwoot-sidekiq | Se
 | `POST /webhooks/whatsapp` con `401`                         | La clave secreta del paso 3.7 no es la de la app.                      |
 | El mensaje aparece en Chatwoot pero no llega nada a la api  | El bot no está asignado a la bandeja (4.1) o la conversación no está Pendiente. |
 | `trusted phone: no` con la bandeja de WhatsApp              | Falta su ID en `CHATWOOT_TRUSTED_PHONE_INBOX_IDS` o no recreaste la api. |
-| La respuesta del bot figura con error (ícono rojo) en Chatwoot | Pasá el mouse para ver el error de Meta. `131030`: el destinatario no está en la lista del número de prueba; con números de Argentina, ver [Números argentinos con el número de prueba](#números-argentinos-con-el-número-de-prueba). `190`: token inválido. |
+| La respuesta del bot figura con error (ícono rojo) en Chatwoot | Pasá el mouse para ver el error de Meta. `131030`: el destinatario no está en la lista del número de prueba; con números de Argentina, ver [Números argentinos con el número de prueba](#números-argentinos-con-el-número-de-prueba). `190`: token inválido. `131009`: un título de botón o de lista demasiado largo (no debería pasar: el bot los controla). |
+| La lista dice "Choose an item" en vez de "Ver opciones"     | Chatwoot sin recrear después de montar `chatwoot/locales/zz_bot_overrides.yml` (ver abajo). |
+
+## Botones y listas
+
+Cuando el bot ofrece opciones (bienvenida, "¿te paso con una persona?", mandar el código al
+email, elegir unidad o edificio) manda un mensaje `input_select` de Chatwoot:
+
+- WhatsApp: hasta 3 opciones salen como **botones**; más de 3, como **lista** (se abre con el
+  botón "Ver opciones"). Al tocar, a Chatwoot llega un mensaje común con el **título** de la
+  opción, y el bot lo toma como texto.
+- Widget web: Chatwoot muestra las opciones; al tocar, no crea un mensaje entrante sino que
+  avisa con `message_updated` y el bot lo toma como si la persona hubiera escrito el título.
+- Otras bandejas, o si Chatwoot rechaza el mensaje: las opciones van numeradas en el texto.
+
+Límites de WhatsApp que controla el bot: títulos de hasta 20 caracteres (botones) o 24
+(lista), hasta 10 opciones y texto de hasta 1024 caracteres. Chatwoot no los recorta y Meta
+rechaza el mensaje después de que Chatwoot respondió, así que ese error solo se ve en el panel.
+
+El texto "Ver opciones" sale de `chatwoot/locales/zz_bot_overrides.yml`, montado en
+`chatwoot-rails` y `chatwoot-sidekiq` (también en producción). Después de cambiarlo:
+
+```powershell
+docker compose --profile chatwoot up -d chatwoot-rails chatwoot-sidekiq
+```
 
 ## Números argentinos con el número de prueba
 

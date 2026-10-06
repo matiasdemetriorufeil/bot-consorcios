@@ -1,0 +1,18 @@
+# Mounted read-only into chatwoot-rails and chatwoot-sidekiq by docker-compose.yml (production
+# too, not a development patch). Rails loads config/locales/*.yml in alphabetical order, so
+# this file ("zz_") loads last and its keys win; every other key is kept.
+#
+# Checked against Chatwoot v4.18.0: list_button_label is the button that opens a WhatsApp
+# list (input_select with more than 3 options, app/services/whatsapp/providers/base_service.rb).
+# It is "Choose an item" in every locale, Spanish included. Sidekiq sends with the default
+# locale (en), so both are set.
+en:
+  conversations:
+    messages:
+      whatsapp:
+        list_button_label: "Ver opciones"
+es:
+  conversations:
+    messages:
+      whatsapp:
+        list_button_label: "Ver opciones"

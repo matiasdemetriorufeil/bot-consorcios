@@ -5,7 +5,11 @@ message), NEVER from the model: no tool has a phone parameter and unknown argume
 rejected. Every tool checks permissions itself; can_view_unit_finance is the only gate to
 debt and payment codes. Building information is public (get_building_info needs no
 verification) and never carries data of people or debts. Results are plain JSON with texts
-already formatted for the chat.
+already formatted for the chat. get_debt and get_payment_info do not hand the data to the
+model to write: they build the message (app.bot.debt_message) and leave it in
+ToolContext.debt_messages, and the channel sends it before the agent's text.
+
+offer_choices ends the turn: its text, with buttons or a list (app.bot.choices), is the reply.
 """
 
 import json
@@ -23,6 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.bot import identity
 from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
+from app.bot.choices import Choice, problems
+from app.bot.debt_message import render_debt_message, render_payment_message
 from app.bot.identity import (
     ConfirmStatus,
     RequestStatus,
@@ -50,6 +56,23 @@ MAX_DEBT_LINES = 12
 # The admin panel and .env can change it (app.bot.bot_config): this is only the default.
 PAYMENT_CODE_HOW_TO: str = Settings.model_fields["payment_code_how_to"].default
 NO_PAYMENT_CODE = "La unidad no tiene código de pago cargado: pedilo a la administración."
+DEBT_SENT_STEP = (
+    "El mensaje de already_sent (deuda, fecha del dato, código de pago y cómo pagar) ya se le "
+    "manda a la persona tal cual, antes de tu respuesta. NO repitas montos, fechas ni códigos: "
+    'como mucho agregá una línea corta (un saludo, "¿te ayudo con algo más?") o lo que pida '
+    "el caso (por ejemplo, lo de la acreditación si dice que ya pagó)."
+)
+PAYMENT_SENT_STEP = (
+    "El mensaje de already_sent (código de pago, cómo pagar y link de autogestión) ya se le "
+    "manda a la persona tal cual, antes de tu respuesta. NO repitas códigos, pasos ni links: "
+    'como mucho una línea corta ("¿te ayudo con algo más?").'
+)
+# Added to those steps in the first message of a conversation (see FIRST_GREETING).
+GREETED_STEP = (
+    " Antes de ese mensaje el sistema ya saludó y dijo que sos el asistente automático y que "
+    "puede pedir hablar con una persona: no te presentes ni lo repitas."
+)
+OFFER_SENT_STEP = "El mensaje con las opciones ya sale así: no escribas nada más."
 # Arguments never written to bot_events.
 _SECRET_ARGS = frozenset({"code"})
 
@@ -79,6 +102,18 @@ class Handoff:
     priority: str = "normal"  # "normal" | "urgent"
 
 
+@dataclass(frozen=True)
+class Offer:
+    """A reply with options to tap (offer_choices)."""
+
+    text: str
+    choices: tuple[Choice, ...]
+
+    @property
+    def titles(self) -> list[str]:
+        return [c.title for c in self.choices]
+
+
 @dataclass
 class ToolContext:
     session: Session
@@ -103,6 +138,14 @@ class ToolContext:
     # unit_ids find_unit returned in this turn. The history only keeps texts, so an id from
     # an earlier turn is gone: one the model "remembers" may be another unit (see run_tool).
     offered_unit_ids: set[int] = field(default_factory=set)
+    # unit_id -> message built by get_debt or get_payment_info in this turn, in call order.
+    # The channel sends each one, as is, before the agent's text.
+    debt_messages: dict[int, str] = field(default_factory=dict)
+    # Whether this is the first message of the conversation (the agent greets before the
+    # first debt message, see FIRST_GREETING).
+    first_message: bool = False
+    # Set by offer_choices: the reply of this turn, with buttons or a list.
+    offer: Offer | None = None
 
     @property
     def e164(self) -> str | None:
@@ -199,7 +242,19 @@ TOOLS: list[ToolSpec] = [
         name="get_debt",
         description=(
             "Deuda de expensas y código de pago Siro de una unidad. Solo funciona si quien "
-            "escribe es propietario verificado de esa unidad. Devuelve textos ya formateados."
+            "escribe es propietario verificado de esa unidad. Si encuentra el dato, el mensaje "
+            "con la deuda, el código, cómo pagar y el link de autogestión ya se le manda a la "
+            "persona: vos no lo repitas."
+        ),
+        parameters=_object({"unit_id": _UNIT_ID}, ["unit_id"]),
+    ),
+    ToolSpec(
+        name="get_payment_info",
+        description=(
+            "Cómo pagar una unidad, SIN el saldo: código de pago Siro, cómo pagar y link de "
+            "autogestión. Para '¿cómo pago?' o '¿cuál es mi código de pago?' cuando no pide la "
+            "deuda. Mismo permiso que get_debt (propietario verificado). El mensaje ya se le "
+            "manda a la persona: vos no lo repitas."
         ),
         parameters=_object({"unit_id": _UNIT_ID}, ["unit_id"]),
     ),
@@ -255,6 +310,33 @@ TOOLS: list[ToolSpec] = [
             ["reason", "summary", "priority"],
         ),
     ),
+    ToolSpec(
+        name="offer_choices",
+        description=(
+            "Responde con botones (hasta 3 opciones) o una lista (hasta 10) para que la "
+            "persona toque en vez de escribir. TERMINA tu respuesta: text es todo lo que le "
+            "decís en este mensaje y después no escribís nada más. Cuando toca, te llega el "
+            "título de la opción como texto."
+        ),
+        parameters=_object(
+            {
+                "text": {
+                    "type": "string",
+                    "description": "Todo tu mensaje, terminado en la pregunta (máximo 1024 "
+                    "caracteres).",
+                },
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 2,
+                    "maxItems": 10,
+                    "description": "Títulos de las opciones, distintos entre sí: hasta 20 "
+                    "caracteres si son 3 o menos, hasta 24 si son más.",
+                },
+            },
+            ["text", "options"],
+        ),
+    ),
 ]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
@@ -291,6 +373,10 @@ def validate_arguments(spec: ToolSpec, arguments: dict[str, Any]) -> dict[str, A
                 raise InvalidArguments(f"{name} tiene que ser texto")
             if "enum" in prop and value not in prop["enum"]:
                 raise InvalidArguments(f"{name} tiene que ser uno de {prop['enum']}")
+        elif prop["type"] == "array":  # of strings, the only kind declared
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise InvalidArguments(f"{name} tiene que ser una lista de textos")
+            value = list(value)
         clean[name] = value
     return clean
 
@@ -526,8 +612,7 @@ def get_debt(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
             "next_step": "No hay dato de deuda: decilo y ofrecé derivar.",
         }
     snap = debt.snapshot
-    result: dict[str, Any] = {
-        "status": "ok",
+    data: dict[str, Any] = {
         "unit": label,
         "total_debt": format_money(snap.total_amount),
         "up_to_date": snap.is_up_to_date,
@@ -536,18 +621,55 @@ def get_debt(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
             f"{line.period} {line.concept}: {format_money(line.balance_due)}"
             for line in snap.lines[:MAX_DEBT_LINES]
         ],
+        "more_lines": max(0, len(snap.lines) - MAX_DEBT_LINES),
+        "stale": debt.stale,
+        **_payment_data(ctx, unit),
     }
-    if debt.stale:
-        result["note"] = "No se pudo actualizar ahora: es el último dato guardado (ver data_date)."
-    if unit.payment_code:
-        result["payment_code"] = unit.payment_code
-        result["payment_how_to"] = ctx.payment_how_to
+    message = render_debt_message(data)
+    # Asked twice in a turn: sent once, with the latest data.
+    ctx.debt_messages.pop(unit_id, None)
+    ctx.debt_messages[unit_id] = message
+    return {
+        "status": "ok",
+        "unit": label,
+        "up_to_date": snap.is_up_to_date,
+        "already_sent": message,
+        "next_step": _sent_step(ctx, DEBT_SENT_STEP),
+    }
+
+
+def get_payment_info(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
+    """The debt message without the balance: no ConsorPlus refresh, only stored data."""
+    if not can_view_unit_finance(ctx.session, ctx.phone, unit_id):
+        return _debt_denied(ctx, unit_id)
+    unit = ctx.session.get(Unit, unit_id)
+    if unit is None:
+        return {"status": "not_found"}
+    label = f"{display_building_name(unit.building.name)} {unit.label}"
+    if unit_id in ctx.debt_messages:
+        # get_debt already went in this turn: its message has all of this.
+        message = ctx.debt_messages[unit_id]
     else:
-        result["payment_code"] = None
-        result["payment_how_to"] = NO_PAYMENT_CODE
-    if ctx.autogestion_url:
-        result["autogestion_url"] = ctx.autogestion_url
-    return result
+        message = render_payment_message({"unit": label, **_payment_data(ctx, unit)})
+        ctx.debt_messages[unit_id] = message
+    return {
+        "status": "ok",
+        "unit": label,
+        "already_sent": message,
+        "next_step": _sent_step(ctx, PAYMENT_SENT_STEP),
+    }
+
+
+def _payment_data(ctx: ToolContext, unit: Unit) -> dict[str, Any]:
+    return {
+        "payment_code": unit.payment_code or None,
+        "payment_how_to": ctx.payment_how_to if unit.payment_code else NO_PAYMENT_CODE,
+        "autogestion_url": ctx.autogestion_url or None,
+    }
+
+
+def _sent_step(ctx: ToolContext, step: str) -> str:
+    return step + GREETED_STEP if ctx.first_message else step
 
 
 def _debt_denied(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
@@ -699,6 +821,28 @@ def handoff_to_human(
     return {"status": "ok", "tell_person": notice}
 
 
+def offer_choices(ctx: ToolContext, text: str, options: list[str]) -> dict[str, Any]:
+    """Leaves the reply with options in ctx.offer; the agent ends the turn with it."""
+    if ctx.handoff is not None:
+        return {
+            "status": "error",
+            "reason": "handed_off",
+            "next_step": "Ya derivaste en este mensaje: respondé con texto (el tell_person).",
+        }
+    if ctx.offer is not None:
+        return {"status": "error", "reason": "already_offered"}
+    titles = [o.strip() for o in options]
+    if found := problems(text, titles):
+        return {
+            "status": "error",
+            "reason": "invalid_options",
+            "error": "; ".join(found),
+            "next_step": "Corregilo y volvé a llamar offer_choices.",
+        }
+    ctx.offer = Offer(text.strip(), tuple(Choice(t, t) for t in titles))
+    return {"status": "ok", "next_step": OFFER_SENT_STEP}
+
+
 def _units_of(who: identity.Identity) -> list[dict[str, Any]]:
     return [
         {
@@ -717,6 +861,8 @@ _HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "confirm_email_code": confirm_email_code,
     "request_operator_verification": request_operator_verification,
     "get_debt": get_debt,
+    "get_payment_info": get_payment_info,
     "get_building_info": get_building_info,
     "handoff_to_human": handoff_to_human,
+    "offer_choices": offer_choices,
 }
