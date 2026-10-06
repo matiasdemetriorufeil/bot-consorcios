@@ -339,9 +339,9 @@ def test_agenda_has_the_7_days_and_the_hours_of_the_slots(logged_in: Panel, sum_
     assert [h["day"] for h in agenda.heads] == [f"2026-10-{d:02d}" for d in range(5, 12)]
     assert "is-today" in agenda.heads[0]["class"]  # Monday 05/10
     assert not any("is-today" in h["class"] for h in agenda.heads[1:])
-    # From the earliest start (14:00) to the latest end: the night slot ends at 02:00.
-    assert agenda.hours == [f"{h % 24:02d}:00" for h in range(14, 26)]
-    assert agenda.grid_hours == 12
+    # The whole day from 08:00, up to 02:00: the night slot ends then.
+    assert agenda.hours == [f"{h % 24:02d}:00" for h in range(8, 26)]
+    assert agenda.grid_hours == 18
     for label in ("Disponible", "Reservado", "No reservable ahora", "Sin turno"):
         assert label in agenda.page  # the legend
 
@@ -351,12 +351,14 @@ def test_overnight_slot_is_drawn_on_the_day_it_starts(logged_in: Panel, sum_: Su
 
     night = next(b for b in blocks if b["slot"] == sum_.night_id)
     assert night["day"] == "2026-10-09"  # Friday, not Saturday
-    assert night["top"] == pytest.approx(50) and night["height"] == pytest.approx(50)  # 20 to 02
-    assert "20:00 a 02:00 (del día siguiente)" in night["text"]
+    # 20 to 02 over 08 to 02 (18 hours).
+    assert night["top"] == pytest.approx(100 * 12 / 18, abs=1e-3)
+    assert night["height"] == pytest.approx(100 / 3, abs=1e-3)
+    assert night["text"].startswith("20:00 a 02:00")  # the times, on one line
+    assert "20:00 a 02:00 (del día siguiente) · Noche" in night["title"]
     afternoon = next(b for b in blocks if b["slot"] == sum_.afternoon_id)
-    assert afternoon["top"] == 0 and afternoon["height"] == pytest.approx(
-        100 / 3, abs=1e-3
-    )  # 14 to 18
+    assert afternoon["top"] == pytest.approx(100 * 6 / 18, abs=1e-3)  # 14 to 18
+    assert afternoon["height"] == pytest.approx(100 * 4 / 18, abs=1e-3)
     assert {b["day"] for b in blocks} == {"2026-10-09"}
 
 
@@ -546,3 +548,24 @@ def test_unknown_ids_are_404(logged_in: Panel, sum_: Sum) -> None:
         f"/admin/amenities/{sum_.amenity_id}/book?slot=999999&date=2026-10-09",
     ):
         assert logged_in.client.get(url).status_code == 404, url
+
+
+def test_one_hour_block_keeps_its_times_and_state(
+    logged_in: Panel, sum_: Sum, db_session: Session
+) -> None:
+    amenity = db_session.get(Amenity, sum_.amenity_id)
+    amenity.slots.append(AmenitySlot(weekday=2, start_time=time(9), end_time=time(10)))
+    db_session.commit()
+
+    agenda = _agenda(logged_in, sum_)
+
+    [short] = [b for b in agenda.blocks if b["day"] == "2026-10-07"]
+    assert short["state"] == "free" and short["height"] == pytest.approx(100 / 18, abs=1e-3)
+    assert short["text"] == "09:00 a 10:00 Disponible"  # times first, the state after
+    page = agenda.page
+    # The times line never wraps; the hour rows are at least 22 px; the grid scrolls inside.
+    assert re.search(r"\.block-time, \.block-state \{[^}]*white-space: nowrap", page)
+    assert "--hour: max(22px, calc((100vh - var(--agenda-offset)" in page
+    assert re.search(r"\.agenda-scroll \{[^}]*overflow-y: auto", page)
+    # Hour labels inside their own row (no negative shift that cut the first one).
+    assert "translateY(-" not in page

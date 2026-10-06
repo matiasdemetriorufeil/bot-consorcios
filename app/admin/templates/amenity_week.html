@@ -1,47 +1,60 @@
 {% extends "sqladmin/layout.html" %}
 {% block head_tail %}
 <style>
-  .agenda { --hour: 3rem; display: grid; grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); }
-  .agenda-head { position: sticky; top: 0; z-index: 2; background: var(--tblr-bg-surface, #fff);
-    border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); padding: .5rem .25rem; text-align: center;
-    font-weight: 600; line-height: 1.2; }
+  /* The whole range fits on the screen: each hour gets the height left under the header and
+     the legend (--agenda-offset, measured on load) divided by the hours, at least 22 px. Only
+     when that minimum does not fit, the grid scrolls inside (and starts at the first slot). */
+  .agenda-scroll { --agenda-offset: 15rem; --head: 2.75rem;
+    max-height: max(12rem, calc(100vh - var(--agenda-offset))); overflow-y: auto; }
+  .agenda { --hour: max(22px, calc((100vh - var(--agenda-offset) - var(--head)) / var(--hours)));
+    display: grid; grid-template-columns: 3.25rem repeat(7, minmax(0, 1fr)); }
+  .agenda-head { position: sticky; top: 0; z-index: 3; height: var(--head); background: var(--tblr-bg-surface, #fff);
+    border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); padding: .3rem .25rem; text-align: center;
+    font-weight: 600; line-height: 1.15; font-size: .85rem; }
   .agenda-head.is-today { background: var(--tblr-primary-lt, #e8f0fb); color: var(--tblr-primary, #206bc4); }
   .agenda-head small { display: block; font-weight: 400; }
   .agenda-hours { border-right: 1px solid var(--tblr-border-color, #e6e7e9); }
-  .agenda-hour { height: var(--hour); font-size: .75rem; color: var(--tblr-secondary, #667382);
-    text-align: right; padding-right: .35rem; transform: translateY(-.5em); }
+  /* The label sits just under its hour line, inside its own row: never cut at the top. */
+  .agenda-hour { height: var(--hour); font-size: .7rem; line-height: 1; padding: 2px .35rem 0 0;
+    color: var(--tblr-secondary, #667382); text-align: right; white-space: nowrap; overflow: hidden; }
   .agenda-hour.next-day { font-style: italic; }
   .agenda-day { position: relative; height: calc(var(--hours) * var(--hour)); background-color: #f4f5f7;
-    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--hour) - 1px),
-      #e3e5e8 calc(var(--hour) - 1px), #e3e5e8 var(--hour));
+    background-image: repeating-linear-gradient(to bottom, #e3e5e8 0, #e3e5e8 1px, transparent 1px,
+      transparent var(--hour));
     border-right: 1px solid #e3e5e8; }
   .agenda-day.is-today { background-color: #eef3fb; }
   .agenda-block { position: absolute; padding: 1px 2px; }
-  .agenda-block > * { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; height: 100%;
-    overflow: hidden; border-radius: 4px; padding: .2rem .35rem; font-size: .75rem; line-height: 1.25;
-    text-align: left; text-decoration: none; border: 1px solid transparent; }
-  .slot-free > * { background: #d3f2dc; border-color: #2fb344; color: #1d6b2b; }
-  .slot-free > *:hover { background: #b9eac7; }
-  .slot-reserved > * { background: #206bc4; border-color: #1a569d; color: #fff; }
-  .slot-reserved > *:hover { background: #1a569d; color: #fff; }
-  .slot-blocked > * { background: #e9ecef; border-color: #d0d5db; color: #6c757d; cursor: help; }
-  .slot-blocked .reason { display: none; margin-top: .15rem; }
+  .agenda-block > a, .agenda-block > button { display: flex; flex-direction: column; justify-content: flex-start;
+    align-items: stretch; width: 100%; height: 100%; overflow: hidden;
+    border-radius: 4px; padding: 1px 4px; font-size: .72rem; line-height: 1.2; text-align: left;
+    text-decoration: none; border: 1px solid transparent; }
+  /* Always the times on one line; the state below, only if it fits (its color says it anyway). */
+  .block-time, .block-state { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .block-time { font-weight: 600; }
+  .slot-free > a { background: #d3f2dc; border-color: #2fb344; color: #1d6b2b; }
+  .slot-free > a:hover { background: #b9eac7; }
+  .slot-reserved > a { background: #206bc4; border-color: #1a569d; color: #fff; }
+  .slot-reserved > a:hover { background: #1a569d; color: #fff; }
+  .slot-blocked > button { background: #e9ecef; border-color: #d0d5db; color: #6c757d; cursor: help; }
+  .slot-blocked .reason { display: none; position: absolute; top: 100%; left: 2px; z-index: 4; width: max-content;
+    max-width: 16rem; padding: .3rem .5rem; border-radius: 4px; font-size: .75rem; background: #1e293b; color: #fff; }
   .slot-blocked.show-reason .reason { display: block; }
-  .agenda-block strong { font-weight: 600; }
   .legend-swatch { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px;
     margin-right: .3rem; border: 1px solid transparent; }
   .phone-nav { display: none; }
   @media (max-width: 767.98px) {
-    .agenda { grid-template-columns: 3.5rem minmax(0, 1fr); }
+    .agenda { grid-template-columns: 3.25rem minmax(0, 1fr); }
     .agenda-head:not(.is-phone-day), .agenda-day:not(.is-phone-day) { display: none; }
     .agenda-head.agenda-corner { display: block; }
     .phone-nav { display: flex; }
-    .agenda-block > * { font-size: .85rem; }
+    .agenda-block > a, .agenda-block > button { font-size: .8rem; }
   }
 </style>
 {% endblock %}
 {% block content %}
 <div class="col-12">
+  {# One wrapper: the row of the layout lays out the children of a column side by side. #}
+  <div class="w-100" id="agenda-top">
   <div class="d-flex flex-wrap align-items-center gap-2">
     <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
     <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
@@ -68,6 +81,7 @@
     No hay turnos cargados. Agregalos en <a href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}">Configuración</a>.
   </div>
   {% endif %}
+  </div>
 </div>
 
 <div class="col-12">
@@ -78,6 +92,7 @@
       <strong>{{ phone.name }} {{ phone.day.strftime("%d/%m") }}</strong>
       <a class="btn btn-icon" id="next-day" href="{{ next_day }}" aria-label="Día siguiente"><i class="fa-solid fa-chevron-right"></i></a>
     </div>
+    <div class="agenda-scroll" id="agenda-scroll">
     <div class="agenda" id="agenda" style="--hours: {{ agenda.hours | length }}">
       <div class="agenda-head agenda-corner"></div>
       {% for d in agenda.days %}
@@ -100,32 +115,60 @@
           style="top: {{ '%.4f' | format(b.top) }}%; height: {{ '%.4f' | format(b.height) }}%; left: {{ '%.4f' | format(b.left) }}%; width: {{ '%.4f' | format(b.width) }}%">
           {% if b.state == "reserved" %}
           <a href="{{ url_for('admin:view-amenity-reservation', amenity_id=amenity.id, reservation_id=b.cell.reservation.id) }}"
-            title="Reservado por {{ b.unit }}: ver el detalle o cancelar">
-            <span>{{ b.text }}</span><strong><i class="fa-solid fa-lock me-1"></i>{{ b.unit }}</strong>
+            title="Reservado por {{ b.unit }} · {{ b.text }}. Tocá para ver el detalle o cancelar.">
+            <span class="block-time">{{ b.time }}</span>
+            <span class="block-state"><i class="fa-solid fa-lock me-1"></i>{{ b.unit }}</span>
           </a>
           {% elif b.state == "free" %}
           <a href="{{ url_for('admin:view-amenity-book', amenity_id=amenity.id) }}?slot={{ b.cell.slot.id }}&date={{ d.day.isoformat() }}"
-            title="Disponible: tocá para reservar">
-            <span>{{ b.text }}</span><strong>Disponible</strong>
+            title="Disponible · {{ b.text }}. Tocá para reservar.">
+            <span class="block-time">{{ b.time }}</span>
+            <span class="block-state">Disponible</span>
           </a>
           {% else %}
-          <button type="button" class="blocked-toggle" title="{{ b.reasons | join(' ') }}" aria-label="No reservable: {{ b.reasons | join(' ') }}">
-            <span>{{ b.text }}</span>
-            <span class="reason">{{ b.reasons | join(' ') }}</span>
+          <button type="button" class="blocked-toggle" title="{{ b.text }}. No reservable: {{ b.reasons | join(' ') }}"
+            aria-label="{{ b.time }}, no reservable: {{ b.reasons | join(' ') }}">
+            <span class="block-time">{{ b.time }}</span>
+            <span class="block-state">No reservable</span>
           </button>
+          <span class="reason">{{ b.reasons | join(' ') }}</span>
           {% endif %}
         </div>
         {% endfor %}
       </div>
       {% endfor %}
     </div>
+    </div>
   </div>
 </div>
 <script>
-  document.querySelectorAll('.blocked-toggle').forEach(function (button) {
-    button.addEventListener('click', function () {
-      button.parentElement.classList.toggle('show-reason');
+  (function () {
+    document.querySelectorAll('.blocked-toggle').forEach(function (button) {
+      button.addEventListener('click', function () {
+        button.parentElement.classList.toggle('show-reason');
+      });
     });
-  });
+    // Measure what is above the grid, so the hours share the rest of the screen.
+    var scroll = document.getElementById('agenda-scroll');
+    var bottomGap = 24;
+    function fit() {
+      var top = scroll.getBoundingClientRect().top + window.scrollY;
+      scroll.style.setProperty('--agenda-offset', (top + bottomGap) + 'px');
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    // Only when even 22 px per hour does not fit: start at the first slot shown.
+    if (scroll.scrollHeight > scroll.clientHeight + 1) {
+      var head = scroll.querySelector('.agenda-head');
+      var tops = Array.prototype.filter.call(scroll.querySelectorAll('.agenda-block'), function (b) {
+        return b.offsetParent !== null;
+      }).map(function (b) {
+        return b.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+      });
+      if (tops.length) {
+        scroll.scrollTop = Math.max(0, Math.min.apply(null, tops) - head.offsetHeight - 4);
+      }
+    }
+  })();
 </script>
 {% endblock %}

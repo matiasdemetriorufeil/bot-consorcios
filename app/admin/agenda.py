@@ -1,11 +1,11 @@
 """The weekly agenda of a SUM in the panel: what to draw, with no rules of its own.
 
-Columns are the 7 days, rows the hours from the earliest slot start to the latest slot end
-of the amenity (an overnight slot pushes the end past midnight, e.g. 26 = 02:00 of the next
-day; no slots: 8 to 24). Each slot of a day is a block over its hours, in the column of the
-day it STARTS. Its state comes from app.amenities.booking.availability (called with now):
-reserved, free (bookable) or blocked (the service says why). Overlapping slots of a day
-share the width side by side (lanes).
+Columns are the 7 days, rows the hours of the whole day: DEFAULT_START_HOUR to
+DEFAULT_END_HOUR, widened to fit every active slot of the amenity (one starting earlier, or an
+overnight one that pushes the end past midnight, e.g. 26 = 02:00 of the next day). Each slot
+of a day is a block over its hours, in the column of the day it STARTS. Its state comes from
+app.amenities.booking.availability (called with now): reserved, free (bookable) or blocked
+(the service says why). Overlapping slots of a day share the width side by side (lanes).
 """
 
 import math
@@ -16,7 +16,9 @@ from datetime import date, time
 from app.amenities.booking import BookingProblem, SlotDay, describe_slot
 from app.db.models import AmenitySlot
 
-DEFAULT_HOURS = (8, 24)
+# The grid always shows at least these hours (24 = midnight).
+DEFAULT_START_HOUR = 8
+DEFAULT_END_HOUR = 24
 WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 WEEKDAYS_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
@@ -25,7 +27,8 @@ WEEKDAYS_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 class Block:
     cell: SlotDay
     state: str  # "reserved" | "free" | "blocked"
-    text: str  # the slot's times (and label)
+    time: str  # "20:00 a 02:00": one line, always visible
+    text: str  # the slot's full description (next day, label)
     top: float  # % of the day's height
     height: float
     reasons: list[str] = field(default_factory=list)  # why it is blocked
@@ -74,11 +77,12 @@ def _span(slot: AmenitySlot) -> tuple[int, int]:
 
 
 def hour_range(slots: Sequence[AmenitySlot]) -> tuple[int, int]:
-    """First and last hour of the grid (the last may pass 24)."""
+    """First and last hour of the grid: the default ones, widened to fit every active slot
+    (the last may pass 24)."""
     spans = [_span(s) for s in slots if s.active]
-    if not spans:
-        return DEFAULT_HOURS
-    return min(s for s, _ in spans) // 60, math.ceil(max(e for _, e in spans) / 60)
+    first = min([DEFAULT_START_HOUR, *(start // 60 for start, _ in spans)])
+    last = max([DEFAULT_END_HOUR, *(math.ceil(end / 60) for _, end in spans)])
+    return first, last
 
 
 def _lanes(blocks: list[Block]) -> None:
@@ -114,6 +118,7 @@ def build_agenda(
             block = Block(
                 cell=cell,
                 state="free",
+                time=f"{cell.slot.start_time:%H:%M} a {cell.slot.end_time:%H:%M}",
                 text=describe_slot(cell.slot),
                 top=100 * (start - first * 60) / total,
                 height=100 * (end - start) / total,
