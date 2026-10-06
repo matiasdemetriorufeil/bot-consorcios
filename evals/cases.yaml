@@ -747,6 +747,9 @@
   turns: ["¿En Los Algarrobos se pueden hacer asados en el balcón?"]
   expect:
     must_return: {get_building_info: no_info}
+    # A building with no texts at all: it offers a person with buttons, it does not hand off.
+    handoff: false
+    choices_contain: ["si, pasame"]
     contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
     not_matches: ['\besta (permitido|prohibido)', '\bse permiten']
 
@@ -824,6 +827,25 @@
   expect:
     handoff: false
     must_not_call: [get_debt, start_email_verification]
+
+# The menu button without a question: it asks what they want to know, even in a building with
+# no texts (it used to call get_building_info with no question and hand off).
+- id: menu_info_edificio_sin_textos
+  category: botones
+  phone: elena
+  turns: ["Hola", "Info del edificio"]
+  expect:
+    must_not_call: [get_building_info, handoff_to_human]
+    handoff: false
+
+- id: menu_mi_deuda_no_verificado
+  category: botones
+  phone: desconocido
+  turns: ["Hola", "Mi deuda"]
+  expect:
+    must_not_call: [get_debt, handoff_to_human]
+    handoff: false
+    contains: ["edificio", "unidad"]
 
 - id: saludo_y_gracias
   category: saludo

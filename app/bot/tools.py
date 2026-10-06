@@ -773,8 +773,10 @@ def get_building_info(ctx: ToolContext, question: str, building: str = "") -> di
         if not infos:
             result["status"] = "no_info"
             result["next_step"] = (
-                "El estudio no cargó información de este edificio: decí que no tenés ese dato "
-                "y derivá. Si la pregunta es sobre el estudio, respondé con studio."
+                "El estudio no cargó ninguna información de este edificio: decí que no tenés "
+                "información cargada y ofrecé pasarlo con una persona con offer_choices ('Sí, "
+                "pasame' / 'No, gracias'). NO derives directo. Si la pregunta es sobre el "
+                "estudio, respondé con studio."
             )
         else:
             chosen = select_texts(infos, question, TOKEN_BUDGET)

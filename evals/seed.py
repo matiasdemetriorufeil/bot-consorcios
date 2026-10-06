@@ -31,6 +31,7 @@ PHONES = {
     "carla": "+5493515550103",  # owner Torre del Sol 05-A (no payment code)
     "fede": "+5493515550104",  # owner Torre del Sol 05-B (up to date)
     "tito": "+5493515550105",  # TENANT of Rodas II 04-C
+    "elena": "+5493515550106",  # owner Los Algarrobos 02-A (building with no texts)
     "desconocido": "+5493515550199",  # not in the database
     "desconocido2": "+5493515550198",
 }
@@ -167,7 +168,7 @@ def seed(session: Session) -> None:
     fede = person("FEDE ALDIA", "fede@example.com", PHONES["fede"])
     tito = person("TITO INQUILINO", "tito@example.com", PHONES["tito"])
     diego = person("DIEGO EJEMPLO", "diego.ejemplo@example.com")  # owner without phone
-    elena = person("ELENA SINMAIL")  # owner without email
+    elena = person("ELENA SINMAIL", None, PHONES["elena"])  # owner without email
     gustavo = person("GUSTAVO FICTICIO", "estudiodiegorufeil@gmail.com")  # excluded email
     hugo = person("HUGO RODAS UNO", "hugo@example.com")
     session.flush()
