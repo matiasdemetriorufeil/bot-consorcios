@@ -21,6 +21,7 @@ from starlette.datastructures import FormData
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.admin.agenda import build_agenda
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
 from app.amenities.booking import (
@@ -31,7 +32,7 @@ from app.amenities.booking import (
     cancel,
     check_booking,
     describe_slot,
-    slot_start,
+    problem_message,
 )
 from app.bot.unit_search import display_building_name
 from app.config import Settings
@@ -448,16 +449,23 @@ class AmenitiesView(BaseView):
 
     @expose("/amenities/{amenity_id:int}/week", methods=["GET"], identity="amenity-week")
     async def amenity_week(self, request: Request) -> Response:
+        """The weekly agenda (app.admin.agenda). ?start: any date of the week; ?day: the day
+        shown on phones (0 = Monday), by default today if it is in that week."""
         amenity_id = request.path_params["amenity_id"]
-        asked = _date(request.query_params.get("start")) or self.today()
+        today = self.today()
+        asked = _date(request.query_params.get("start")) or today
         monday = asked - timedelta(days=asked.weekday())
         days = [monday + timedelta(days=i) for i in range(7)]
-        now = self.now()
+        phone_day = _int(request.query_params.get("day"))
+        if phone_day is None or not 0 <= phone_day <= 6:
+            phone_day = today.weekday() if today in days else 0
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
                 return Response("SUM inexistente", status_code=404)
-            cells = availability(session, amenity, days[0], days[-1], timezone=self.timezone)
+            cells = availability(
+                session, amenity, days[0], days[-1], now=self.now(), timezone=self.timezone
+            )
             units = {
                 u.id: u.label
                 for u in session.scalars(
@@ -466,32 +474,41 @@ class AmenitiesView(BaseView):
                     )
                 )
             }
-            # Rows: the distinct times of the week; a day without that slot shows nothing.
-            times = sorted({(c.slot.start_time, c.slot.end_time) for c in cells})
-            grid = {(c.day, c.slot.start_time, c.slot.end_time): c for c in cells}
-            rows = [
-                {
-                    "label": f"{start:%H:%M} a {end:%H:%M}",
-                    "overnight": end <= start,
-                    "cells": [grid.get((d, start, end)) for d in days],
-                }
-                for start, end in times
-            ]
+            agenda = build_agenda(
+                days,
+                cells,
+                amenity.slots,
+                today=today,
+                units=units,
+                message=lambda problem: problem_message(problem, amenity),
+            )
+
+            def week_link(first_day: date, day: int) -> str:
+                return f"?start={first_day.isoformat()}&day={day}"
+
+            previous_day = (
+                week_link(monday, phone_day - 1)
+                if phone_day > 0
+                else week_link(monday - timedelta(days=7), 6)
+            )
+            next_day = (
+                week_link(monday, phone_day + 1)
+                if phone_day < 6
+                else week_link(monday + timedelta(days=7), 0)
+            )
+            this_monday = today - timedelta(days=today.weekday())
             return await self._page(
                 request,
                 "amenity_week.html",
                 f"{amenity.name} · {building_name(amenity)}",
                 amenity=amenity,
-                days=days,
-                rows=rows,
-                by_day=[[c for c in cells if c.day == d] for d in days],
-                units=units,
-                today=self.today(),
-                started=lambda c: slot_start(c.day, c.slot, self.timezone) <= now,
-                describe_slot=describe_slot,
-                previous=(monday - timedelta(days=7)).isoformat(),
-                following=(monday + timedelta(days=7)).isoformat(),
-                this_week=(self.today() - timedelta(days=self.today().weekday())).isoformat(),
+                agenda=agenda,
+                phone_day=phone_day,
+                previous_week=week_link(monday - timedelta(days=7), phone_day),
+                next_week=week_link(monday + timedelta(days=7), phone_day),
+                this_week=week_link(this_monday, today.weekday()),
+                previous_day=previous_day,
+                next_day=next_day,
             )
 
     @expose("/amenities/{amenity_id:int}/book", methods=["GET", "POST"], identity="amenity-book")

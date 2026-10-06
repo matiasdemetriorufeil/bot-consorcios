@@ -1,8 +1,10 @@
 """Panel pages of the SUM ("Reservas de SUM") and the "Reclamos" placeholder, against the
 Postgres test database. Invented data only."""
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time
+from html.parser import HTMLParser
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -257,26 +259,177 @@ def _book(panel: Panel, sum_: Sum, slot_id: int, day: date, unit_id: int, **extr
     )
 
 
-def test_week_grid_shows_free_and_taken_slots(logged_in: Panel, sum_: Sum) -> None:
+class _AgendaParser(HTMLParser):
+    """The day headers, hour rows and blocks of the agenda page."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.page = ""
+        self.heads: list[dict[str, str]] = []
+        self.hours: list[str] = []
+        self.blocks: list[dict[str, Any]] = []
+        self.grid_hours: int | None = None
+        self._day: str | None = None
+        self._in_hour = False
+        self._block: dict[str, Any] | None = None
+        self._depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = {k: v or "" for k, v in attrs}
+        classes = a.get("class", "").split()
+        if self._block is not None:
+            self._depth += 1
+            if tag == "a":
+                self._block["href"] = a.get("href", "")
+            self._block["title"] = self._block.get("title") or a.get("title", "")
+            return
+        if a.get("id") == "agenda":
+            found = re.search(r"--hours: (\d+)", a["style"])
+            self.grid_hours = int(found.group(1)) if found else None
+        if "agenda-head" in classes and "data-day" in a:
+            self.heads.append({"day": a["data-day"], "class": a["class"]})
+        elif "agenda-day" in classes:
+            self._day = a["data-day"]
+        elif "agenda-hour" in classes:
+            self._in_hour = True
+        elif "agenda-block" in classes:
+            style = {
+                k.strip(): float(v.strip(" %"))
+                for k, v in (part.split(":") for part in a["style"].split(";") if part.strip())
+            }
+            self._block = {
+                "day": self._day,
+                "slot": int(a["data-slot"]),
+                "state": next(c[5:] for c in classes if c.startswith("slot-")),
+                "text": "",
+                **style,
+            }
+            self._depth = 0
+
+    def handle_endtag(self, tag: str) -> None:
+        self._in_hour = False
+        if self._block is None:
+            return
+        if self._depth == 0:
+            self._block["text"] = " ".join(self._block["text"].split())
+            self.blocks.append(self._block)
+            self._block = None
+        else:
+            self._depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._in_hour and data.strip():
+            self.hours.append(data.strip())
+        if self._block is not None:
+            self._block["text"] += f" {data}"
+
+
+def _agenda(panel: Panel, sum_: Sum, query: str = "") -> _AgendaParser:
+    response = panel.client.get(f"/admin/amenities/{sum_.amenity_id}/week{query}")
+    assert response.status_code == 200
+    parser = _AgendaParser()
+    parser.page = response.text
+    parser.feed(response.text)
+    return parser
+
+
+def test_agenda_has_the_7_days_and_the_hours_of_the_slots(logged_in: Panel, sum_: Sum) -> None:
+    agenda = _agenda(logged_in, sum_)
+
+    assert [h["day"] for h in agenda.heads] == [f"2026-10-{d:02d}" for d in range(5, 12)]
+    assert "is-today" in agenda.heads[0]["class"]  # Monday 05/10
+    assert not any("is-today" in h["class"] for h in agenda.heads[1:])
+    # From the earliest start (14:00) to the latest end: the night slot ends at 02:00.
+    assert agenda.hours == [f"{h % 24:02d}:00" for h in range(14, 26)]
+    assert agenda.grid_hours == 12
+    for label in ("Disponible", "Reservado", "No reservable ahora", "Sin turno"):
+        assert label in agenda.page  # the legend
+
+
+def test_overnight_slot_is_drawn_on_the_day_it_starts(logged_in: Panel, sum_: Sum) -> None:
+    blocks = _agenda(logged_in, sum_).blocks
+
+    night = next(b for b in blocks if b["slot"] == sum_.night_id)
+    assert night["day"] == "2026-10-09"  # Friday, not Saturday
+    assert night["top"] == pytest.approx(50) and night["height"] == pytest.approx(50)  # 20 to 02
+    assert "20:00 a 02:00 (del día siguiente)" in night["text"]
+    afternoon = next(b for b in blocks if b["slot"] == sum_.afternoon_id)
+    assert afternoon["top"] == 0 and afternoon["height"] == pytest.approx(
+        100 / 3, abs=1e-3
+    )  # 14 to 18
+    assert {b["day"] for b in blocks} == {"2026-10-09"}
+
+
+def test_days_without_slots_are_drawn_empty(logged_in: Panel, sum_: Sum) -> None:
+    page = _agenda(logged_in, sum_).page
+    for day in ("2026-10-05", "2026-10-10", "2026-10-11"):
+        assert re.search(rf'class="agenda-day[^"]*"\s+data-day="{day}">\s*</div>', page), day
+
+
+def test_amenity_without_slots_shows_8_to_24(
+    logged_in: Panel, sum_: Sum, db_session: Session
+) -> None:
+    for slot in db_session.scalars(select(AmenitySlot)):
+        slot.active = False
+    db_session.commit()
+
+    agenda = _agenda(logged_in, sum_)
+
+    assert agenda.hours[0] == "08:00" and agenda.hours[-1] == "23:00" and agenda.grid_hours == 16
+    assert agenda.blocks == []
+    assert "No hay turnos cargados" in agenda.page
+
+
+def test_block_states(logged_in: Panel, sum_: Sum) -> None:
     _book(logged_in, sum_, sum_.night_id, FRIDAY, sum_.other_unit_id)
 
-    page = logged_in.client.get(f"/admin/amenities/{sum_.amenity_id}/week").text
+    blocks = {b["slot"]: b for b in _agenda(logged_in, sum_).blocks}
 
-    assert "Lu 05/10" in page and "Do 11/10" in page  # Monday to Sunday of this week
-    assert "14:00 a 18:00" in page and "termina al día siguiente" in page
-    assert page.count("slot-taken") == 2  # grid and phone list
-    assert "02-B" in page
-    assert f"slot={sum_.afternoon_id}&date=2026-10-09" in page  # free: links to book
-    assert "?start=2026-09-28" in page and "?start=2026-10-12" in page
+    free, reserved = blocks[sum_.afternoon_id], blocks[sum_.night_id]
+    assert free["state"] == "free" and "Disponible" in free["text"]
+    assert f"/book?slot={sum_.afternoon_id}&date=2026-10-09" in free["href"]
+    assert reserved["state"] == "reserved" and "02-B" in reserved["text"]
+    assert "/reservations/" in reserved["href"]
 
 
-def test_week_navigation_and_past_slots(logged_in: Panel, sum_: Sum) -> None:
-    previous = logged_in.client.get(f"/admin/amenities/{sum_.amenity_id}/week?start=2026-10-01")
-    assert "Lu 28/09" in previous.text
-    assert "slot-free" not in previous.text and "Pasado" in previous.text  # 02/10 is past
+def test_blocked_blocks_say_why(
+    logged_in: Panel, sum_: Sum, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Already past: the week of 28/09 (Friday 02/10).
+    [past, _] = _agenda(logged_in, sum_, "?start=2026-10-01").blocks
+    assert past["state"] == "blocked" and "ya empezó o ya pasó" in past["title"]
+    assert "href" not in past
+    # Too far: Friday 13/11 is 39 days ahead (the limit is 30).
+    [far, _] = _agenda(logged_in, sum_, "?start=2026-11-13").blocks
+    assert far["state"] == "blocked" and "hasta 30 días antes" in far["title"]
+    # Too soon: on Friday 9:00 the 14:00 slot is 5 h ahead (24 h needed).
+    monkeypatch.setattr(AmenitiesView, "now", lambda self: datetime(2026, 10, 9, 9, tzinfo=CBA))
+    soon = {b["slot"]: b for b in _agenda(logged_in, sum_).blocks}
+    assert soon[sum_.afternoon_id]["state"] == "blocked"
+    assert "24 h de anticipación" in soon[sum_.afternoon_id]["title"]
 
-    following = logged_in.client.get(f"/admin/amenities/{sum_.amenity_id}/week?start=2026-10-14")
-    assert "Lu 12/10" in following.text and "Vi 16/10" in following.text
+
+def test_week_navigation_and_today(logged_in: Panel, sum_: Sum) -> None:
+    page = _agenda(logged_in, sum_, "?start=2026-10-21").page
+
+    assert 'id="previous-week" href="?start=2026-10-12&amp;day=0"' in page
+    assert 'id="next-week" href="?start=2026-10-26&amp;day=0"' in page
+    assert 'id="this-week" href="?start=2026-10-05&amp;day=0"' in page  # Hoy
+
+
+def test_phone_shows_one_day_with_arrows(logged_in: Panel, sum_: Sum) -> None:
+    # Default: today (Monday). Before it: Sunday of the previous week.
+    page = _agenda(logged_in, sum_).page
+    assert re.search(r'agenda-day is-today is-phone-day"\s+data-day="2026-10-05"', page)
+    assert 'id="previous-day" href="?start=2026-09-28&amp;day=6"' in page
+    assert 'id="next-day" href="?start=2026-10-05&amp;day=1"' in page
+
+    friday = _agenda(logged_in, sum_, "?start=2026-10-05&day=4").page
+    assert re.search(r'agenda-day is-phone-day"\s+data-day="2026-10-09"', friday)
+    assert len(re.findall(r"class=\"[^\"]*is-phone-day", friday)) == 2  # its header and its column
+
+    sunday = _agenda(logged_in, sum_, "?start=2026-10-05&day=6").page
+    assert 'id="next-day" href="?start=2026-10-12&amp;day=0"' in sunday
 
 
 # --- Booking from the panel -----------------------------------------------------------------
@@ -368,8 +521,8 @@ def test_cancel_needs_confirmation_and_frees_the_slot(
     [event] = logged_in.admin_events("reservation_cancelled")
     assert event["reservation_id"] == reservation.id
     # The slot is free again.
-    week = logged_in.client.get(f"/admin/amenities/{sum_.amenity_id}/week").text
-    assert "slot-taken" not in week
+    states = {b["slot"]: b["state"] for b in _agenda(logged_in, sum_).blocks}
+    assert states[sum_.night_id] == "free"
     assert "Cancelar reserva" not in logged_in.client.get(url).text
 
 

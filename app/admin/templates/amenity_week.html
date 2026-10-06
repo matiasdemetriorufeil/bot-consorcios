@@ -1,95 +1,131 @@
 {% extends "sqladmin/layout.html" %}
-{% macro cell(c) -%}
-  {%- if c is none -%}
-    <span class="text-muted">—</span>
-  {%- elif c.reservation -%}
-    <a class="btn btn-sm btn-primary w-100 slot-taken"
-      href="{{ url_for('admin:view-amenity-reservation', amenity_id=amenity.id, reservation_id=c.reservation.id) }}">
-      <i class="fa-solid fa-lock me-1"></i>{{ units.get(c.reservation.unit_id, '?') }}
-    </a>
-  {%- elif started(c) -%}
-    <span class="text-muted small">Pasado</span>
-  {%- else -%}
-    <a class="btn btn-sm btn-outline-success w-100 slot-free"
-      href="{{ url_for('admin:view-amenity-book', amenity_id=amenity.id) }}?slot={{ c.slot.id }}&date={{ c.day.isoformat() }}">
-      Libre
-    </a>
-  {%- endif -%}
-{%- endmacro %}
+{% block head_tail %}
+<style>
+  .agenda { --hour: 3rem; display: grid; grid-template-columns: 3.5rem repeat(7, minmax(0, 1fr)); }
+  .agenda-head { position: sticky; top: 0; z-index: 2; background: var(--tblr-bg-surface, #fff);
+    border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); padding: .5rem .25rem; text-align: center;
+    font-weight: 600; line-height: 1.2; }
+  .agenda-head.is-today { background: var(--tblr-primary-lt, #e8f0fb); color: var(--tblr-primary, #206bc4); }
+  .agenda-head small { display: block; font-weight: 400; }
+  .agenda-hours { border-right: 1px solid var(--tblr-border-color, #e6e7e9); }
+  .agenda-hour { height: var(--hour); font-size: .75rem; color: var(--tblr-secondary, #667382);
+    text-align: right; padding-right: .35rem; transform: translateY(-.5em); }
+  .agenda-hour.next-day { font-style: italic; }
+  .agenda-day { position: relative; height: calc(var(--hours) * var(--hour)); background-color: #f4f5f7;
+    background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--hour) - 1px),
+      #e3e5e8 calc(var(--hour) - 1px), #e3e5e8 var(--hour));
+    border-right: 1px solid #e3e5e8; }
+  .agenda-day.is-today { background-color: #eef3fb; }
+  .agenda-block { position: absolute; padding: 1px 2px; }
+  .agenda-block > * { display: flex; flex-direction: column; justify-content: flex-start; width: 100%; height: 100%;
+    overflow: hidden; border-radius: 4px; padding: .2rem .35rem; font-size: .75rem; line-height: 1.25;
+    text-align: left; text-decoration: none; border: 1px solid transparent; }
+  .slot-free > * { background: #d3f2dc; border-color: #2fb344; color: #1d6b2b; }
+  .slot-free > *:hover { background: #b9eac7; }
+  .slot-reserved > * { background: #206bc4; border-color: #1a569d; color: #fff; }
+  .slot-reserved > *:hover { background: #1a569d; color: #fff; }
+  .slot-blocked > * { background: #e9ecef; border-color: #d0d5db; color: #6c757d; cursor: help; }
+  .slot-blocked .reason { display: none; margin-top: .15rem; }
+  .slot-blocked.show-reason .reason { display: block; }
+  .agenda-block strong { font-weight: 600; }
+  .legend-swatch { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px;
+    margin-right: .3rem; border: 1px solid transparent; }
+  .phone-nav { display: none; }
+  @media (max-width: 767.98px) {
+    .agenda { grid-template-columns: 3.5rem minmax(0, 1fr); }
+    .agenda-head:not(.is-phone-day), .agenda-day:not(.is-phone-day) { display: none; }
+    .agenda-head.agenda-corner { display: block; }
+    .phone-nav { display: flex; }
+    .agenda-block > * { font-size: .85rem; }
+  }
+</style>
+{% endblock %}
 {% block content %}
 <div class="col-12">
   <div class="d-flex flex-wrap align-items-center gap-2">
     <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
     <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
     <div class="ms-auto btn-group" role="group" aria-label="Semana">
-      <a class="btn" id="previous-week" href="?start={{ previous }}" aria-label="Semana anterior"><i class="fa-solid fa-chevron-left"></i></a>
-      <a class="btn" href="?start={{ this_week }}">Hoy</a>
-      <a class="btn" id="next-week" href="?start={{ following }}" aria-label="Semana siguiente"><i class="fa-solid fa-chevron-right"></i></a>
+      <a class="btn" id="previous-week" href="{{ previous_week }}" aria-label="Semana anterior"><i class="fa-solid fa-chevron-left"></i></a>
+      <a class="btn" id="this-week" href="{{ this_week }}">Hoy</a>
+      <a class="btn" id="next-week" href="{{ next_week }}" aria-label="Semana siguiente"><i class="fa-solid fa-chevron-right"></i></a>
     </div>
   </div>
-  <div class="text-muted mt-2">
-    Semana del {{ days[0].strftime("%d/%m") }} al {{ days[-1].strftime("%d/%m/%Y") }}
-    {% if not amenity.active %}· <span class="text-danger">el SUM está deshabilitado para reservas</span>{% endif %}
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-2 small" id="legend">
+    <span class="text-muted">
+      Semana del {{ agenda.days[0].day.strftime("%d/%m") }} al {{ agenda.days[-1].day.strftime("%d/%m/%Y") }}
+    </span>
+    <span><span class="legend-swatch" style="background:#d3f2dc;border-color:#2fb344"></span>Disponible</span>
+    <span><span class="legend-swatch" style="background:#206bc4"></span>Reservado</span>
+    <span><span class="legend-swatch" style="background:#e9ecef;border-color:#d0d5db"></span>No reservable ahora</span>
+    <span><span class="legend-swatch" style="background:#f4f5f7;border-color:#e3e5e8"></span>Sin turno</span>
   </div>
-</div>
-
-{% if not rows %}
-<div class="col-12">
-  <div class="card"><div class="card-body text-muted">
+  {% if not amenity.active %}
+  <div class="alert alert-warning mt-2 mb-0">El SUM está deshabilitado para reservas.</div>
+  {% endif %}
+  {% if not amenity.slots | selectattr("active") | list %}
+  <div class="alert alert-info mt-2 mb-0">
     No hay turnos cargados. Agregalos en <a href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}">Configuración</a>.
-  </div></div>
-</div>
-{% else %}
-{# Wide screens: the weekly grid. #}
-<div class="col-12 d-none d-md-block">
-  <div class="card">
-    <div class="table-responsive">
-      <table class="table table-bordered card-table table-vcenter text-center" id="week-grid">
-        <thead>
-          <tr>
-            <th class="text-start">Turno</th>
-            {% for day in days %}
-            <th class="{% if day == today %}bg-primary-lt{% endif %}">
-              {{ weekdays_short[loop.index0] }} {{ day.strftime("%d/%m") }}
-            </th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in rows %}
-          <tr>
-            <th class="text-start text-nowrap">
-              {{ row.label }}{% if row.overnight %}<div class="small text-muted">termina al día siguiente</div>{% endif %}
-            </th>
-            {% for c in row.cells %}<td>{{ cell(c) }}</td>{% endfor %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
   </div>
+  {% endif %}
 </div>
 
-{# Phones: one card per day. #}
-<div class="col-12 d-md-none">
-  {% for day_cells in by_day %}
-  {% set day = days[loop.index0] %}
-  <div class="card mb-2">
-    <div class="card-header py-2 {% if day == today %}bg-primary-lt{% endif %}">
-      <strong>{{ weekdays[loop.index0] }} {{ day.strftime("%d/%m") }}</strong>
+<div class="col-12">
+  <div class="card">
+    {% set phone = agenda.days[phone_day] %}
+    <div class="card-header phone-nav align-items-center justify-content-between">
+      <a class="btn btn-icon" id="previous-day" href="{{ previous_day }}" aria-label="Día anterior"><i class="fa-solid fa-chevron-left"></i></a>
+      <strong>{{ phone.name }} {{ phone.day.strftime("%d/%m") }}</strong>
+      <a class="btn btn-icon" id="next-day" href="{{ next_day }}" aria-label="Día siguiente"><i class="fa-solid fa-chevron-right"></i></a>
     </div>
-    <div class="list-group list-group-flush">
-      {% for c in day_cells %}
-      <div class="list-group-item d-flex align-items-center gap-2">
-        <div class="flex-grow-1">{{ describe_slot(c.slot) }}</div>
-        <div style="min-width: 7rem">{{ cell(c) }}</div>
+    <div class="agenda" id="agenda" style="--hours: {{ agenda.hours | length }}">
+      <div class="agenda-head agenda-corner"></div>
+      {% for d in agenda.days %}
+      <div class="agenda-head{% if d.is_today %} is-today{% endif %}{% if loop.index0 == phone_day %} is-phone-day{% endif %}"
+        data-day="{{ d.day.isoformat() }}">
+        {{ d.short }}<small>{{ d.day.strftime("%d/%m") }}</small>
       </div>
-      {% else %}
-      <div class="list-group-item text-muted small">Sin turnos.</div>
+      {% endfor %}
+
+      <div class="agenda-hours">
+        {% for label, next_day_hour in agenda.hours %}
+        <div class="agenda-hour{% if next_day_hour %} next-day{% endif %}">{{ label }}</div>
+        {% endfor %}
+      </div>
+      {% for d in agenda.days %}
+      <div class="agenda-day{% if d.is_today %} is-today{% endif %}{% if loop.index0 == phone_day %} is-phone-day{% endif %}"
+        data-day="{{ d.day.isoformat() }}">
+        {% for b in d.blocks %}
+        <div class="agenda-block slot-{{ b.state }}" data-slot="{{ b.cell.slot.id }}"
+          style="top: {{ '%.4f' | format(b.top) }}%; height: {{ '%.4f' | format(b.height) }}%; left: {{ '%.4f' | format(b.left) }}%; width: {{ '%.4f' | format(b.width) }}%">
+          {% if b.state == "reserved" %}
+          <a href="{{ url_for('admin:view-amenity-reservation', amenity_id=amenity.id, reservation_id=b.cell.reservation.id) }}"
+            title="Reservado por {{ b.unit }}: ver el detalle o cancelar">
+            <span>{{ b.text }}</span><strong><i class="fa-solid fa-lock me-1"></i>{{ b.unit }}</strong>
+          </a>
+          {% elif b.state == "free" %}
+          <a href="{{ url_for('admin:view-amenity-book', amenity_id=amenity.id) }}?slot={{ b.cell.slot.id }}&date={{ d.day.isoformat() }}"
+            title="Disponible: tocá para reservar">
+            <span>{{ b.text }}</span><strong>Disponible</strong>
+          </a>
+          {% else %}
+          <button type="button" class="blocked-toggle" title="{{ b.reasons | join(' ') }}" aria-label="No reservable: {{ b.reasons | join(' ') }}">
+            <span>{{ b.text }}</span>
+            <span class="reason">{{ b.reasons | join(' ') }}</span>
+          </button>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
       {% endfor %}
     </div>
   </div>
-  {% endfor %}
 </div>
-{% endif %}
+<script>
+  document.querySelectorAll('.blocked-toggle').forEach(function (button) {
+    button.addEventListener('click', function () {
+      button.parentElement.classList.toggle('show-reason');
+    });
+  });
+</script>
 {% endblock %}

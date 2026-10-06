@@ -327,3 +327,22 @@ def test_availability_of_a_range(world: World) -> None:
         (NEXT_FRIDAY, time(14)),
         (NEXT_FRIDAY, time(20)),
     ]
+
+
+def test_availability_says_why_each_slot_cannot_be_booked_now(world: World) -> None:
+    friday_15 = datetime(2026, 10, 9, 15, tzinfo=CBA)
+
+    days = availability(
+        world.session, world.amenity, FRIDAY, date(2026, 11, 13), now=friday_15, timezone=TZ
+    )
+    problems = {(d.day, d.slot.start_time): d.problems for d in days}
+
+    assert problems[(FRIDAY, time(14))] == (BookingProblem.PAST,)  # started at 14:00
+    assert problems[(FRIDAY, time(20))] == (BookingProblem.TOO_SOON,)  # 5 h ahead
+    assert problems[(NEXT_FRIDAY, time(14))] == ()
+    assert problems[(date(2026, 11, 13), time(14))] == (BookingProblem.TOO_FAR,)  # 35 days
+    world.amenity.active = False
+    [first, *_] = availability(
+        world.session, world.amenity, NEXT_FRIDAY, NEXT_FRIDAY, now=friday_15, timezone=TZ
+    )
+    assert first.problems == (BookingProblem.AMENITY_INACTIVE,) and not first.bookable

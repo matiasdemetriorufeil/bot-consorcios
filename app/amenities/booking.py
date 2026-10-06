@@ -98,15 +98,22 @@ def describe_slot(slot: AmenitySlot) -> str:
 
 @dataclass(frozen=True)
 class SlotDay:
-    """One slot on one date: free, or with its confirmed reservation."""
+    """One slot on one date: free, or with its confirmed reservation. problems: why nobody
+    can book it at the given moment (timing_problems, or the amenity is inactive); only
+    filled when availability gets now."""
 
     day: date
     slot: AmenitySlot
     reservation: Reservation | None
+    problems: tuple[BookingProblem, ...] = ()
 
     @property
     def free(self) -> bool:
         return self.reservation is None
+
+    @property
+    def bookable(self) -> bool:
+        return self.free and not self.problems
 
 
 def availability(
@@ -119,8 +126,8 @@ def availability(
     timezone: str,
 ) -> list[SlotDay]:
     """Every active slot of every date from first to last (inclusive), with its confirmed
-    reservation if any, in date and start order. With now, slots already started are left
-    out."""
+    reservation if any, in date and start order. With now, each one also says why it cannot
+    be booked at that moment (SlotDay.problems: past, too soon, too far, amenity inactive)."""
     slots = [s for s in amenity.slots if s.active]
     booked = {
         (r.slot_id, r.date): r
@@ -138,9 +145,12 @@ def availability(
         for slot in sorted(slots, key=lambda s: s.start_time):
             if slot.weekday != day.weekday():
                 continue
-            if now is not None and slot_start(day, slot, timezone) <= now:
-                continue
-            result.append(SlotDay(day, slot, booked.get((slot.id, day))))
+            problems: list[BookingProblem] = []
+            if now is not None:
+                if not amenity.active:
+                    problems.append(BookingProblem.AMENITY_INACTIVE)
+                problems += timing_problems(amenity, slot, day, now=now, timezone=timezone)
+            result.append(SlotDay(day, slot, booked.get((slot.id, day)), tuple(problems)))
         day += timedelta(days=1)
     return result
 
@@ -148,9 +158,10 @@ def availability(
 def free_slots(
     session: Session, amenity: Amenity, first: date, last: date, *, now: datetime, timezone: str
 ) -> list[SlotDay]:
-    """The slots that can still be booked from first to last (not started, not taken)."""
+    """The slots that can be booked from first to last at that moment (not taken, not
+    started, inside the advance window, amenity active)."""
     days = availability(session, amenity, first, last, now=now, timezone=timezone)
-    return [d for d in days if d.free]
+    return [d for d in days if d.bookable]
 
 
 # --- Rules ----------------------------------------------------------------------------------
@@ -182,6 +193,11 @@ def _message(problem: BookingProblem, amenity: Amenity) -> str:
         days=amenity.max_advance_days,
         limit=amenity.max_per_unit_per_month,
     )
+
+
+def problem_message(problem: BookingProblem, amenity: Amenity) -> str:
+    """What to tell (in Spanish) about a problem of this amenity."""
+    return _message(problem, amenity)
 
 
 def _error(problems: list[BookingProblem], amenity: Amenity) -> BookingError:
@@ -221,6 +237,23 @@ def _is_debtor(session: Session, unit_id: int) -> bool:
     return snapshot is not None and not snapshot.is_up_to_date and snapshot.total_amount > 0
 
 
+def timing_problems(
+    amenity: Amenity, slot: AmenitySlot, day: date, *, now: datetime, timezone: str
+) -> list[BookingProblem]:
+    """Why nobody can book the slot on that day at that moment because of time: it already
+    started (PAST, alone), or it is inside min_advance_hours or beyond max_advance_days."""
+    start = slot_start(day, slot, timezone)
+    if start <= now:
+        return [BookingProblem.PAST]
+    problems = []
+    if start - now < timedelta(hours=amenity.min_advance_hours):
+        problems.append(BookingProblem.TOO_SOON)
+    today = now.astimezone(ZoneInfo(timezone)).date()
+    if day > today + timedelta(days=amenity.max_advance_days):
+        problems.append(BookingProblem.TOO_FAR)
+    return problems
+
+
 def check_booking(
     session: Session,
     amenity: Amenity,
@@ -247,16 +280,12 @@ def check_booking(
     if problems or slot is None or unit is None:
         return problems
 
-    start = slot_start(day, slot, timezone)
-    if start <= now:
-        return [BookingProblem.PAST]
+    timing = timing_problems(amenity, slot, day, now=now, timezone=timezone)
+    if timing == [BookingProblem.PAST]:
+        return timing
     if _is_taken(session, slot.id, day):
         problems.append(BookingProblem.TAKEN)
-    if start - now < timedelta(hours=amenity.min_advance_hours):
-        problems.append(BookingProblem.TOO_SOON)
-    today = now.astimezone(ZoneInfo(timezone)).date()
-    if day > today + timedelta(days=amenity.max_advance_days):
-        problems.append(BookingProblem.TOO_FAR)
+    problems += timing
     limit = amenity.max_per_unit_per_month
     if limit is not None and _month_count(session, amenity.id, unit.id, day) >= limit:
         problems.append(BookingProblem.MONTHLY_LIMIT)
