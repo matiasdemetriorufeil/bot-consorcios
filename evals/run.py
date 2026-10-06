@@ -347,8 +347,22 @@ _TRANSIENT = (
 )  # fmt: skip
 
 
+# Credits or billing ran out (Gemini: 402 "prepayment credits are depleted"; Anthropic: "credit
+# balance is too low"): every case after it would fail, so the evaluation stops.
+_BILLING = (
+    "402",
+    "payment required",
+    "prepayment",
+    "credit balance",
+    "billing",
+    "insufficient_quota",
+)
+
+
 class RetryingProvider:
-    """Retries transient API errors (quota, overload) so they do not count as bot failures."""
+    """Retries transient API errors (quota, overload) so they do not count as bot failures.
+    A credits or billing error is never retried: it is kept in billing_error and every later
+    call fails at once, so the run can stop."""
 
     def __init__(self, inner: LLMProvider, attempts: int = 6, base_delay: float = 5) -> None:
         self.inner = inner
@@ -357,14 +371,21 @@ class RetryingProvider:
         self.attempts = attempts
         self.base_delay = base_delay
         self.retries = 0
+        self.billing_error: str | None = None
         self._lock = threading.Lock()
 
     def generate(self, system: str, messages: list[Message], tools: list[ToolSpec]) -> LLMResponse:
         for attempt in range(self.attempts):
+            if self.billing_error:
+                raise LLMError(f"evaluación cortada: {self.billing_error}")
             try:
                 return self.inner.generate(system, messages, tools)
             except LLMError as exc:
-                detail = f"{exc} {type(exc.__cause__).__name__}"
+                detail = f"{exc} {type(exc.__cause__).__name__} {exc.__cause__ or ''}"
+                if any(b in detail.lower() for b in _BILLING):
+                    with self._lock:
+                        self.billing_error = self.billing_error or str(exc)
+                    raise
                 last = attempt == self.attempts - 1
                 if last or not any(t.lower() in detail.lower() for t in _TRANSIENT):
                     raise
@@ -372,6 +393,15 @@ class RetryingProvider:
                     self.retries += 1
                 time.sleep(self.base_delay * 2**attempt)
         raise AssertionError("unreachable")
+
+
+def billing_message(provider: RetryingProvider, ran: int, total: int) -> str:
+    return (
+        f"\nEVALUACIÓN CORTADA: {provider.name} no tiene créditos o hay un problema de "
+        f"facturación ({provider.billing_error}).\nSe corrieron {ran} de {total} casos; no se "
+        "escribió el informe (los casos afectados fallarían por eso, no por el bot). Revisá "
+        "la facturación del proveedor y volvé a correr la evaluación."
+    )
 
 
 @dataclass
@@ -639,8 +669,10 @@ def main() -> int:
     done = 0
     lock = threading.Lock()
 
-    def one(case: Case) -> CaseResult:
+    def one(case: Case) -> CaseResult | None:
         nonlocal done
+        if provider.billing_error:
+            return None  # the run is stopping: do not even start it
         result = run_case(engine, provider, settings, case)
         with lock:
             done += 1
@@ -649,8 +681,12 @@ def main() -> int:
         return result
 
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        results = list(pool.map(one, cases))
+        ran = list(pool.map(one, cases))
     engine.dispose()
+    if provider.billing_error:
+        print(billing_message(provider, sum(r is not None for r in ran), len(cases)))
+        return 2
+    results = [r for r in ran if r is not None]
 
     path = write_report(results, provider, prices, time.monotonic() - started, provider.retries)
     passed = sum(r.passed for r in results)

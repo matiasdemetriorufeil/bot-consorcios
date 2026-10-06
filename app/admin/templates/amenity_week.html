@@ -1,0 +1,95 @@
+{% extends "sqladmin/layout.html" %}
+{% macro cell(c) -%}
+  {%- if c is none -%}
+    <span class="text-muted">—</span>
+  {%- elif c.reservation -%}
+    <a class="btn btn-sm btn-primary w-100 slot-taken"
+      href="{{ url_for('admin:view-amenity-reservation', amenity_id=amenity.id, reservation_id=c.reservation.id) }}">
+      <i class="fa-solid fa-lock me-1"></i>{{ units.get(c.reservation.unit_id, '?') }}
+    </a>
+  {%- elif started(c) -%}
+    <span class="text-muted small">Pasado</span>
+  {%- else -%}
+    <a class="btn btn-sm btn-outline-success w-100 slot-free"
+      href="{{ url_for('admin:view-amenity-book', amenity_id=amenity.id) }}?slot={{ c.slot.id }}&date={{ c.day.isoformat() }}">
+      Libre
+    </a>
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="col-12">
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
+    <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
+    <div class="ms-auto btn-group" role="group" aria-label="Semana">
+      <a class="btn" id="previous-week" href="?start={{ previous }}" aria-label="Semana anterior"><i class="fa-solid fa-chevron-left"></i></a>
+      <a class="btn" href="?start={{ this_week }}">Hoy</a>
+      <a class="btn" id="next-week" href="?start={{ following }}" aria-label="Semana siguiente"><i class="fa-solid fa-chevron-right"></i></a>
+    </div>
+  </div>
+  <div class="text-muted mt-2">
+    Semana del {{ days[0].strftime("%d/%m") }} al {{ days[-1].strftime("%d/%m/%Y") }}
+    {% if not amenity.active %}· <span class="text-danger">el SUM está deshabilitado para reservas</span>{% endif %}
+  </div>
+</div>
+
+{% if not rows %}
+<div class="col-12">
+  <div class="card"><div class="card-body text-muted">
+    No hay turnos cargados. Agregalos en <a href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}">Configuración</a>.
+  </div></div>
+</div>
+{% else %}
+{# Wide screens: the weekly grid. #}
+<div class="col-12 d-none d-md-block">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-bordered card-table table-vcenter text-center" id="week-grid">
+        <thead>
+          <tr>
+            <th class="text-start">Turno</th>
+            {% for day in days %}
+            <th class="{% if day == today %}bg-primary-lt{% endif %}">
+              {{ weekdays_short[loop.index0] }} {{ day.strftime("%d/%m") }}
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <th class="text-start text-nowrap">
+              {{ row.label }}{% if row.overnight %}<div class="small text-muted">termina al día siguiente</div>{% endif %}
+            </th>
+            {% for c in row.cells %}<td>{{ cell(c) }}</td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# Phones: one card per day. #}
+<div class="col-12 d-md-none">
+  {% for day_cells in by_day %}
+  {% set day = days[loop.index0] %}
+  <div class="card mb-2">
+    <div class="card-header py-2 {% if day == today %}bg-primary-lt{% endif %}">
+      <strong>{{ weekdays[loop.index0] }} {{ day.strftime("%d/%m") }}</strong>
+    </div>
+    <div class="list-group list-group-flush">
+      {% for c in day_cells %}
+      <div class="list-group-item d-flex align-items-center gap-2">
+        <div class="flex-grow-1">{{ describe_slot(c.slot) }}</div>
+        <div style="min-width: 7rem">{{ cell(c) }}</div>
+      </div>
+      {% else %}
+      <div class="list-group-item text-muted small">Sin turnos.</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

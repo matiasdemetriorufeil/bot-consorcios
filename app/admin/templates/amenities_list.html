@@ -1,0 +1,67 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Edificios con SUM</h3>
+    </div>
+    {% if rows %}
+    <div class="list-group list-group-flush" id="amenities">
+      {% for row in rows %}
+      <div class="list-group-item">
+        <div class="row align-items-center g-2">
+          <div class="col-12 col-md">
+            <a class="fw-bold" href="{{ url_for('admin:view-amenity-week', amenity_id=row.amenity.id) }}">{{ row.building }}</a>
+            <span class="text-muted">· {{ row.amenity.name }}</span>
+            {% if not row.amenity.active %}<span class="badge bg-secondary-lt ms-1">Deshabilitado</span>{% endif %}
+            <div class="text-muted small">
+              {{ row.slots }} turno(s) por semana · {{ row.upcoming }} reserva(s) en los próximos 7 días ·
+              {% if row.amenity.bot_booking_enabled %}
+              <span class="text-success">el bot puede reservar</span>
+              {% else %}
+              el bot no reserva
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-12 col-md-auto">
+            <a class="btn btn-primary" href="{{ url_for('admin:view-amenity-week', amenity_id=row.amenity.id) }}">
+              <i class="fa-solid fa-table-cells me-2"></i>Planilla
+            </a>
+            <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=row.amenity.id) }}">
+              <i class="fa-solid fa-gear me-2"></i>Configuración
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body text-muted">Todavía ningún edificio tiene SUM cargado.</div>
+    {% endif %}
+  </div>
+</div>
+<div class="col-12 col-lg-6">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Agregar el SUM a un edificio</h3></div>
+    <div class="card-body">
+      {% if buildings %}
+      <form method="POST" action="{{ url_for('admin:view-amenity-new') }}" class="row g-2">
+        <div class="col-12 col-sm">
+          <select name="building_id" class="form-select" required aria-label="Edificio">
+            <option value="">Elegí el edificio…</option>
+            {% for id, name in buildings %}
+            <option value="{{ id }}">{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-auto">
+          <button type="submit" class="btn btn-primary w-100"><i class="fa-solid fa-plus me-2"></i>Agregar SUM</button>
+        </div>
+      </form>
+      {% else %}
+      <p class="text-muted mb-0">Todos los edificios activos ya tienen SUM.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

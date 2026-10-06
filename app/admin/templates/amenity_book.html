@@ -1,0 +1,44 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-lg-8">
+  <form class="card" method="POST" id="book-form">
+    <input type="hidden" name="slot" value="{{ slot.id }}">
+    <input type="hidden" name="date" value="{{ day.isoformat() }}">
+    <div class="card-header">
+      <h3 class="card-title">{{ weekdays[day.weekday()] }} {{ day.strftime("%d/%m/%Y") }} · {{ slot_text }}</h3>
+    </div>
+    <div class="card-body">
+      {% if error %}
+      <div class="alert alert-{{ 'warning' if error.overridable else 'danger' }}" role="alert">
+        {% for message in error.messages %}<div>{{ message }}</div>{% endfor %}
+        {% if error.overridable and error.problems %}
+        <label class="form-check mt-2 mb-0">
+          <input class="form-check-input" type="checkbox" name="override" value="yes">
+          <span class="form-check-label">Reservar igual (queda registrado)</span>
+        </label>
+        {% endif %}
+      </div>
+      {% endif %}
+      <div class="mb-3">
+        <label class="form-label" for="unit_id">Unidad</label>
+        <select class="form-select" id="unit_id" name="unit_id" required>
+          <option value="">Elegí la unidad…</option>
+          {% for unit in units %}
+          <option value="{{ unit.id }}" {% if unit.id == unit_id %}selected{% endif %}>
+            {{ unit.label }}{% if unit.owner_name %} · {{ unit.owner_name }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="notes">Notas (opcional)</label>
+        <textarea class="form-control" id="notes" name="notes" rows="2">{{ notes }}</textarea>
+      </div>
+    </div>
+    <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+      <a class="btn" href="{{ url_for('admin:view-amenity-week', amenity_id=amenity.id) }}?start={{ day.isoformat() }}">Volver</a>
+      <button type="submit" class="btn btn-primary">Reservar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

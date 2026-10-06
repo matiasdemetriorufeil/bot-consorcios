@@ -1,0 +1,49 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-lg-8">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Reserva #{{ reservation.id }}</h3>
+      <div class="card-actions">
+        {% if confirmed %}
+        <span class="badge bg-success-lt">Confirmada</span>
+        {% else %}
+        <span class="badge bg-secondary-lt">Cancelada</span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-body">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <dl class="row mb-0">
+        <dt class="col-5 col-sm-4">Día</dt>
+        <dd class="col-7 col-sm-8">{{ weekday }} {{ reservation.date.strftime("%d/%m/%Y") }}</dd>
+        <dt class="col-5 col-sm-4">Turno</dt><dd class="col-7 col-sm-8">{{ slot_text }}</dd>
+        <dt class="col-5 col-sm-4">Unidad</dt>
+        <dd class="col-7 col-sm-8">{{ reservation.unit.label }}{% if reservation.unit.owner_name %} · {{ reservation.unit.owner_name }}{% endif %}</dd>
+        <dt class="col-5 col-sm-4">Origen</dt>
+        <dd class="col-7 col-sm-8">
+          {% if reservation.source.value == 'bot' %}WhatsApp (bot){% else %}Panel{% endif %}
+          {% if reservation.created_by_phone %}· {{ reservation.created_by_phone }}{% endif %}
+        </dd>
+        <dt class="col-5 col-sm-4">Creada</dt><dd class="col-7 col-sm-8">{{ created_at }}</dd>
+        {% if cancelled_at %}
+        <dt class="col-5 col-sm-4">Cancelada</dt><dd class="col-7 col-sm-8">{{ cancelled_at }}</dd>
+        {% endif %}
+        {% if reservation.notes %}
+        <dt class="col-5 col-sm-4">Notas</dt><dd class="col-7 col-sm-8" style="white-space: pre-line">{{ reservation.notes }}</dd>
+        {% endif %}
+      </dl>
+    </div>
+    <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
+      <a class="btn" href="{{ url_for('admin:view-amenity-week', amenity_id=reservation.amenity_id) }}?start={{ reservation.date.isoformat() }}">Volver a la planilla</a>
+      {% if confirmed %}
+      <form method="POST" id="cancel-form"
+        onsubmit="return confirm('¿Cancelar la reserva de {{ reservation.unit.label }}? El turno queda libre.');">
+        <input type="hidden" name="confirm" value="yes">
+        <button type="submit" class="btn btn-danger">Cancelar reserva</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

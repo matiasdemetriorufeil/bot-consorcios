@@ -1,7 +1,8 @@
 """Admin panel (SQLAdmin) at /admin, for the studio's operators.
 
 Buildings and their information, all phones (search and unlink), phones to review, operator
-verifications, sync runs (read only), general bot settings and simple metrics.
+verifications, sync runs (read only), general bot settings, simple metrics, the SUM
+reservations (app.admin.amenities) and, for now, an empty "Reclamos" page.
 Login with the single user of .env.
 """
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI
 from sqladmin import Admin
 from sqlalchemy.orm import sessionmaker
 
+from app.admin.amenities import AmenitiesView, ClaimsView
 from app.admin.auth import AdminAuth, LoginLimiter
 from app.admin.views import (
     BotSettingsAdmin,
@@ -34,6 +36,8 @@ VIEWS = (
     SyncRunAdmin,
     BotSettingsAdmin,
     MetricsView,
+    AmenitiesView,
+    ClaimsView,
 )
 
 
@@ -60,6 +64,7 @@ def setup_admin(
         VerificationRequestAdmin: {"_timezone": settings.timezone},
         PhoneAdmin: {"_timezone": settings.timezone},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
+        AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
     }
     for view in VIEWS:
         # A subclass per panel: SQLAdmin stores state on the view class (session_maker...).

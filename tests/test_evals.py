@@ -28,6 +28,7 @@ from evals.run import (
     RetryingProvider,
     ToolCallRecord,
     Turn,
+    billing_message,
     check,
     load_cases,
     normalize,
@@ -204,6 +205,28 @@ def test_retrying_provider_retries_only_transient_errors() -> None:
     provider, _ = scripted_provider("gemini", [LLMError("gemini: ClientError 400")])
     with pytest.raises(LLMError):
         RetryingProvider(provider, base_delay=0).generate("s", [UserMessage("hola")], [])
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "gemini: ClientError 402 RESOURCE_EXHAUSTED. Your prepayment credits are depleted.",
+        "anthropic: BadRequestError Your credit balance is too low to access the API.",
+    ],
+)
+def test_retrying_provider_stops_on_billing_errors(error: str) -> None:
+    provider, script = scripted_provider("gemini", [LLMError(error), Say("no se usa")])
+    retrying = RetryingProvider(provider, base_delay=0)
+
+    with pytest.raises(LLMError):
+        retrying.generate("s", [UserMessage("hola")], [])
+    assert retrying.billing_error and retrying.retries == 0  # never retried
+    # Every later call fails at once, without reaching the API.
+    with pytest.raises(LLMError, match="evaluación cortada"):
+        retrying.generate("s", [UserMessage("hola")], [])
+    assert len(script.requests) == 1
+    message = billing_message(retrying, 3, 105)
+    assert "EVALUACIÓN CORTADA" in message and "3 de 105" in message
 
 
 def test_report(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -339,3 +340,112 @@ class ChatwootProcessedMessage(Base):
     message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     conversation_id: Mapped[int] = mapped_column(index=True)  # Chatwoot display id
     received_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# --- Amenities (SUM) and their reservations ---------------------------------------------------
+
+
+class ReservationStatus(StrEnum):
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+
+
+class ReservationSource(StrEnum):
+    BOT = "bot"
+    PANEL = "panel"
+
+
+class Amenity(Base):
+    """A bookable common space of a building (the SUM). Rules are checked by
+    app.amenities.booking, for the panel and the bot alike."""
+
+    __tablename__ = "amenities"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    building_id: Mapped[int] = mapped_column(
+        ForeignKey("buildings.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), default="SUM", server_default="SUM")
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    bot_booking_enabled: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # What the person must know: cleaning, music, cost... (shown as is).
+    rules_text: Mapped[str | None] = mapped_column(Text)
+    min_advance_hours: Mapped[int] = mapped_column(default=24, server_default="24")
+    max_advance_days: Mapped[int] = mapped_column(default=60, server_default="60")
+    # Confirmed reservations per unit and calendar month; None = no limit.
+    max_per_unit_per_month: Mapped[int | None] = mapped_column(default=2, server_default="2")
+    # Until how many hours before the start the person can cancel (the panel, always).
+    cancel_until_hours: Mapped[int] = mapped_column(default=48, server_default="48")
+    # Units whose last stored debt is not up to date cannot book.
+    blocks_debtors: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    building: Mapped[Building] = relationship()
+    slots: Mapped[list["AmenitySlot"]] = relationship(
+        back_populates="amenity",
+        cascade="all, delete-orphan",
+        order_by="(AmenitySlot.weekday, AmenitySlot.start_time)",
+    )
+
+
+class AmenitySlot(Base):
+    """A bookable time of a weekday. end_time <= start_time means it ends the next day
+    (20:00 to 02:00). Removed slots that have reservations stay, inactive."""
+
+    __tablename__ = "amenity_slots"
+    __table_args__ = (
+        CheckConstraint("weekday BETWEEN 0 AND 6", name="weekday_valid"),
+        CheckConstraint("start_time <> end_time", name="not_empty"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    amenity_id: Mapped[int] = mapped_column(
+        ForeignKey("amenities.id", ondelete="CASCADE"), index=True
+    )
+    weekday: Mapped[int] = mapped_column(SmallInteger)  # 0 = Monday
+    start_time: Mapped[time]
+    end_time: Mapped[time]
+    label: Mapped[str | None] = mapped_column(String(50))
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+
+    amenity: Mapped[Amenity] = relationship(back_populates="slots")
+
+    @property
+    def overnight(self) -> bool:
+        return self.end_time <= self.start_time
+
+
+class Reservation(Base):
+    """A booking of one slot on one date (the date the slot starts). At most one confirmed
+    reservation per slot and date (partial unique index)."""
+
+    __tablename__ = "reservations"
+    __table_args__ = (
+        Index(
+            "uq_reservations_slot_id_date_confirmed",
+            "slot_id",
+            "date",
+            unique=True,
+            postgresql_where=text("status = 'confirmed'"),
+        ),
+        Index("ix_reservations_amenity_id_date", "amenity_id", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    amenity_id: Mapped[int] = mapped_column(ForeignKey("amenities.id", ondelete="CASCADE"))
+    slot_id: Mapped[int] = mapped_column(ForeignKey("amenity_slots.id", ondelete="RESTRICT"))
+    date: Mapped[date]
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="RESTRICT"), index=True)
+    status: Mapped[ReservationStatus] = mapped_column(
+        _str_enum(ReservationStatus, "status_valid"), default=ReservationStatus.CONFIRMED
+    )
+    source: Mapped[ReservationSource] = mapped_column(_str_enum(ReservationSource, "source_valid"))
+    created_by_phone: Mapped[str | None] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    cancelled_at: Mapped[datetime | None]
+
+    amenity: Mapped[Amenity] = relationship()
+    slot: Mapped[AmenitySlot] = relationship()
+    unit: Mapped[Unit] = relationship()

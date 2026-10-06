@@ -1,0 +1,165 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios con SUM</a>
+    <a class="btn btn-primary" href="{{ url_for('admin:view-amenity-week', amenity_id=amenity.id) }}">
+      <i class="fa-solid fa-table-cells me-2"></i>Planilla semanal
+    </a>
+  </div>
+</div>
+
+<div class="col-12 col-xl-6">
+  <form class="card" method="POST" id="config-form">
+    <div class="card-header"><h3 class="card-title">Reglas y límites</h3></div>
+    <div class="card-body">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <div class="mb-3">
+        <label class="form-label" for="name">Nombre</label>
+        <input class="form-control" id="name" name="name" value="{{ amenity.name }}" maxlength="100" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="rules_text">Reglas para quien reserva</label>
+        <textarea class="form-control" id="rules_text" name="rules_text" rows="6"
+          placeholder="Limpieza, música, costo, capacidad…">{{ amenity.rules_text or "" }}</textarea>
+      </div>
+      <div class="row g-3">
+        {% for field, label, minimum in number_fields %}
+        <div class="col-12 col-sm-6">
+          <label class="form-label" for="{{ field }}">{{ label }}</label>
+          {% set value = amenity[field] %}
+          <input class="form-control" type="number" inputmode="numeric" min="{{ minimum }}" step="1"
+            id="{{ field }}" name="{{ field }}" value="{{ '' if value is none else value }}"
+            {% if field != 'max_per_unit_per_month' %}required{% endif %}>
+          {% if field == 'max_per_unit_per_month' %}<div class="form-hint">Vacío: sin límite.</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-3">
+        <label class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="active" {% if amenity.active %}checked{% endif %}>
+          <span class="form-check-label">Habilitado para reservas</span>
+        </label>
+        <label class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="bot_booking_enabled" {% if amenity.bot_booking_enabled %}checked{% endif %}>
+          <span class="form-check-label">El bot puede reservar</span>
+        </label>
+        <label class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" name="blocks_debtors" {% if amenity.blocks_debtors %}checked{% endif %}>
+          <span class="form-check-label">No reservan las unidades con deuda (según la última deuda guardada)</span>
+        </label>
+      </div>
+    </div>
+    <div class="card-footer text-end">
+      <button type="submit" class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<div class="col-12 col-xl-6">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Turnos por día</h3></div>
+    <div class="list-group list-group-flush" id="slots">
+      {% for day_slots in by_day %}
+      <div class="list-group-item">
+        <div class="fw-bold mb-1">{{ weekdays[loop.index0] }}</div>
+        {% for slot in day_slots %}
+        <div class="d-flex align-items-center justify-content-between gap-2 py-1">
+          <span>{{ describe_slot(slot) }}</span>
+          <form method="POST" action="{{ url_for('admin:view-amenity-slot-remove', amenity_id=amenity.id, slot_id=slot.id) }}"
+            onsubmit="return confirm('¿Eliminar este turno?');">
+            <button type="submit" class="btn btn-sm btn-ghost-danger" aria-label="Eliminar turno">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <div class="text-muted small">Sin turnos.</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="col-12 col-md-6">
+  <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="add-slot">
+    <div class="card-header"><h3 class="card-title">Agregar un turno</h3></div>
+    <div class="card-body">
+      <div class="mb-2">
+        <div class="form-label">Días</div>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          {% for short in weekdays_short %}
+          <label class="form-selectgroup-item">
+            <input type="checkbox" name="weekday" value="{{ loop.index0 }}" class="form-selectgroup-input day-box">
+            <span class="form-selectgroup-label px-2">{{ short }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="d-flex flex-wrap gap-1">
+          <button type="button" class="btn btn-sm" data-days="0,1,2,3,4,5,6">Todos</button>
+          <button type="button" class="btn btn-sm" data-days="0,1,2,3,4">Lunes a viernes</button>
+          <button type="button" class="btn btn-sm" data-days="5,6">Fin de semana</button>
+          <button type="button" class="btn btn-sm" data-days="">Ninguno</button>
+        </div>
+      </div>
+      <div class="row g-2">
+        <div class="col-6">
+          <label class="form-label" for="start">Desde</label>
+          <input class="form-control" type="time" id="start" name="start" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="end">Hasta</label>
+          <input class="form-control" type="time" id="end" name="end" required>
+        </div>
+        <div class="col-12 form-hint">Si "hasta" es menor que "desde", el turno termina al día siguiente (por ejemplo, 20:00 a 02:00).</div>
+        <div class="col-12">
+          <label class="form-label" for="label">Nombre (opcional)</label>
+          <input class="form-control" id="label" name="label" maxlength="50" placeholder="Mediodía, Noche…">
+        </div>
+      </div>
+    </div>
+    <div class="card-footer text-end">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus me-2"></i>Agregar</button>
+    </div>
+  </form>
+</div>
+
+<div class="col-12 col-md-6">
+  <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="copy-slots">
+    <div class="card-header"><h3 class="card-title">Copiar los turnos de un día</h3></div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label" for="copy_from">Copiar los turnos del</label>
+        <select class="form-select" id="copy_from" name="copy_from">
+          {% for name in weekdays %}<option value="{{ loop.index0 }}">{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-label">a estos días</div>
+      <div class="d-flex flex-wrap gap-1">
+        {% for short in weekdays_short %}
+        <label class="form-selectgroup-item">
+          <input type="checkbox" name="to" value="{{ loop.index0 }}" class="form-selectgroup-input">
+          <span class="form-selectgroup-label px-2">{{ short }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="form-hint mt-2">Solo se agregan los turnos que ese día todavía no tiene.</div>
+    </div>
+    <div class="card-footer text-end">
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-copy me-2"></i>Copiar</button>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.querySelectorAll('[data-days]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var days = button.dataset.days ? button.dataset.days.split(',') : [];
+      document.querySelectorAll('.day-box').forEach(function (box) {
+        box.checked = days.indexOf(box.value) !== -1;
+      });
+    });
+  });
+</script>
+{% endblock %}
