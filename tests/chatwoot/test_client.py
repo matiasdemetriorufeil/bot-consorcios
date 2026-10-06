@@ -34,7 +34,7 @@ class FakeHttp:
         self.requests.append({"method": method, "url": url, **kwargs})
         if self.error:
             raise self.error
-        return self.responses.pop(0) if self.responses else FakeResponse(data={})
+        return self.responses.pop(0) if self.responses else FakeResponse(data={"id": 1})
 
 
 def make_client(http: FakeHttp, api_token: str | None = "user-token") -> ChatwootClient:
@@ -185,3 +185,31 @@ def test_send_choices_errors_are_chatwoot_errors() -> None:
 
     with pytest.raises(ChatwootError, match="HTTP 422"):
         make_client(http).send_choices(7, "¿Cuál?", [("Sí", "sí"), ("No", "no")])
+
+
+def test_send_message_returns_the_created_message_and_needs_its_id() -> None:
+    http = FakeHttp([FakeResponse(data={"id": 42, "content": "hola"}), FakeResponse(data={})])
+    client = make_client(http)
+
+    assert client.send_message(7, "hola")["id"] == 42
+    with pytest.raises(ChatwootError, match="sin id"):
+        client.send_message(7, "chau")
+
+
+@pytest.mark.parametrize(
+    ("message", "sent"),
+    [
+        ({"id": 50, "status": "sent", "source_id": None}, False),  # created, not out yet
+        ({"id": 50, "status": "sent", "source_id": "wamid.inventado"}, True),
+        ({"id": 50, "status": "failed", "source_id": None}, True),
+        ({"id": 50, "status": "delivered", "source_id": None}, True),
+        ({"id": 49, "status": "read", "source_id": "wamid.otro"}, False),  # another message
+    ],
+)
+def test_message_sent_looks_at_the_whatsapp_id(message: dict, sent: bool) -> None:
+    http = FakeHttp([FakeResponse(data={"payload": [message]})])
+
+    assert make_client(http).message_sent(7, 50) is sent
+    [req] = http.requests
+    assert req["headers"] == {"api_access_token": "user-token"}
+    assert req["params"] == {"before": 51}

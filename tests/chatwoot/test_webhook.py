@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.bot.agent import FALLBACK_REPLY, Agent
 from app.bot.debt_message import FIRST_GREETING
+from app.bot.tools import NO_PAYMENT_CODE
+from app.chatwoot import outgoing, processor
 from app.chatwoot.events import parse_incoming
 from app.chatwoot.processor import (
     ATTACHMENT_REPLY,
@@ -81,6 +83,7 @@ class Harness:
     bot: ChatwootBot
     script: Any
     warm_ups: list[bool]
+    slept: list[float]
 
     def handle(self, **payload: Any) -> None:
         self.bot.handle(parse_incoming(message_payload(**payload)))
@@ -125,6 +128,7 @@ def make_harness(
 
     agent = Agent(llm, settings=SETTINGS, refresh_debt=refresh_debt or no_debt, now=lambda: now)
     warm_ups: list[bool] = []
+    slept: list[float] = []  # fake clock: sleeping only moves it
     bot = ChatwootBot(
         chatwoot,  # type: ignore[arg-type]
         lambda: nullcontext(session),
@@ -132,8 +136,10 @@ def make_harness(
         SETTINGS,
         now=lambda: now,
         warm_up=lambda: warm_ups.append(True),
+        sleep=slept.append,
+        clock=lambda: sum(slept),
     )
-    return Harness(session, chatwoot, bot, script, warm_ups)
+    return Harness(session, chatwoot, bot, script, warm_ups, slept)
 
 
 # --- Signature ----------------------------------------------------------------------------
@@ -544,11 +550,12 @@ def test_debt_message_is_sent_before_the_agent_text(db_session: Session, people:
 
     h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, content="¿cuánto debo?")
 
-    debt, text = h.chatwoot.sent()
-    # First message of the conversation: the fixed greeting goes before the block.
-    assert debt.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nSaldo total: *$1.234,50*")
-    assert "Dato al 30/09/2026 a las 10:00." in debt
-    assert text == "¿Te ayudo con algo más?"
+    # ONE message (Chatwoot does not keep the order of separate ones): the block, then the
+    # agent's text. First message of the conversation: the fixed greeting goes first.
+    [sent] = h.chatwoot.sent()
+    assert sent.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nSaldo total: *$1.234,50*")
+    assert "Dato al 30/09/2026 a las 10:00." in sent
+    assert sent.endswith("\n\n¿Te ayudo con algo más?")
 
 
 # --- History ------------------------------------------------------------------------------
@@ -686,10 +693,11 @@ def test_debt_messages_go_before_the_options(db_session: Session, people: None) 
 
     h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
 
-    assert [name for name in h.chatwoot.names() if name.startswith("send")] == [
-        "send_message",
-        "send_choices",
-    ]
+    # The block fits in the text of the message with buttons: one message.
+    assert h.chatwoot.sent() == []
+    [(_, text, _)] = h.chatwoot.args_of("send_choices")
+    assert text.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nEstás al día")
+    assert text.endswith("\n\n¿Querés que te pase con una persona?")
 
 
 def test_widget_tap_is_answered_as_the_chosen_title(db_session: Session, people: None) -> None:
@@ -758,3 +766,141 @@ def test_webhook_ignores_updates_without_a_choice(client: TestClient, harness: H
     assert post(client, not_chosen).json()["status"] == "ignored"
     assert post(client, plain).json()["status"] == "ignored"
     assert harness.llm_calls == 0
+
+
+# --- One message per turn (Chatwoot does not keep the order of separate ones) -------------
+
+
+def _long_debt_harness(db_session: Session, steps: list[Step], lines: int) -> Harness:
+    unit = db_session.scalar(select(Unit).where(Unit.label == "04-C"))
+    snapshot = DebtSnapshot(
+        unit_id=unit.id,
+        fetched_at=datetime(2026, 9, 30, 10, 0, tzinfo=TZ),
+        source=SyncKind.LIVE,
+        total_amount=Decimal("1000") * lines,
+        is_up_to_date=False,
+        lines=[
+            DebtLine(
+                concept="Concepto inventado con un nombre bastante largo " * 3,
+                period=f"{n % 12 + 1:02d}/2026",
+                concept_amount=Decimal("1000"),
+                balance_due=Decimal("1000"),
+                accumulated=Decimal("1000"),
+            )
+            for n in range(lines)
+        ],
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+    return make_harness(
+        db_session,
+        [Call("get_debt", {"unit_id": unit.id}), *steps],
+        refresh_debt=lambda unit_id: DebtResult(snapshot, stale=False),
+    )
+
+
+def test_a_block_too_long_for_the_buttons_goes_first(db_session: Session, people: None) -> None:
+    h = _long_debt_harness(db_session, [OFFER], lines=12)
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
+
+    [block] = h.chatwoot.sent()
+    assert "Saldo total" in block and len(block) > 1024
+    [(_, text, _)] = h.chatwoot.args_of("send_choices")
+    assert text == "¿Querés que te pase con una persona?"
+    # The block went out to WhatsApp before the buttons were created.
+    names = [n for n in h.chatwoot.names() if n != "get_messages"]
+    assert names[:3] == ["send_message", "message_sent", "send_choices"]
+
+
+def test_numbered_fallback_keeps_the_block(db_session: Session, people: None) -> None:
+    h = make_harness(
+        db_session,
+        [Call("get_payment_info", {"unit_id": _unit_id(db_session)}), OFFER],
+        chatwoot=FakeChatwoot(fail_on={"send_choices"}),
+    )
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
+
+    [sent] = h.chatwoot.sent()
+    assert sent.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\n")
+    assert "\n\n¿Querés que te pase con una persona?\n\n1. Sí, pasame\n" in sent
+
+
+def _unit_id(db_session: Session) -> int:
+    return db_session.scalar(select(Unit.id).where(Unit.label == "04-C"))
+
+
+SPLIT_BLOCK = f"*RODAS II 04-C*\n{NO_PAYMENT_CODE}"  # the unit has no payment code here
+
+
+def _split_turn(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    channel: str,
+    polls_until_sent: int = 0,
+    text: str = "¿Algo más?",
+) -> Harness:
+    """A turn that goes in two parts: the payment block, then the agent's text."""
+    limit = len(SPLIT_BLOCK) + 5  # the block fits, the block and the text do not
+    monkeypatch.setattr(processor, "pack", lambda parts: outgoing.pack(parts, limit=limit))
+    # Not the first message of the conversation: no greeting before the block.
+    chatwoot = FakeChatwoot(
+        history=[history_message(90, "hola", 0), history_message(91, "¡Hola!", 1)],
+        polls_until_sent=polls_until_sent,
+    )
+    steps = [Call("get_payment_info", {"unit_id": _unit_id(db_session)}), Say(text)]
+    h = make_harness(db_session, steps, chatwoot=chatwoot)
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel=channel)
+    return h
+
+
+def test_a_turn_too_long_goes_in_parts_in_order(
+    db_session: Session, people: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    h = _split_turn(db_session, monkeypatch, "Channel::Whatsapp")
+
+    # Split between the block and the text; the text is posted once the block went out.
+    assert h.chatwoot.sent() == [SPLIT_BLOCK, "¿Algo más?"]
+    calls = [n for n in h.chatwoot.names() if n != "get_messages"]
+    assert calls[:3] == ["send_message", "message_sent", "send_message"]
+    assert h.slept == []
+
+
+def test_next_part_waits_until_the_previous_went_out(
+    db_session: Session, people: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    h = _split_turn(db_session, monkeypatch, "Channel::Whatsapp", polls_until_sent=2)
+
+    assert len(h.chatwoot.args_of("message_sent")) == 3
+    assert h.slept == [processor.SENT_POLL_SECONDS] * 2
+    assert h.chatwoot.sent() == [SPLIT_BLOCK, "¿Algo más?"]
+
+
+def test_the_wait_has_a_limit(
+    db_session: Session, people: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    h = _split_turn(db_session, monkeypatch, "Channel::Whatsapp", polls_until_sent=1000)
+
+    assert sum(h.slept) == processor.SENT_WAIT_SECONDS  # then the next part goes anyway
+    assert h.chatwoot.sent() == [SPLIT_BLOCK, "¿Algo más?"]
+
+
+def test_the_web_widget_does_not_wait(
+    db_session: Session, people: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The widget gets the messages in the order they are created.
+    h = _split_turn(db_session, monkeypatch, "Channel::WebWidget")
+
+    assert "message_sent" not in h.chatwoot.names()
+    assert h.chatwoot.sent() == [SPLIT_BLOCK, "¿Algo más?"]
+
+
+def test_a_single_message_does_not_wait(db_session: Session, people: None) -> None:
+    steps = [Call("get_payment_info", {"unit_id": _unit_id(db_session)}), Say("¿Algo más?")]
+    h = make_harness(db_session, steps)
+
+    h.handle(inbox_id=WHATSAPP_INBOX, phone=OWNER_PHONE, channel="Channel::Whatsapp")
+
+    assert len(h.chatwoot.sent()) == 1
+    assert "message_sent" not in h.chatwoot.names()

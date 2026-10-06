@@ -9,11 +9,16 @@
 3. Known people of a building outside the pilot go straight to a human.
 4. Audio, stickers, locations... get a fixed "escribilo" reply; images and files a fixed
    thanks. Text goes to the agent with the last 20 messages read from Chatwoot.
-5. The reply is sent only if the conversation is still pending: first the debt messages
-   built by the code (one message each, as is), then the agent's text. Then the handoff, if any:
-   private note, labels and status "open" (Chatwoot's bot handoff).
+5. The reply is sent only if the conversation is still pending, as ONE message: the debt
+   blocks built by the code (as is) and the agent's text at the end. Chatwoot sends each
+   message to WhatsApp in its own job and does not keep their order, so they cannot go apart.
+   Only a turn longer than outgoing.MAX_MESSAGE is split (app.chatwoot.outgoing). In WhatsApp
+   each part is posted once the previous one went out (Chatwoot stored its WhatsApp id,
+   client.message_sent), waiting SENT_WAIT_SECONDS at most, so they arrive in order. Then
+   the handoff, if any: private note, labels and status "open" (Chatwoot's bot handoff).
 6. A reply with options (offer_choices) goes as buttons or a list in WhatsApp and the web
-   widget (INTERACTIVE_CHANNELS). In any other inbox, or if Chatwoot rejects it, the options
+   widget (INTERACTIVE_CHANNELS), with the blocks in its text when they fit (otherwise the
+   blocks go first, as text). In any other inbox, or if Chatwoot rejects it, the options
    go numbered in the text. Chatwoot answers before sending to WhatsApp, so a rejection by
    Meta (after our checks of app.bot.choices, unlikely) only shows in the Chatwoot panel.
    A widget tap arrives as message_updated (app.chatwoot.events): the history then includes
@@ -25,6 +30,7 @@ process).
 
 import logging
 import threading
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import datetime
@@ -43,6 +49,7 @@ from app.chatwoot.client import ChatwootClient, ChatwootError
 from app.chatwoot.events import VIEWABLE_ATTACHMENTS, IncomingMessage
 from app.chatwoot.handoff import contact_attributes, handoff_labels, handoff_note
 from app.chatwoot.history import build_history
+from app.chatwoot.outgoing import pack, with_buttons
 from app.config import Settings
 from app.db.models import BotEvent, Building, PersonRole, Unit
 from app.llm import Message
@@ -66,6 +73,11 @@ ATTACHMENT_REPLY = (
 NON_PILOT_GREETING = "Hola, soy el asistente automático del Estudio Diego Rufeil."
 # Inboxes where Chatwoot shows "input_select" messages as options to tap.
 INTERACTIVE_CHANNELS = frozenset({"Channel::Whatsapp", "Channel::WebWidget"})
+# Inboxes where Chatwoot sends each message in its own job (order not kept): before the next
+# part of a split turn, wait until the previous one went out, at most SENT_WAIT_SECONDS.
+WAIT_SENT_CHANNELS = frozenset({"Channel::Whatsapp"})
+SENT_WAIT_SECONDS = 5.0
+SENT_POLL_SECONDS = 0.5
 
 _LOCKS = [threading.Lock() for _ in range(64)]
 
@@ -120,6 +132,8 @@ class ChatwootBot:
         *,
         now: Callable[[], datetime] | None = None,
         warm_up: Callable[[], object] = lambda: None,
+        sleep: Callable[[float], object] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """warm_up: logs in to ConsorPlus in the background (app.sync.live.warm_up); called
         when an identified owner writes, so a debt query finds the session ready."""
@@ -131,6 +145,8 @@ class ChatwootBot:
         self._warm_up = warm_up
         tz = ZoneInfo(settings.timezone)
         self._now = now or (lambda: datetime.now(tz))
+        self._sleep = sleep
+        self._clock = clock
 
     @property
     def agent(self) -> Agent:
@@ -222,7 +238,7 @@ class ChatwootBot:
         debt_messages: list[str] | None = None,
         choices: tuple[Choice, ...] = (),
     ) -> None:
-        """Send the debt messages and the reply (if still pending), carry out the handoff,
+        """Send the debt blocks and the reply (if still pending), carry out the handoff,
         update the contact."""
         conversation_id = message.conversation_id
         if not self._still_pending(conversation_id):
@@ -232,12 +248,10 @@ class ChatwootBot:
             )
             self._log(session, message, phone, "chatwoot_reply_dropped")
             return
-        for debt_message in debt_messages or []:
-            self.client.send_message(conversation_id, debt_message)
-        self._send_reply(message, reply, choices)
+        sent = self._send_reply(message, debt_messages or [], reply, choices)
         logger.info(
-            "Conversation %s: reply sent (%d debt message(s) before it, %d option(s))",
-            conversation_id, len(debt_messages or []), len(choices),
+            "Conversation %s: reply sent in %d message(s) (%d debt block(s), %d option(s))",
+            conversation_id, sent, len(debt_messages or []), len(choices),
         )  # fmt: skip
         who = identify_by_phone(session, phone) if phone else Identity()  # may have verified
         if handoff is not None:
@@ -250,22 +264,69 @@ class ChatwootBot:
         self._update_contact(message, who)
 
     def _send_reply(
-        self, message: IncomingMessage, reply: str, choices: tuple[Choice, ...]
-    ) -> None:
+        self,
+        message: IncomingMessage,
+        blocks: list[str],
+        reply: str,
+        choices: tuple[Choice, ...],
+    ) -> int:
+        """Sends the turn (see the module doc); returns how many messages it took."""
         conversation_id = message.conversation_id
-        if not choices:
-            self.client.send_message(conversation_id, reply)
-            return
-        if message.channel in INTERACTIVE_CHANNELS:
+        wait = message.channel in WAIT_SENT_CHANNELS
+        if choices and message.channel in INTERACTIVE_CHANNELS:
+            first, text = with_buttons(blocks, reply)
+            sent = self._send_texts(conversation_id, first, wait=wait, more=True)
             try:
-                self.client.send_choices(conversation_id, reply, choices)
-                return
+                self.client.send_choices(conversation_id, text, choices)
+                return sent + 1
             except (ChatwootError, ValueError) as exc:
                 logger.warning(
                     "Conversation %s: options not sent as buttons (%s), sending them numbered",
                     conversation_id, exc,
                 )  # fmt: skip
-        self.client.send_message(conversation_id, numbered_text(reply, [c.title for c in choices]))
+            if first:
+                blocks = []  # already sent before the buttons
+            numbered = numbered_text(reply, [c.title for c in choices])
+            return sent + self._send_texts(conversation_id, pack([*blocks, numbered]), wait=wait)
+        if choices:
+            reply = numbered_text(reply, [c.title for c in choices])
+        return self._send_texts(conversation_id, pack([*blocks, reply]), wait=wait)
+
+    def _send_texts(
+        self, conversation_id: int, texts: list[str], *, wait: bool, more: bool = False
+    ) -> int:
+        """One after the other. With wait, each one that has a message after it (more: one
+        that is not in texts) must have gone out before the next is posted."""
+        for index, text in enumerate(texts):
+            created = self.client.send_message(conversation_id, text)
+            if wait and (more or index < len(texts) - 1):
+                self._wait_sent(conversation_id, int(created["id"]))
+        return len(texts)
+
+    def _wait_sent(self, conversation_id: int, message_id: int) -> None:
+        """Until Chatwoot sent the message to the channel, SENT_WAIT_SECONDS at most. Never
+        raises: at worst the next part goes out without waiting."""
+        if not self.client.can_read_history:
+            logger.warning("CHATWOOT_API_TOKEN missing: next part sent without waiting")
+            return
+        deadline = self._clock() + SENT_WAIT_SECONDS
+        while True:
+            try:
+                if self.client.message_sent(conversation_id, message_id):
+                    return
+            except ChatwootError as exc:
+                logger.warning(
+                    "Conversation %s: state of message %s unknown (%s), not waiting",
+                    conversation_id, message_id, exc,
+                )  # fmt: skip
+                return
+            if self._clock() >= deadline:
+                logger.warning(
+                    "Conversation %s: message %s not sent after %.0f s, sending the next part",
+                    conversation_id, message_id, SENT_WAIT_SECONDS,
+                )  # fmt: skip
+                return
+            self._sleep(SENT_POLL_SECONDS)
 
     def _hand_off(
         self, conversation_id: int, handoff: Handoff, who: Identity, trusted: bool

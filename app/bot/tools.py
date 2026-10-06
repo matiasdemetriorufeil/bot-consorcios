@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.bot import identity
 from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
 from app.bot.choices import Choice, problems
-from app.bot.debt_message import render_debt_message, render_payment_message
+from app.bot.debt_message import FIRST_GREETING, render_debt_message, render_payment_message
 from app.bot.identity import (
     ConfirmStatus,
     RequestStatus,
@@ -67,10 +67,10 @@ PAYMENT_SENT_STEP = (
     "manda a la persona tal cual, antes de tu respuesta. NO repitas códigos, pasos ni links: "
     'como mucho una línea corta ("¿te ayudo con algo más?").'
 )
-# Added to those steps in the first message of a conversation (see FIRST_GREETING).
+# Added to those steps in the first message of a conversation (see ToolContext.greeting).
 GREETED_STEP = (
-    " Antes de ese mensaje el sistema ya saludó y dijo que sos el asistente automático y que "
-    "puede pedir hablar con una persona: no te presentes ni lo repitas."
+    " Antes de ese mensaje el sistema ya saludó y se presentó (mensaje de bienvenida): no te "
+    "presentes ni saludes de nuevo."
 )
 OFFER_SENT_STEP = "El mensaje con las opciones ya sale así: no escribas nada más."
 # Arguments never written to bot_events.
@@ -141,9 +141,11 @@ class ToolContext:
     # unit_id -> message built by get_debt or get_payment_info in this turn, in call order.
     # The channel sends each one, as is, before the agent's text.
     debt_messages: dict[int, str] = field(default_factory=dict)
-    # Whether this is the first message of the conversation (the agent greets before the
-    # first debt message, see FIRST_GREETING).
+    # Whether this is the first message of the conversation, and the greeting the agent puts
+    # before the first debt message then (the admin panel's welcome_message, or
+    # app.bot.debt_message.FIRST_GREETING when it is empty).
     first_message: bool = False
+    greeting: str = FIRST_GREETING
     # Set by offer_choices: the reply of this turn, with buttons or a list.
     offer: Offer | None = None
 

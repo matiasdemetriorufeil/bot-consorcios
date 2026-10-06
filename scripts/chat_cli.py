@@ -33,6 +33,7 @@ from sqlalchemy import delete, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.bot.agent import Agent, AgentReply  # noqa: E402
+from app.bot.debt_message import join_blocks  # noqa: E402
 from app.bot.identity import to_e164  # noqa: E402
 from app.bot.unit_search import SearchStatus, display_building_name, search_unit  # noqa: E402
 from app.config import get_settings  # noqa: E402
@@ -212,10 +213,8 @@ def chat(agent: Agent, session: Session, phone: str, prices: Prices) -> None:
         history = reply.history
         for line in describe(reply, prices):
             print(gray(line))
-        # As in WhatsApp: the debt messages built by the code go first, each on its own.
-        for message in reply.debt_messages:
-            print(f"🤖 {message}\n")
-        print(f"🤖 {reply.text}")
+        # As in WhatsApp: one message, the blocks built by the code first and then the text.
+        print(f"🤖 {join_blocks(reply.debt_messages, reply.text)}")
         titles = [c.title for c in reply.choices]
         if titles:
             print(f"   {show_options(titles)}")

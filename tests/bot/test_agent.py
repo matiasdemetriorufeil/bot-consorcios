@@ -185,7 +185,7 @@ def test_debt_message_goes_before_the_agent_text(name: str, world: World) -> Non
     assert tools.GREETED_STEP.strip() in last_tool_result(name, script.requests[1])
     assert reply.text == "¿Te ayudo con algo más?"
     # The history keeps what the person saw, as Chatwoot gives it back next time.
-    assert reply.history[-1] == AssistantMessage(f"{message}\n¿Te ayudo con algo más?")
+    assert reply.history[-1] == AssistantMessage(f"{message}\n\n¿Te ayudo con algo más?")
     assert world.events("debt_amount_mismatch") == []
 
 
@@ -830,7 +830,7 @@ def test_debt_message_with_options_after_it(world: World) -> None:
 
     [message] = reply.debt_messages
     assert reply.history[-1] == AssistantMessage(
-        f"{message}\n{with_options(reply.text, ['Sí, pasame', 'No, gracias'])}"
+        f"{message}\n\n{with_options(reply.text, ['Sí, pasame', 'No, gracias'])}"
     )
 
 
@@ -889,3 +889,21 @@ def test_get_debt_puts_the_self_service_link_in_the_message(world: World) -> Non
     [message] = ctx.debt_messages.values()
     assert message.endswith("\nExpensas y comprobantes: https://autogestion.example.com")
     assert "autogestion_url" not in result  # the model does not handle it
+
+
+def test_debt_block_greeting_uses_the_panel_welcome_message(world: World) -> None:
+    row = world.session.get(BotSettings, 1)
+    row.welcome_message = "¡Hola! Te atiende el asistente del estudio inventado."
+    world.session.commit()
+    invalidate_bot_config()
+    steps = [Call("get_debt", {"unit_id": world.unit_id}), Say("¿Algo más?")]
+    agent, _ = make_agent("anthropic", steps, world)
+
+    reply = agent.reply(world.session, OWNER_PHONE, "¿cuánto debo?")
+
+    [message] = reply.debt_messages
+    assert message.startswith(
+        "¡Hola! Te atiende el asistente del estudio inventado.\n\n*RODAS II 04-C*\n"
+    )
+    assert FIRST_GREETING not in message
+    invalidate_bot_config()

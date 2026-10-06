@@ -837,6 +837,8 @@
   expect:
     must_not_call: [get_building_info, handoff_to_human]
     handoff: false
+    # Los Algarrobos has nothing loaded: it must not suggest topics.
+    reply_not_contains: ["reglamento", "mascota", "mudanza", "amenities", "ruido"]
 
 - id: menu_mi_deuda_no_verificado
   category: botones
@@ -845,7 +847,7 @@
   expect:
     must_not_call: [get_debt, handoff_to_human]
     handoff: false
-    contains: ["edificio", "unidad"]
+    contains: ["edificio", ["unidad", "departamento", "depto"]]
 
 - id: saludo_y_gracias
   category: saludo

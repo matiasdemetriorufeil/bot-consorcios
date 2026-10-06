@@ -3,10 +3,11 @@
 render_debt_message turns the data of get_debt (status "ok") into a fixed WhatsApp block:
 unit, total (or "estás al día"), detail by period and concept, date of the data, the stale
 note, payment code, how to pay and the self-service link. render_payment_message is the same
-block without the balance, for get_payment_info ("¿cómo pago?"). The channel sends each one as
-its own message before the agent's text, so amounts, dates, payment codes and links always
-reach the person exactly as stored. In the first message of a conversation the agent puts
-FIRST_GREETING before the first block (the model is told not to introduce itself again).
+block without the balance, for get_payment_info ("¿cómo pago?"). The channel sends them, as
+is, in the same message as the agent's text and before it (join_blocks), so amounts, dates,
+payment codes and links always reach the person exactly as stored. In the first message of a
+conversation the agent puts FIRST_GREETING before the first block (the model is told not to
+introduce itself again).
 
 amounts_not_in reads the "$" amounts the agent wrote anyway, to log the ones that match no
 block (debt_amount_mismatch).
@@ -19,6 +20,8 @@ from typing import Any
 
 # "$165.060,00", "$ 165.060", "-$1.500,5", "$165060.00".
 _AMOUNT = re.compile(r"-?\$\s?\d[\d.,]*")
+
+BLOCK_SEPARATOR = "\n\n"
 
 FIRST_GREETING = (
     "Hola, soy el asistente automático del Estudio Diego Rufeil. Si en algún momento querés "
@@ -79,6 +82,11 @@ def parse_amount(text: str) -> Decimal | None:
 def find_amounts(text: str) -> list[str]:
     """The "$" amounts written in a text, as written (asterisks around them do not matter)."""
     return [m.group(0).rstrip(".,") for m in _AMOUNT.finditer(text)]
+
+
+def join_blocks(blocks: Iterable[str], text: str) -> str:
+    """The blocks and then the agent's text, as one message (a blank line between them)."""
+    return BLOCK_SEPARATOR.join([*blocks, text])
 
 
 def amounts_not_in(text: str, blocks: Iterable[str]) -> list[str]:

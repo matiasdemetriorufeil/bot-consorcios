@@ -25,6 +25,8 @@ class FakeChatwoot:
     labels: list[str] = field(default_factory=list)
     can_read_history: bool = True
     fail_on: set[str] = field(default_factory=set)
+    # message_sent answers False this many times per message before answering True.
+    polls_until_sent: int = 0
     calls: list[tuple[str, Any]] = field(default_factory=list)
 
     def _call(self, name: str, *args: Any) -> None:
@@ -37,8 +39,11 @@ class FakeChatwoot:
         status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
         return {"id": conversation_id, "status": status}
 
-    def send_message(self, conversation_id: int, content: str, *, private: bool = False) -> None:
+    def send_message(
+        self, conversation_id: int, content: str, *, private: bool = False
+    ) -> dict[str, Any]:
         self._call("note" if private else "send_message", conversation_id, content)
+        return {"id": 1000 + len(self.calls), "content": content}
 
     def send_choices(self, conversation_id: int, text: str, options: list[tuple[str, str]]) -> None:
         self._call("send_choices", conversation_id, text, [tuple(o) for o in options])
@@ -57,6 +62,11 @@ class FakeChatwoot:
     def get_messages(self, conversation_id: int, *, before: int | None = None) -> list[dict]:
         self._call("get_messages", conversation_id, before)
         return [m for m in self.history if before is None or m["id"] < before]
+
+    def message_sent(self, conversation_id: int, message_id: int) -> bool:
+        self._call("message_sent", conversation_id, message_id)
+        polls = sum(1 for args in self.args_of("message_sent") if args[1] == message_id)
+        return polls > self.polls_until_sent
 
     def update_contact_attributes(self, contact_id: int, attributes: dict[str, Any]) -> None:
         self._call("update_contact_attributes", contact_id, attributes)

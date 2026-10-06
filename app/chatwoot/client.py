@@ -88,12 +88,19 @@ class ChatwootClient:
     def get_conversation(self, conversation_id: int) -> dict[str, Any]:
         return self._bot("GET", f"/conversations/{conversation_id}")
 
-    def send_message(self, conversation_id: int, content: str, *, private: bool = False) -> None:
-        self._bot(
+    def send_message(
+        self, conversation_id: int, content: str, *, private: bool = False
+    ) -> dict[str, Any]:
+        """The message Chatwoot created (it answers once it is stored; sending it to WhatsApp
+        is a job that runs after). ChatwootError if the answer has no message id."""
+        created = self._bot(
             "POST",
             f"/conversations/{conversation_id}/messages",
             json={"content": content, "message_type": "outgoing", "private": private},
         )
+        if not created.get("id"):
+            raise ChatwootError(f"POST /conversations/{conversation_id}/messages: sin id")
+        return created
 
     def send_choices(
         self, conversation_id: int, text: str, options: Sequence[tuple[str, str]]
@@ -142,6 +149,20 @@ class ChatwootClient:
         params = {"before": before} if before is not None else {}
         data = self._user("GET", f"/conversations/{conversation_id}/messages", params=params)
         return list(data.get("payload", []))
+
+    def message_sent(self, conversation_id: int, message_id: int) -> bool:
+        """Whether Chatwoot already handed the message to the channel. Every message is
+        "sent" from the moment it is created (Message.status defaults to sent, v4.18), so that
+        status says nothing: the WhatsApp job stores the message's WhatsApp id in source_id
+        when it sends it (or sets "failed"); "delivered"/"read" come later."""
+        for message in self.get_messages(conversation_id, before=message_id + 1):
+            if message.get("id") == message_id:
+                return bool(message.get("source_id")) or message.get("status") in (
+                    "delivered",
+                    "read",
+                    "failed",
+                )
+        return False
 
     def update_contact_attributes(self, contact_id: int, attributes: dict[str, Any]) -> None:
         """Chatwoot merges custom_attributes: other attributes are kept."""

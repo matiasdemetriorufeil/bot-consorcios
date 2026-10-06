@@ -7,11 +7,12 @@ the conversation is handed off. A handoff is only recorded in AgentReply.handoff
 carries it out after sending the reply.
 
 Debt: get_debt and get_payment_info build their message themselves (app.bot.debt_message).
-The reply carries those messages in AgentReply.debt_messages and the channel sends each one
-before AgentReply.text. In the first message of a conversation the first one starts with
-FIRST_GREETING (the model is told it already went). The history keeps them joined with the
-text, as Chatwoot reads them back. "$" amounts in the text that match no debt message are
-logged (debt_amount_mismatch) for review.
+The reply carries those blocks in AgentReply.debt_messages and the channel sends them in the
+same message as AgentReply.text, before it. In the first message of a conversation the first
+one starts with the greeting: the admin panel's welcome_message, or FIRST_GREETING when it
+is empty (the model is told it already went). The history keeps them
+joined with the text (join_blocks), as the person gets them and Chatwoot reads them back.
+"$" amounts in the text that match no debt message are logged (debt_amount_mismatch).
 
 Options: offer_choices ends the turn without another model call. Its text is AgentReply.text
 and its options AgentReply.choices; the channel sends them as buttons or a list (or numbered
@@ -35,7 +36,7 @@ from sqlalchemy.orm import Session
 from app.bot import tools
 from app.bot.bot_config import load_bot_config
 from app.bot.choices import Choice, with_options
-from app.bot.debt_message import FIRST_GREETING, amounts_not_in
+from app.bot.debt_message import FIRST_GREETING, amounts_not_in, join_blocks
 from app.bot.identity import identify_by_phone
 from app.bot.prompts import (
     SYSTEM_PROMPT,
@@ -156,6 +157,7 @@ class Agent:
             office_hours_text=describe_office_hours(*hours),
             emergency_contact=cfg.emergency_contact_text,
             first_message=first_message,
+            greeting=cfg.welcome_message.strip() or FIRST_GREETING,
         )
         user_turn = build_user_turn(
             text,
@@ -219,14 +221,14 @@ class Agent:
         reply = last.text if isinstance(last, AssistantMessage) else ""
         debt_messages = list(ctx.debt_messages.values())
         if debt_messages and ctx.first_message:
-            debt_messages[0] = f"{FIRST_GREETING}\n\n{debt_messages[0]}"
+            debt_messages[0] = join_blocks([ctx.greeting], debt_messages[0])
         if debt_messages:
             self._check_amounts(ctx, reply, debt_messages)
         choices = ctx.offer.choices if ctx.offer is not None else ()
         if debt_messages or choices:
             # As the person sees it (and as Chatwoot gives it back next time).
             shown = with_options(reply, [c.title for c in choices]) if choices else reply
-            turn[-1] = AssistantMessage("\n".join([*debt_messages, shown]))
+            turn[-1] = AssistantMessage(join_blocks(debt_messages, shown))
         return AgentReply(
             text=reply,
             debt_messages=debt_messages,
