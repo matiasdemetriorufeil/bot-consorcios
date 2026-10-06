@@ -8,6 +8,7 @@ and exactly one unit matching exactly. Anything else comes back as candidates to
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -124,6 +125,26 @@ def _split_code(word: str) -> list[str]:
     tower, pb, letter = glued.groups()
     parts = ["t", _ROMAN.get(tower, tower)] if tower else []
     return parts + ([pb] if pb else []) + ([letter] if letter else [])
+
+
+# Words of a building name too common to show the person named it.
+_NOT_DISTINCTIVE = frozenset({"torre", "sum", "salon"})
+
+
+def named_in(building_text: str, texts: Sequence[str]) -> bool:
+    """Whether the person wrote the building the model passes: some distinctive word of it
+    (3+ letters) appears, by its first 4 letters, in what the person wrote ("Rodas" in "el
+    rodas 2", "Algarrobos" in "algarrobo"). Guards the rule that the model never chooses a
+    building the person did not name. Nothing distinctive to compare: accepted."""
+    words = [
+        w
+        for w in _words(building_text)
+        if len(w) >= 3 and not w.isdigit() and w not in _NOT_DISTINCTIVE
+    ]
+    if not words:
+        return True
+    said = " ".join(_words(" ".join(texts)))
+    return any(w[:4] in said for w in words)
 
 
 def display_building_name(name: str) -> str:

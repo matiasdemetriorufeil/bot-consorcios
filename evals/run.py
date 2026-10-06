@@ -89,6 +89,8 @@ class Expect:
     not_matches: tuple[str, ...] = ()  # regexes over the normalized replies
     # (tool, status): at least one call of that tool returned that status.
     must_return: tuple[tuple[str, str], ...] = ()
+    # (tool, status): no call of that tool returned that status (e.g. book_sum booked).
+    must_not_return: tuple[tuple[str, str], ...] = ()
     # The debt messages built by the code (not the agent's text).
     debt_message_contains: tuple[str | tuple[str, ...], ...] = ()
     debt_messages: int | None = None  # how many in the whole case
@@ -142,7 +144,13 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
             if unknown := set(exp) - _EXPECT_KEYS:
                 raise ValueError(f"expect con claves desconocidas {unknown}")
             must_return = exp.get("must_return") or {}
-            names = [*exp.get("must_call", []), *exp.get("must_not_call", []), *must_return]
+            must_not_return = exp.get("must_not_return") or {}
+            names = [
+                *exp.get("must_call", []),
+                *exp.get("must_not_call", []),
+                *must_return,
+                *must_not_return,
+            ]
             for tool in names:
                 if tool not in TOOLS_BY_NAME:
                     raise ValueError(f"herramienta inexistente {tool!r}")
@@ -157,6 +165,7 @@ def load_cases(path: Path = CASES_PATH) -> list[Case]:
                 not_contains=tuple(exp.get("not_contains", [])),
                 not_matches=tuple(exp.get("not_matches", [])),
                 must_return=tuple(must_return.items()),
+                must_not_return=tuple(must_not_return.items()),
                 debt_message_contains=tuple(
                     tuple(c) if isinstance(c, list) else c
                     for c in exp.get("debt_message_contains", [])
@@ -266,6 +275,9 @@ def check(case: Case, result: CaseResult) -> list[str]:
         got = [c.status for c in result.tool_calls if c.name == tool]
         if status not in got:
             failures.append(f"{tool} no devolvió {status} (devolvió {got})")
+    for tool, status in exp.must_not_return:
+        if any(c.name == tool and c.status == status for c in result.tool_calls):
+            failures.append(f"{tool} devolvió {status} (no debía)")
     handed_off = bool(result.handoffs)
     if exp.handoff is not None and handed_off != exp.handoff:
         failures.append("no derivó (debía)" if exp.handoff else "derivó (no debía)")

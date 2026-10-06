@@ -9,6 +9,7 @@
 # expect:
 #   must_call / must_not_call: tool names.
 #   must_return: {tool: status}: some call of that tool returned that status.
+#   must_not_return: {tool: status}: no call of that tool returned that status.
 #   handoff: true / false (omitted = either).   handoff_priority: normal | urgent.
 #   contains / not_contains: text in ANY bot reply (case and accents ignored, "*" removed).
 #            A nested list in `contains` means "at least one of these".
@@ -1067,3 +1068,91 @@
   expect:
     handoff: true
     choices: false
+
+# --- SUM (reservas) ---------------------------------------------------------------------------
+# Rodas II: the bot books (Fri and Sat 20 to 02, Sat and Sun 12 to 17); Saturday 03/10 night is
+# taken; Ana has Friday 02/10 night (too late to cancel). Torre del Sol: only the studio books.
+# Los Algarrobos: no SUM. Now: Thursday 01/10/2026 11:00.
+
+- id: sum_disponibilidad
+  category: sum
+  phone: ana
+  turns: ["¿Qué turnos del SUM hay libres el fin de semana del 10 y 11 de octubre?"]
+  expect:
+    must_call: [sum_availability]
+    must_not_return: {book_sum: booked}
+    handoff: false
+    contains: ["20:00", "12:00"]
+
+- id: sum_reserva_pide_confirmacion
+  category: sum
+  phone: ana
+  turns: ["Quiero reservar el SUM el viernes 9 de octubre a la noche"]
+  expect:
+    must_return: {book_sum: confirmation_requested}
+    must_not_return: {book_sum: booked}
+    choices_contain: ["si, reservar"]
+    contains: ["04-c", "viernes 09/10/2026"]
+
+- id: sum_reserva_confirmada
+  category: sum
+  phone: ana
+  turns: ["Quiero reservar el SUM el viernes 9 de octubre a la noche", "Sí, reservar"]
+  expect:
+    must_return: {book_sum: booked}
+    handoff: false
+    # The rules of rules_text, repeated (not invented).
+    contains: [["la 1", "1 de la manana", "01:00"], "limpi"]
+
+- id: sum_reserva_dice_que_no
+  category: sum
+  phone: ana
+  turns: ["Quiero reservar el SUM el viernes 9 de octubre a la noche", "No"]
+  expect:
+    must_not_return: {book_sum: booked}
+    handoff: false
+
+- id: sum_reserva_sin_verificar
+  category: sum
+  phone: desconocido
+  turns: ["Quiero reservar el SUM del Rodas II para el viernes 9 de octubre a la noche"]
+  expect:
+    must_not_return: {book_sum: booked}
+    must_not_call: [start_email_verification]
+    contains: [["verific", "codigo", "email", "correo"]]
+
+- id: sum_turno_ocupado
+  category: sum
+  phone: ana
+  turns: ["¿Puedo reservar el SUM el sábado 3 de octubre a la noche?"]
+  expect:
+    must_not_return: {book_sum: booked}
+    contains: [["reservado", "ocupado", "no esta disponible", "no esta libre", "tomado", "no hay turnos", "no hay disponibilidad"]]
+
+- id: sum_bot_desactivado
+  category: sum
+  phone: carla
+  turns: ["Quiero reservar el SUM para el sábado 10 de octubre al mediodía"]
+  expect:
+    must_not_return: {book_sum: booked}
+    handoff: false
+    choices_contain: ["si, pasame"]
+
+- id: sum_cancelacion_fuera_de_plazo
+  category: sum
+  phone: ana
+  turns: ["Quiero cancelar mi reserva del SUM de mañana"]
+  expect:
+    must_call: [my_sum_reservations]
+    must_not_return: {cancel_sum_reservation: cancelled}
+    contains: ["48"]
+
+- id: sum_edificio_sin_sum
+  category: sum
+  phone: elena
+  turns: ["¿Puedo reservar el SUM de mi edificio para el sábado?"]
+  expect:
+    must_not_call: [handoff_to_human]
+    must_not_return: {book_sum: booked}
+    choices_contain: ["si, pasame"]
+    contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]

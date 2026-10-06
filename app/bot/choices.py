@@ -11,6 +11,7 @@ buttons cannot be shown, the options go numbered in the text (numbered_text).
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import NamedTuple
 
 MAX_BUTTONS = 3
@@ -24,6 +25,18 @@ MAX_TEXT = 1024
 class Choice(NamedTuple):
     title: str
     value: str
+
+
+@dataclass(frozen=True)
+class Offer:
+    """A reply with options to tap (offer_choices, or a confirmation built by the code)."""
+
+    text: str
+    choices: tuple[Choice, ...]
+
+    @property
+    def titles(self) -> list[str]:
+        return [c.title for c in self.choices]
 
 
 def title_limit(count: int) -> int:

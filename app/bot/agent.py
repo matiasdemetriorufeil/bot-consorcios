@@ -158,6 +158,17 @@ class Agent:
             emergency_contact=cfg.emergency_contact_text,
             first_message=first_message,
             greeting=cfg.welcome_message.strip() or FIRST_GREETING,
+            now=now,
+            user_text=text,
+            person_texts=[m.text for m in past if isinstance(m, UserMessage)] + [text],
+            last_bot_text=next(
+                (
+                    m.text
+                    for m in reversed(past)
+                    if _is_conversation_message(m) and isinstance(m, AssistantMessage)
+                ),
+                "",
+            ),  # fmt: skip
         )
         user_turn = build_user_turn(
             text,

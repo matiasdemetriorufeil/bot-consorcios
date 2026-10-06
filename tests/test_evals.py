@@ -42,7 +42,7 @@ REQUIRED_CATEGORIES = {
     "deuda", "sin_codigo", "varias_unidades", "inquilino", "otra_unidad", "verificacion",
     "sin_email", "ambiguo", "urgencia", "enojo", "plan_pagos", "pago_no_acreditado",
     "sin_respuesta", "info_edificio", "saludo", "ortografia_lunfardo", "injection",
-    "pide_persona",
+    "pide_persona", "sum",
 }  # fmt: skip
 
 
@@ -227,6 +227,16 @@ def test_retrying_provider_stops_on_billing_errors(error: str) -> None:
     assert len(script.requests) == 1
     message = billing_message(retrying, 3, 105)
     assert "EVALUACIÓN CORTADA" in message and "3 de 105" in message
+
+
+def test_must_not_return() -> None:
+    case = _case(must_not_return=(("book_sum", "booked"),))
+    asked = _result(case, ["¿Confirmás?"])
+    asked.tool_calls = [ToolCallRecord("book_sum", {}, "confirmation_requested")]
+    assert check(case, asked) == []
+    booked = _result(case, ["Listo"])
+    booked.tool_calls = [ToolCallRecord("book_sum", {}, "booked")]
+    assert check(case, booked) == ["book_sum devolvió booked (no debía)"]
 
 
 def test_report(tmp_path: Path) -> None:

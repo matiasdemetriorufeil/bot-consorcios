@@ -6,7 +6,7 @@ Unit labels mimic the shapes ConsorPlus uses ("04-C", "4º D", "PB-A", "COC-12",
 import pytest
 from sqlalchemy.orm import Session
 
-from app.bot.unit_search import SearchStatus, search_unit, tokens
+from app.bot.unit_search import SearchStatus, named_in, search_unit, tokens
 from tests.bot import factories as f
 
 
@@ -146,3 +146,19 @@ def test_departments_keep_the_order(db_session: Session, units: dict[str, int]) 
     result = search_unit(db_session, "Torre del Sol", "A PB")
 
     assert result.status != SearchStatus.FOUND
+
+
+@pytest.mark.parametrize(
+    ("building", "texts", "named"),
+    [
+        ("RODAS II", ["¿cuánto debo en el rodas 2?"], True),
+        ("Rodas II", ["hola", "Quiero info del Rodas"], True),
+        ("Torre del Sol", ["En la torre del sol"], True),
+        ("Los Algarrobos", ["vivo en algarrobo"], True),
+        ("RODAS II", ["¿Hasta qué hora se puede usar el SUM?"], False),
+        ("Torre del Sol", ["la torre de enfrente"], False),  # "torre" alone says nothing
+        ("2", ["hola"], True),  # nothing distinctive to compare
+    ],
+)
+def test_named_in(building: str, texts: list[str], named: bool) -> None:
+    assert named_in(building, texts) is named

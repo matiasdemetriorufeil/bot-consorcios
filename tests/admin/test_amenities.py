@@ -569,3 +569,24 @@ def test_one_hour_block_keeps_its_times_and_state(
     assert re.search(r"\.agenda-scroll \{[^}]*overflow-y: auto", page)
     # Hour labels inside their own row (no negative shift that cut the first one).
     assert "translateY(-" not in page
+
+
+def test_a_bot_reservation_shows_in_the_panel(
+    logged_in: Panel, sum_: Sum, db_session: Session
+) -> None:
+    db_session.add(
+        Reservation(
+            amenity_id=sum_.amenity_id,
+            slot_id=sum_.night_id,
+            date=FRIDAY,
+            unit_id=sum_.unit_id,
+            source=ReservationSource.BOT,
+            created_by_phone="+5493515550401",
+        )
+    )
+    db_session.commit()
+
+    blocks = {b["slot"]: b for b in _agenda(logged_in, sum_).blocks}
+    assert blocks[sum_.night_id]["state"] == "reserved"
+    detail = logged_in.client.get(blocks[sum_.night_id]["href"]).text
+    assert "WhatsApp (bot)" in detail and "+5493515550401" in detail

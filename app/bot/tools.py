@@ -25,9 +25,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot import identity
+from app.bot import amenity_tools, identity
 from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
-from app.bot.choices import Choice, problems
+from app.bot.choices import Choice, Offer, problems
 from app.bot.debt_message import FIRST_GREETING, render_debt_message, render_payment_message
 from app.bot.identity import (
     ConfirmStatus,
@@ -41,6 +41,7 @@ from app.bot.unit_search import (
     SearchStatus,
     UnitCandidate,
     display_building_name,
+    named_in,
     search_building,
     search_unit,
 )
@@ -102,18 +103,6 @@ class Handoff:
     priority: str = "normal"  # "normal" | "urgent"
 
 
-@dataclass(frozen=True)
-class Offer:
-    """A reply with options to tap (offer_choices)."""
-
-    text: str
-    choices: tuple[Choice, ...]
-
-    @property
-    def titles(self) -> list[str]:
-        return [c.title for c in self.choices]
-
-
 @dataclass
 class ToolContext:
     session: Session
@@ -138,6 +127,8 @@ class ToolContext:
     # unit_ids find_unit returned in this turn. The history only keeps texts, so an id from
     # an earlier turn is gone: one the model "remembers" may be another unit (see run_tool).
     offered_unit_ids: set[int] = field(default_factory=set)
+    # reservation ids my_sum_reservations returned in this turn (cancel_sum_reservation).
+    offered_reservation_ids: set[int] = field(default_factory=set)
     # unit_id -> message built by get_debt or get_payment_info in this turn, in call order.
     # The channel sends each one, as is, before the agent's text.
     debt_messages: dict[int, str] = field(default_factory=dict)
@@ -146,6 +137,14 @@ class ToolContext:
     # app.bot.debt_message.FIRST_GREETING when it is empty).
     first_message: bool = False
     greeting: str = FIRST_GREETING
+    # The moment of this turn (the agent's clock; None: the real one) and what the person
+    # wrote, with the bot's previous message: book_sum and cancel_sum_reservation only act
+    # when this message confirms the summary of that one (app.bot.amenity_tools).
+    now: datetime | None = None
+    user_text: str = ""
+    # Every message of the person in the conversation, this one included (named_building).
+    person_texts: list[str] = field(default_factory=list)
+    last_bot_text: str = ""
     # Set by offer_choices: the reply of this turn, with buttons or a list.
     offer: Offer | None = None
 
@@ -310,6 +309,83 @@ TOOLS: list[ToolSpec] = [
                 "priority": {"type": "string", "enum": ["normal", "urgent"]},
             },
             ["reason", "summary", "priority"],
+        ),
+    ),
+    ToolSpec(
+        name="sum_availability",
+        description=(
+            "SUM (salón de usos múltiples) de un edificio: turnos libres entre dos fechas "
+            "(hasta 14 días), reglas (rules_text) y límites. Pública: no hace falta verificar "
+            "el número. Respondé solo con lo que devuelve."
+        ),
+        parameters=_object(
+            {
+                "date_from": {"type": "string", "description": "Primera fecha, AAAA-MM-DD."},
+                "date_to": {
+                    "type": "string",
+                    "description": "Última fecha, AAAA-MM-DD (vacío: solo date_from).",
+                },
+                "building": {
+                    "type": "string",
+                    "description": "Edificio tal como lo nombró la persona. Vacío si no lo "
+                    "nombró (se usa el suyo, si tiene uno solo).",
+                },
+            },
+            ["date_from"],
+        ),
+    ),
+    ToolSpec(
+        name="book_sum",
+        description=(
+            "Reserva un turno del SUM para una unidad de la persona (número verificado). La "
+            "primera vez le muestra el resumen con botones 'Sí, reservar' / 'No' y termina tu "
+            "respuesta; reserva recién cuando la persona confirma ese resumen y la volvés a "
+            "llamar con los mismos datos."
+        ),
+        parameters=_object(
+            {
+                "date": {"type": "string", "description": "Fecha del turno, AAAA-MM-DD."},
+                "slot": {
+                    "type": "string",
+                    "description": "Hora de inicio del turno (HH:MM), como la da sum_availability.",
+                },
+                "building": {
+                    "type": "string",
+                    "description": "Edificio si lo nombró la persona; vacío si no.",
+                },
+                "unit_id": {
+                    "type": "integer",
+                    "description": "Solo si la persona tiene varias unidades en ese edificio: "
+                    "la que eligió (unit_id del contexto).",
+                },
+            },
+            ["date", "slot"],
+        ),
+    ),
+    ToolSpec(
+        name="my_sum_reservations",
+        description=(
+            "Las reservas del SUM vigentes de las unidades de la persona (número verificado), "
+            "con reservation_id y si todavía se pueden cancelar."
+        ),
+        parameters=_object({}, []),
+    ),
+    ToolSpec(
+        name="cancel_sum_reservation",
+        description=(
+            "Cancela una reserva de my_sum_reservations (de este mensaje). La primera vez le "
+            "muestra el resumen con botones 'Sí, cancelar' / 'No'; cancela recién cuando la "
+            "persona confirma y la volvés a llamar."
+        ),
+        parameters=_object(
+            {
+                "reservation_id": {
+                    "type": "integer",
+                    "description": "reservation_id que devolvió my_sum_reservations EN ESTE "
+                    "MENSAJE.",
+                }
+            },
+            ["reservation_id"],
         ),
     ),
     ToolSpec(
@@ -713,12 +789,25 @@ def _studio(ctx: ToolContext) -> dict[str, str]:
     return studio
 
 
+def named_building(ctx: ToolContext, building: str) -> str:
+    """The building argument, or "" when the person never wrote it (see named_in)."""
+    if building.strip() and ctx.person_texts and not named_in(building, ctx.person_texts):
+        logger.info(
+            "Conversation %s: building not named by the person, ignored", ctx.conversation_id
+        )
+        ctx.log("building_not_named", tool_building=building)
+        return ""
+    return building
+
+
 def _resolve_building(
     ctx: ToolContext, building: str
 ) -> tuple[Building | None, dict[str, Any] | None]:
     """The building asked about, or the result to return when it is not clear which one.
     Named: tolerant search over every active building (the information is public).
-    Not named: the phone's own building, when all its units are in one."""
+    Not named: the phone's own building, when all its units are in one. A building the
+    person never wrote counts as not named (the model must not choose it)."""
+    building = named_building(ctx, building)
     if building.strip():
         found = search_building(ctx.session, building)
         if len(found) == 1:
@@ -869,4 +958,8 @@ _HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_building_info": get_building_info,
     "handoff_to_human": handoff_to_human,
     "offer_choices": offer_choices,
+    "sum_availability": amenity_tools.sum_availability,
+    "book_sum": amenity_tools.book_sum,
+    "my_sum_reservations": amenity_tools.my_sum_reservations,
+    "cancel_sum_reservation": amenity_tools.cancel_sum_reservation,
 }

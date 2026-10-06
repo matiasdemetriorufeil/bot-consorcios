@@ -299,3 +299,22 @@ def test_agent_passes_the_studio_settings(
     result = last_tool_result(name, script.requests[1])
     assert "de lunes a viernes de 9 a 17" in result
     assert "351 000-0000" in result
+
+
+def test_a_building_the_person_never_wrote_is_ignored(
+    db_session: Session, buildings: dict[str, Building]
+) -> None:
+    ctx = _ctx(db_session, MULTI_PHONE)  # units in two buildings
+    ctx.person_texts = ["¿Hasta qué hora se puede hacer ruido?"]
+
+    chosen = run_tool(ctx, "get_building_info", {"question": "ruidos", "building": "RODAS II"})
+
+    assert chosen["status"] == "which_building"  # the model chose it: asks instead
+    [event] = db_session.scalars(
+        select(BotEvent).where(BotEvent.event_type == "building_not_named")
+    )
+    assert event.payload == {"tool_building": "RODAS II"}
+
+    ctx.person_texts.append("En el rodas 2")
+    named = run_tool(ctx, "get_building_info", {"question": "ruidos", "building": "RODAS II"})
+    assert named["status"] == "ok" and named["building"] == "RODAS II"

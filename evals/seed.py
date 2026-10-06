@@ -4,13 +4,15 @@ PHONES maps the aliases used in cases.yaml to the phone that writes. Amounts and
 codes are repeated literally in cases.yaml (what must / must not appear).
 """
 
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    Amenity,
+    AmenitySlot,
     Building,
     BuildingInfo,
     BuildingInfoCategory,
@@ -20,6 +22,8 @@ from app.db.models import (
     Person,
     PersonRole,
     Phone,
+    Reservation,
+    ReservationSource,
     SyncKind,
     Unit,
     UnitPerson,
@@ -218,4 +222,48 @@ def seed(session: Session) -> None:
             _debt(r1_4c, [("09/2026", "EXPENSAS ORDINARIAS", "70400")]),
         ]
     )  # fmt: skip
+    _amenities(session, rodas2, sol, r2_4c, r2_4b)
     session.commit()
+
+
+# SUM: Rodas II books through the bot; Torre del Sol only through the studio; the others have
+# none. The default "now" of the cases is Thursday 01/10/2026 11:00.
+RODAS2_SUM_RULES = (
+    "La música tiene que terminar a la 1 de la mañana. El salón se entrega limpio: la limpieza "
+    "corre por cuenta de quien reserva. Capacidad máxima: 40 personas."
+)
+
+
+def _amenities(session: Session, rodas2: Building, sol: Building, r2_4c: Unit, r2_4b: Unit) -> None:
+    night = {"start_time": time(20), "end_time": time(2), "label": "Noche"}
+    noon = {"start_time": time(12), "end_time": time(17), "label": "Mediodía"}
+    rodas2_sum = Amenity(
+        building=rodas2,
+        bot_booking_enabled=True,
+        rules_text=RODAS2_SUM_RULES,
+        slots=[
+            AmenitySlot(weekday=4, **night),
+            AmenitySlot(weekday=5, **night),
+            AmenitySlot(weekday=5, **noon),
+            AmenitySlot(weekday=6, **noon),
+        ],
+    )
+    sol_sum = Amenity(
+        building=sol,
+        bot_booking_enabled=False,
+        rules_text="Se reserva por la administración. Música hasta las 23.",
+        slots=[AmenitySlot(weekday=5, start_time=time(12), end_time=time(18))],
+    )
+    session.add_all([rodas2_sum, sol_sum])
+    session.flush()
+    friday_night, saturday_night = rodas2_sum.slots[0], rodas2_sum.slots[1]
+    session.add_all(
+        [
+            # Ana's, for tomorrow: 33 h ahead, too late to cancel (48 h).
+            Reservation(amenity=rodas2_sum, slot=friday_night, date=date(2026, 10, 2),
+                        unit=r2_4c, source=ReservationSource.BOT),
+            # Bruno's: Saturday 03/10 night is taken.
+            Reservation(amenity=rodas2_sum, slot=saturday_night, date=date(2026, 10, 3),
+                        unit=r2_4b, source=ReservationSource.PANEL),
+        ]
+    )  # fmt: skip
