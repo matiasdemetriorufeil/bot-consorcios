@@ -78,7 +78,7 @@ OFFER_SENT_STEP = "El mensaje con las opciones ya sale así: no escribas nada m�
 _SECRET_ARGS = frozenset({"code"})
 
 
-# Why a conversation goes to a human (also its Chatwoot label, see app.chatwoot.handoff).
+# Why a conversation goes to a human (also its label, see app.channels.handoff).
 # The model picks one of HANDOFF_REASONS; the code also uses technical_error and non_pilot.
 HANDOFF_REASONS = (
     "person_requested",
@@ -95,8 +95,8 @@ DEFAULT_HANDOFF_NOTICE = "Ya le pasé tu consulta a una persona del estudio."
 
 @dataclass(frozen=True)
 class Handoff:
-    """A request to pass the conversation to a human. The channel (Chatwoot) carries it out
-    after sending the bot's last reply."""
+    """A request to pass the conversation to a human. The channel (app.channels) carries it
+    out after sending the bot's last reply."""
 
     reason: str
     summary: str

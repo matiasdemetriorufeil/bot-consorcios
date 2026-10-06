@@ -1,9 +1,9 @@
-"""What the bot sends in one turn -> the Chatwoot messages to create, in order.
+"""What the bot sends in one turn -> the channel messages to send, in order.
 
-Chatwoot sends each message to WhatsApp in its own job, and the jobs do not keep the order:
-a turn with debt blocks went out with the agent's text BEFORE the block. So a turn is one
-message: the blocks (app.bot.debt_message), a blank line between them, and the agent's text
-at the end (join_blocks). Only when it does not fit in MAX_MESSAGE (WhatsApp cuts at 4096) it
+A turn is one message (Chatwoot sends each message to WhatsApp in its own job, without
+keeping their order, so the parts of a turn must not go apart): the blocks
+(app.bot.debt_message), a blank line between them, and the agent's text at the end
+(join_blocks). Only when it does not fit in MAX_MESSAGE (WhatsApp cuts at 4096) it
 is split, at block boundaries; a block is cut (at line ends) only if it alone does not fit.
 
 With options (offer_choices) the whole turn goes in the text of the message with buttons if

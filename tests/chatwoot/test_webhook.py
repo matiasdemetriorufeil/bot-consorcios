@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 from app.bot.agent import FALLBACK_REPLY, Agent
 from app.bot.debt_message import FIRST_GREETING
 from app.bot.tools import NO_PAYMENT_CODE
-from app.chatwoot import outgoing, processor
+from app.channels import outgoing
+from app.channels import processor as core
+from app.chatwoot import processor
 from app.chatwoot.events import parse_incoming
 from app.chatwoot.processor import (
     ATTACHMENT_REPLY,
@@ -843,7 +845,7 @@ def _split_turn(
 ) -> Harness:
     """A turn that goes in two parts: the payment block, then the agent's text."""
     limit = len(SPLIT_BLOCK) + 5  # the block fits, the block and the text do not
-    monkeypatch.setattr(processor, "pack", lambda parts: outgoing.pack(parts, limit=limit))
+    monkeypatch.setattr(core, "pack", lambda parts: outgoing.pack(parts, limit=limit))
     # Not the first message of the conversation: no greeting before the block.
     chatwoot = FakeChatwoot(
         history=[history_message(90, "hola", 0), history_message(91, "¡Hola!", 1)],

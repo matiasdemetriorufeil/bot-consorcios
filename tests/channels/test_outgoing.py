@@ -2,7 +2,7 @@
 
 from app.bot.choices import MAX_TEXT
 from app.bot.debt_message import join_blocks
-from app.chatwoot.outgoing import MAX_MESSAGE, pack, with_buttons
+from app.channels.outgoing import MAX_MESSAGE, pack, with_buttons
 
 BLOCK_A = "*EDIFICIO INVENTADO 04-C*\nSaldo total: *$1.000,00*"
 BLOCK_B = "*EDIFICIO INVENTADO COC.3*\nEstás al día: no tenés saldo pendiente."

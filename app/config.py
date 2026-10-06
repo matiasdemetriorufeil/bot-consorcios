@@ -64,6 +64,30 @@ class Settings(BaseSettings):
     # server's ASP.NET session lasts ~20). The bot then logs in first. 0 disables it.
     consorplus_session_idle_minutes: float = 15
 
+    # Where the bot talks to people: "chatwoot" (Chatwoot's Agent Bot, /webhooks/chatwoot) or
+    # "whatsapp" (the WhatsApp Cloud API directly, /webhooks/whatsapp). The other webhook 404s.
+    channel: Literal["chatwoot", "whatsapp"] = "chatwoot"
+
+    # WhatsApp Cloud API (CHANNEL=whatsapp). Token of a system user with whatsapp_business_*.
+    whatsapp_access_token: SecretStr | None = None
+    whatsapp_phone_number_id: str = ""
+    whatsapp_waba_id: str = ""
+    # The Meta app's secret: signs every webhook (X-Hub-Signature-256). Without it, all 503.
+    whatsapp_app_secret: SecretStr | None = None
+    # Chosen by us and typed in Meta's webhook setup (the GET verification).
+    whatsapp_verify_token: SecretStr | None = None
+    # Graph API version (v26.0: the current one in October 2026).
+    whatsapp_graph_version: str = "v26.0"
+    whatsapp_timeout_seconds: float = 15
+    # Incoming attachments are downloaded here (a volume of the api), and the largest allowed.
+    whatsapp_media_dir: str = "/data/wa_media"
+    whatsapp_media_max_bytes: int = 10 * 1024 * 1024
+    # On startup, unanswered messages younger than this are answered; older ones are not.
+    whatsapp_recovery_minutes: float = 15
+    # ⚠️ DEVELOPMENT ONLY (APP_ENV=development; ignored otherwise). "from:to,..." digits that
+    # rewrite the recipient for Meta's test number with Argentine numbers (549... -> 54...15...).
+    whatsapp_dev_recipient_rewrite: str = ""
+
     chatwoot_base_url: str = ""
     # Agent Bot access token: sends messages and notes, hands off, adds labels.
     chatwoot_bot_token: SecretStr | None = None

@@ -75,6 +75,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./:/app
+      # Attachments received by WhatsApp (CHANNEL=whatsapp), served only to panel users.
+      - wa_media:/data/wa_media
     depends_on:
       db:
         condition: service_healthy
@@ -166,8 +168,34 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # --- Túnel HTTPS hacia el webhook de WhatsApp (SOLO DESARROLLO, CHANNEL=whatsapp) ---
+  # Meta must reach /webhooks/whatsapp of our api, but the api also serves /admin and /dev.
+  # webhook-proxy (Caddy) forwards ONLY that path (deploy/webhook-proxy/Caddyfile, 404 for the
+  # rest) and cloudflared-wa publishes the proxy, never the api. Own profile, never started
+  # by default; no published ports and no restart (the quick tunnel URL would change).
+  #   docker compose --profile tunnel-wa up -d cloudflared-wa
+  #   docker compose --profile tunnel-wa logs cloudflared-wa   (the "trycloudflare.com" line)
+  # Step by step: docs/whatsapp.md, "Canal directo".
+  webhook-proxy:
+    image: caddy:${CADDY_VERSION:-2.10.2-alpine}
+    profiles: ["tunnel-wa"]
+    volumes:
+      - ./deploy/webhook-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+    restart: "no"
+
+  cloudflared-wa:
+    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:-2026.9.2}
+    profiles: ["tunnel-wa"]
+    command: ["tunnel", "--no-autoupdate", "--url", "http://webhook-proxy:8080"]
+    depends_on:
+      - webhook-proxy
+    restart: "no"
+
 volumes:
   pgdata:
   chatwoot_pgdata:
   chatwoot_redis:
   chatwoot_storage:
+  wa_media:

@@ -1,4 +1,5 @@
-"""What a handoff leaves in Chatwoot for the operators: labels and a private note."""
+"""What a handoff leaves for the operators: labels and an internal note (in Chatwoot, a
+private note and conversation labels; in our WhatsApp channel, the same on WaConversation)."""
 
 import re
 import unicodedata

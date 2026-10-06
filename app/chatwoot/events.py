@@ -16,8 +16,9 @@ the title (IncomingMessage.selection_of = the id of the message with the options
 from dataclasses import dataclass, field
 from typing import Any
 
-# Attachments the studio can look at once the conversation is handed off.
-VIEWABLE_ATTACHMENTS = frozenset({"image", "file"})
+from app.channels.base import VIEWABLE_ATTACHMENTS
+
+__all__ = ["VIEWABLE_ATTACHMENTS", "IncomingMessage", "ignore_reason", "parse_incoming"]
 
 
 @dataclass(frozen=True)

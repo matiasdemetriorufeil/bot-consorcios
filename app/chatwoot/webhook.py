@@ -7,6 +7,8 @@ signature are rejected; without CHATWOOT_WEBHOOK_SECRET every request is.
 
 The answer is generated in a background task: Chatwoot waits 5 seconds at most and, on a
 500, delivers the same message again (the message id is stored, so it is answered once).
+
+Only with CHANNEL=chatwoot; otherwise 404 (the bot answers through app.whatsapp).
 """
 
 import hashlib
@@ -22,12 +24,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.bot.agent import Agent
+from app.channels.locks import advisory_lock
 from app.chatwoot.client import ChatwootClient, ChatwootError
 from app.chatwoot.events import ignore_reason, parse_incoming
 from app.chatwoot.processor import ChatwootBot
 from app.config import Settings, get_settings
 from app.db.models import ChatwootProcessedMessage
-from app.db.session import SessionLocal, get_session
+from app.db.session import SessionLocal, engine, get_session
 from app.llm import get_prices, get_provider
 from app.sync import live
 
@@ -59,10 +62,13 @@ def _build_bot() -> ChatwootBot:
         lambda: Agent(get_provider(settings), prices=get_prices(settings), settings=settings),
         settings,
         warm_up=live.warm_up,
+        lock=advisory_lock(engine),
     )
 
 
-def get_chatwoot_bot() -> ChatwootBot:
+def get_chatwoot_bot(settings: Annotated[Settings, Depends(get_settings)]) -> ChatwootBot:
+    if settings.channel != "chatwoot":
+        raise HTTPException(404, "Not Found")
     try:
         return _build_bot()
     except ChatwootError as exc:
@@ -95,6 +101,8 @@ def chatwoot_webhook(
     session: Annotated[Session, Depends(get_session)],
     bot: Annotated[ChatwootBot, Depends(get_chatwoot_bot)],
 ) -> dict[str, Any]:
+    if settings.channel != "chatwoot":
+        raise HTTPException(404, "Not Found")
     if settings.chatwoot_webhook_secret is None:
         raise HTTPException(503, "CHATWOOT_WEBHOOK_SECRET no configurado")
     if not verify_signature(

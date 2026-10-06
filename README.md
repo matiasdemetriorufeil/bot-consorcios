@@ -117,6 +117,16 @@ uv run python -m evals.run --provider anthropic --model claude-haiku-4-5
 uv run python -m evals.run --only deuda_simple urgencia_gas
 ```
 
+## Canales (`app/channels/`, `CHANNEL`)
+
+El procesamiento de un mensaje (identificación, agente, bloques de deuda, botones, derivación,
+reservas) es uno solo, en `app/channels/processor.py`; lo que depende del canal va detrás de
+una interfaz (`app/channels/base.py`). `CHANNEL` elige cuál atiende: `chatwoot` (por defecto,
+abajo) o `whatsapp` (la WhatsApp Cloud API directo, `app/whatsapp/`: webhook propio
+`/webhooks/whatsapp`, conversaciones y mensajes en nuestra base, adjuntos en el volumen
+`wa_media`). El webhook del otro canal responde 404. Detalle y puesta en marcha:
+[docs/whatsapp.md](docs/whatsapp.md#canal-directo-channelwhatsapp-sin-chatwoot).
+
 ## Chatwoot (`app/chatwoot/`)
 
 El bot atiende como **Agent Bot** de Chatwoot: `POST /webhooks/chatwoot` recibe los mensajes

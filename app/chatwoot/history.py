@@ -11,9 +11,10 @@ incoming message: it becomes the person's turn right after it.
 
 from typing import Any
 
-from app.bot.agent import HISTORY_MESSAGES, trim_history
+from app.bot.agent import HISTORY_MESSAGES
 from app.bot.choices import with_options
-from app.llm import AssistantMessage, Message, UserMessage
+from app.channels.history import to_history
+from app.llm import Message
 
 # The API sends message_type as an integer; webhooks as a string.
 _INCOMING = {0, "incoming"}
@@ -60,13 +61,7 @@ def build_history(
     pending_selection: the message whose widget choice is being answered now (its choice is
     the current message, not history)."""
     turns: list[tuple[bool, str]] = []  # (is_user, text)
-
-    def add(is_user: bool, text: str) -> None:
-        if turns and turns[-1][0] == is_user:
-            turns[-1] = (is_user, f"{turns[-1][1]}\n{text}")
-        else:
-            turns.append((is_user, text))
-
+    add = turns.append
     for message in sorted(messages, key=lambda m: int(m.get("id") or 0)):
         message_id = int(message.get("id") or 0)
         if message.get("private") or message_id >= before_id:
@@ -78,9 +73,7 @@ def build_history(
             is_user = False
         else:
             continue
-        if text := _text(message):
-            add(is_user, text)
+        add((is_user, _text(message)))
         if not is_user and message_id != pending_selection and (chosen := _chosen(message)):
-            add(True, chosen)
-    history: list[Message] = [UserMessage(t) if u else AssistantMessage(t) for u, t in turns]
-    return trim_history(history, limit)
+            add((True, chosen))
+    return to_history(turns, limit)

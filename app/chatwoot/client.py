@@ -17,12 +17,13 @@ from typing import Any
 import requests
 
 from app.bot.choices import problems
+from app.channels.base import ChannelError
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
 
-class ChatwootError(Exception):
+class ChatwootError(ChannelError):
     """The Chatwoot API failed or is not configured."""
 
 

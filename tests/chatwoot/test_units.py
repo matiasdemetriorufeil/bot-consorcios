@@ -14,7 +14,7 @@ from app.bot.prompts import (
     urgent_handoff_notice,
 )
 from app.bot.tools import Handoff
-from app.chatwoot.handoff import contact_attributes, handoff_labels, slug
+from app.channels.handoff import contact_attributes, handoff_labels, slug
 from app.chatwoot.history import build_history
 from app.config import Settings, get_settings
 from app.db.models import PersonRole

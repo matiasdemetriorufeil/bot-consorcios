@@ -414,3 +414,88 @@ En producción la variable va **vacía** (y con el número real no hace falta).
 - Ventana de 24 h de WhatsApp: el bot solo responde mensajes entrantes, así que siempre está
   dentro de la ventana. Para escribirle primero a alguien hacen falta plantillas aprobadas
   por Meta (no está implementado).
+
+## Canal directo (`CHANNEL=whatsapp`, sin Chatwoot)
+
+Con `CHANNEL=whatsapp` el bot habla **directo** con la WhatsApp Cloud API: Meta le manda los
+webhooks a nuestra api (`/webhooks/whatsapp`) y el bot responde por la Graph API. Las
+conversaciones y los mensajes quedan en nuestra base (`wa_contacts`, `wa_conversations`,
+`wa_messages`). El webhook de Chatwoot responde 404 (y al revés con `CHANNEL=chatwoot`, que
+sigue siendo el valor por defecto).
+
+```
+celular → Meta → túnel (cloudflared-wa) → webhook-proxy (solo /webhooks/whatsapp) → api
+celular ← Meta ←────────────── Graph API (texto, botones, listas, plantillas) ←──── api
+```
+
+### Variables (`.env`)
+
+- `CHANNEL=whatsapp`
+- `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID` (los mismos de arriba).
+- `WHATSAPP_ACCESS_TOKEN`: el token permanente del usuario del sistema (paso 2). Con este canal
+  sí va en `.env`.
+- `WHATSAPP_APP_SECRET`: Meta → tu app → **Configuración de la app → Básica → Clave secreta**.
+  Con ella se verifica la firma `X-Hub-Signature-256` de cada webhook; sin firma válida, 401.
+- `WHATSAPP_VERIFY_TOKEN`: una clave que inventás vos (ver `.env.example`).
+- `WHATSAPP_GRAPH_VERSION`: por defecto `v26.0` (la vigente en octubre de 2026).
+- Para ver cuáles tenés cargadas sin mostrar los valores:
+
+  ```powershell
+  Select-String -Path .env -Pattern '^(CHANNEL|WHATSAPP_[A-Z_]+)=' | ForEach-Object { ($_.Line -split '=')[0] }
+  ```
+
+Después: `docker compose up -d api` (recrea el contenedor con el `.env` nuevo).
+
+### Túnel (solo el webhook)
+
+El túnel de Chatwoot no sirve acá. El perfil `tunnel-wa` levanta un proxy (Caddy) que deja
+pasar **solo** `/webhooks/whatsapp` hacia la api (todo lo demás, 404: el panel nunca queda en
+internet) y un cloudflared que publica ese proxy:
+
+```powershell
+docker compose --profile tunnel-wa up -d cloudflared-wa
+docker compose --profile tunnel-wa logs cloudflared-wa | Select-String trycloudflare
+```
+
+Probalo: `https://<url>/admin` tiene que dar 404 y `https://<url>/webhooks/whatsapp` (GET sin
+parámetros) 403.
+
+### Webhook en Meta
+
+1. Meta → tu app → **WhatsApp → Configuración** → Webhook → **Editar**:
+   - URL de devolución de llamada: `https://<url>/webhooks/whatsapp`
+   - Token de verificación: el valor de `WHATSAPP_VERIFY_TOKEN`.
+   Al guardar, Meta hace el GET de verificación (en `docker compose logs api` aparece
+   `WhatsApp webhook verified by Meta`).
+2. En **Campos del webhook**, suscribí `messages` y (si usás coexistencia con la app del
+   celular) `smb_message_echoes`.
+3. La app tiene que estar suscripta a la cuenta (paso 2.1).
+
+Si antes la URL de Meta apuntaba a Chatwoot, este cambio la reemplaza: con el número de prueba
+no pueden estar los dos canales a la vez.
+
+### Cómo se comporta
+
+- El bot solo contesta si la conversación está en **bot**. Al derivar pasa a
+  **waiting_human** (motivo, prioridad, resumen y etiquetas en la conversación, más una nota
+  interna) y deja de contestar hasta que una persona la devuelva o la resuelva. Resuelta,
+  vuelve a **bot** con el próximo mensaje del contacto, y el bot arranca de cero (saluda).
+- Un mensaje mandado desde la app de WhatsApp Business del celular (`smb_message_echoes`) se
+  guarda como mensaje del operador y la conversación pasa a **human**.
+- Ventana de 24 h: texto libre y botones solo dentro de las 24 h del último mensaje del
+  contacto; fuera, solo plantillas aprobadas.
+- Estados: enviado, entregado, leído (y "reproducido", que cuenta como leído) o fallido (con el
+  código de error de Meta) llegan por el webhook y actualizan el mensaje.
+- Adjuntos entrantes: se bajan enseguida (los links de Meta vencen en minutos) al volumen
+  `wa_media`, hasta `WHATSAPP_MEDIA_MAX_BYTES`, solo imágenes, PDF, Word, Excel, texto y
+  audios. Se ven en `/admin/wa/media/<id>` solo con sesión en el panel.
+- Si la api se reinicia con mensajes sin responder, al arrancar responde los de los últimos
+  `WHATSAPP_RECOVERY_MINUTES` y deja los más viejos marcados sin responder (warning en el log
+  y evento `unanswered_after_restart`).
+
+### Números argentinos con el número de prueba (canal directo)
+
+El mismo arreglo de arriba, pero en nuestro cliente: `WHATSAPP_DEV_RECIPIENT_REWRITE` con los
+mismos pares `origen:destino`. Solo funciona con `APP_ENV=development` (en producción se ignora
+y lo avisa en el log). En `docker compose logs api` aparece
+`[DEV_RECIPIENT_REWRITE] recipient 549... -> 54...15...` por cada envío reescrito.

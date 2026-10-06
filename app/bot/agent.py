@@ -19,10 +19,10 @@ and its options AgentReply.choices; the channel sends them as buttons or a list 
 where it cannot). It runs after the other tools of its round, so a handoff of that round
 rejects it. The history keeps the titles offered (app.bot.choices.with_options).
 
-History: the caller passes it each time (app.chatwoot reads it from the Chatwoot
-conversation; the CLI keeps it in memory). It is trimmed to the last HISTORY_MESSAGES
-user/assistant messages, keeping the tool exchanges in between (so unit ids found earlier are
-not lost).
+History: the caller passes it each time (the channel reads it: Chatwoot's conversation or our
+WhatsApp messages, app.channels; the CLI keeps it in memory). It is trimmed to the last
+HISTORY_MESSAGES user/assistant messages, keeping the tool exchanges in between (so unit ids
+found earlier are not lost).
 """
 
 import logging

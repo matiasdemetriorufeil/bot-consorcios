@@ -87,3 +87,39 @@ def test_chatwoot_mounts_the_spanish_list_button_label(name: str) -> None:
     for locale in ("en", "es"):  # Sidekiq uses the default locale (en)
         whatsapp = overrides[locale]["conversations"]["messages"]["whatsapp"]
         assert whatsapp == {"list_button_label": "Ver opciones"}
+
+
+CADDYFILE = COMPOSE.parent / "deploy" / "webhook-proxy" / "Caddyfile"
+
+
+def test_whatsapp_tunnel_is_opt_in_and_only_reaches_the_proxy() -> None:
+    tunnel = services()["cloudflared-wa"]
+
+    assert tunnel["profiles"] == ["tunnel-wa"]
+    command = tunnel["command"]
+    assert command[command.index("--url") + 1] == "http://webhook-proxy:8080"
+    assert "--no-autoupdate" in command
+    assert not any("api" in part or "8000" in part for part in command)
+    assert "ports" not in tunnel
+    assert tunnel["restart"] == "no"
+    assert tunnel["image"].startswith("cloudflare/cloudflared:") and ":-" in tunnel["image"]
+
+
+def test_webhook_proxy_publishes_only_the_whatsapp_webhook() -> None:
+    proxy = services()["webhook-proxy"]
+
+    assert proxy["profiles"] == ["tunnel-wa"]
+    assert "ports" not in proxy
+    assert proxy["image"].startswith("caddy:") and ":-" in proxy["image"]
+    assert "./deploy/webhook-proxy/Caddyfile:/etc/caddy/Caddyfile:ro" in proxy["volumes"]
+    caddyfile = CADDYFILE.read_text(encoding="utf-8")
+    # One matcher, exactly the webhook path, and 404 for anything else.
+    assert caddyfile.count("reverse_proxy") == 1
+    assert "@webhook path /webhooks/whatsapp\n" in caddyfile
+    assert "reverse_proxy api:8000" in caddyfile
+    assert "respond 404" in caddyfile
+    assert "/admin" not in caddyfile.split("{", 2)[-1]
+
+
+def test_api_keeps_whatsapp_attachments_in_a_volume() -> None:
+    assert "wa_media:/data/wa_media" in services()["api"]["volumes"]

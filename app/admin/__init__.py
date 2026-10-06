@@ -2,7 +2,8 @@
 
 Buildings and their information, all phones (search and unlink), phones to review, operator
 verifications, sync runs (read only), general bot settings, simple metrics, the SUM
-reservations (app.admin.amenities) and, for now, an empty "Reclamos" page.
+reservations (app.admin.amenities), for now an empty "Reclamos" page, and the attachments
+of WhatsApp messages (app.admin.wa_media, not in the menu).
 Login with the single user of .env.
 """
 
@@ -24,6 +25,7 @@ from app.admin.views import (
     SyncRunAdmin,
     VerificationRequestAdmin,
 )
+from app.admin.wa_media import WaMediaView
 from app.config import Settings
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -38,6 +40,7 @@ VIEWS = (
     MetricsView,
     AmenitiesView,
     ClaimsView,
+    WaMediaView,
 )
 
 
@@ -65,6 +68,7 @@ def setup_admin(
         PhoneAdmin: {"_timezone": settings.timezone},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
+        WaMediaView: {"media_dir": settings.whatsapp_media_dir, "session_maker": session_maker},
     }
     for view in VIEWS:
         # A subclass per panel: SQLAdmin stores state on the view class (session_maker...).

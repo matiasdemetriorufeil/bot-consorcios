@@ -16,6 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -449,3 +450,151 @@ class Reservation(Base):
     amenity: Mapped[Amenity] = relationship()
     slot: Mapped[AmenitySlot] = relationship()
     unit: Mapped[Unit] = relationship()
+
+
+# --- WhatsApp Cloud API channel (CHANNEL=whatsapp, app.whatsapp) -----------------------------
+
+
+class WaConversationStatus(StrEnum):
+    BOT = "bot"  # the bot answers
+    WAITING_HUMAN = "waiting_human"  # handed off by the bot, nobody took it yet
+    HUMAN = "human"  # an operator has it
+    RESOLVED = "resolved"  # back to the bot with the contact's next message
+
+
+class WaDirection(StrEnum):
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
+class WaAuthor(StrEnum):
+    CONTACT = "contact"
+    BOT = "bot"
+    OPERATOR = "operator"
+    SYSTEM = "system"
+
+
+class WaMessageStatus(StrEnum):
+    RECEIVED = "received"  # incoming
+    SENT = "sent"
+    DELIVERED = "delivered"
+    READ = "read"
+    FAILED = "failed"
+
+
+class WaMediaStatus(StrEnum):
+    STORED = "stored"
+    TOO_LARGE = "too_large"
+    TYPE_NOT_ALLOWED = "type_not_allowed"
+    FAILED = "failed"
+
+
+class WaContact(Base):
+    """Someone who wrote to the studio's WhatsApp number."""
+
+    __tablename__ = "wa_contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "+" + the WhatsApp id Meta gives (549... for Argentine mobiles).
+    phone_e164: Mapped[str] = mapped_column(String(20), unique=True)
+    wa_id: Mapped[str] = mapped_column(String(20))
+    profile_name: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    conversation: Mapped["WaConversation | None"] = relationship(back_populates="contact")
+
+
+class WaConversation(Base):
+    """The one conversation of a contact (a single thread, as in WhatsApp)."""
+
+    __tablename__ = "wa_conversations"
+    __table_args__ = (
+        Index("ix_wa_conversations_status_last_inbound_at", "status", "last_inbound_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(
+        ForeignKey("wa_contacts.id", ondelete="CASCADE"), unique=True
+    )
+    status: Mapped[WaConversationStatus] = mapped_column(
+        _str_enum(WaConversationStatus, "status_valid"),
+        default=WaConversationStatus.BOT,
+        server_default=WaConversationStatus.BOT.value,
+    )
+    assigned_to: Mapped[str | None] = mapped_column(String(100))  # panel user
+    # The contact's last message (WhatsApp's 24-hour window for free text starts there).
+    last_inbound_at: Mapped[datetime | None]
+    unread_count: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    # First message of the bot's current stretch (set when it comes back from resolved): the
+    # agent's history starts there. None: the whole conversation.
+    bot_since_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    # The bot's last handoff (also left as an internal note).
+    handoff_reason: Mapped[str | None] = mapped_column(String(50))
+    handoff_priority: Mapped[str | None] = mapped_column(String(20))
+    handoff_summary: Mapped[str | None] = mapped_column(Text)
+    handoff_labels: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    handed_off_at: Mapped[datetime | None]
+    resolved_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    contact: Mapped[WaContact] = relationship(back_populates="conversation")
+
+
+class WaMessage(Base):
+    """A message of a conversation: the contact's, the bot's, an operator's or an internal
+    note. wa_message_id (WhatsApp's wamid) is unique: a webhook delivered twice is stored once."""
+
+    __tablename__ = "wa_messages"
+    __table_args__ = (
+        Index("ix_wa_messages_conversation_id_id", "conversation_id", "id"),
+        Index(
+            "ix_wa_messages_unprocessed",
+            "created_at",
+            postgresql_where=text("direction = 'inbound' AND processed_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("wa_conversations.id", ondelete="CASCADE")
+    )
+    direction: Mapped[WaDirection] = mapped_column(_str_enum(WaDirection, "direction_valid"))
+    author: Mapped[WaAuthor] = mapped_column(_str_enum(WaAuthor, "author_valid"))
+    operator: Mapped[str | None] = mapped_column(String(100))  # panel user, if any
+    # WhatsApp's type (text, interactive, button, image, document, audio, video, sticker,
+    # location, contacts, reaction, template...) or "note" for internal notes.
+    message_type: Mapped[str] = mapped_column(String(30))
+    # The message's text (a caption for media; for an option tapped, its title).
+    body: Mapped[str | None] = mapped_column(Text)
+    # Titles of the options offered (buttons or list), in order.
+    choices: Mapped[list[str] | None] = mapped_column(JSONB)
+    wa_message_id: Mapped[str | None] = mapped_column(String(200), unique=True)
+    status: Mapped[WaMessageStatus | None] = mapped_column(
+        _str_enum(WaMessageStatus, "status_valid")
+    )
+    status_at: Mapped[datetime | None]
+    error_code: Mapped[int | None]
+    error_text: Mapped[str | None] = mapped_column(Text)
+    is_internal_note: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Attachment (WhatsApp messages carry one at most). media_path is relative to
+    # WHATSAPP_MEDIA_DIR; media_filename is the name the person sent (only shown, never used).
+    media_id: Mapped[str | None] = mapped_column(String(100))
+    media_mime: Mapped[str | None] = mapped_column(String(100))
+    media_size: Mapped[int | None] = mapped_column(BigInteger)
+    media_filename: Mapped[str | None] = mapped_column(String(255))
+    media_path: Mapped[str | None] = mapped_column(String(255))
+    media_status: Mapped[WaMediaStatus | None] = mapped_column(
+        _str_enum(WaMediaStatus, "media_status_valid")
+    )
+    # Incoming messages: claimed by a worker, then processed (answered, skipped, or left
+    # unanswered after a restart: processing_note says why).
+    processing_started_at: Mapped[datetime | None]
+    processed_at: Mapped[datetime | None]
+    processing_note: Mapped[str | None] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    conversation: Mapped[WaConversation] = relationship()
