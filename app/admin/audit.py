@@ -20,11 +20,13 @@ def log_admin_action(
     action: str,
     *,
     phone_e164: str | None = None,
+    conversation_id: int | None = None,
     **payload: Any,
 ) -> None:
     """Add the event to the session: it is committed together with the change."""
     session.add(
         BotEvent(
+            conversation_id=conversation_id,
             phone_e164=phone_e164,
             event_type=EVENT_TYPE,
             payload={"admin_user": admin_user, "action": action, **payload},

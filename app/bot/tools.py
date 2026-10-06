@@ -79,7 +79,8 @@ _SECRET_ARGS = frozenset({"code"})
 
 
 # Why a conversation goes to a human (also its label, see app.channels.handoff).
-# The model picks one of HANDOFF_REASONS; the code also uses technical_error and non_pilot.
+# The model picks one of HANDOFF_REASONS; the code also uses technical_error, non_pilot and
+# window_closed (WhatsApp's 24-hour window, app.channels.processor).
 HANDOFF_REASONS = (
     "person_requested",
     "upset",

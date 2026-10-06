@@ -1,0 +1,27 @@
+{# State and buttons of the open conversation (page and poll). #}
+{% set action_url = url_for('admin:view-conversation-action', conversation_id=conversation.id) %}
+{% set status = conversation.status.value %}
+<div class="chat-state">
+  <span class="badge chat-status chat-status-{{ status }}">{{ status_label }}</span>
+  {% if status == 'human' %}
+    {% if assigned_name %}<span class="small">La tiene <strong>{{ assigned_name }}</strong></span>
+    {% else %}<span class="small">Respondida desde el celular</span>{% endif %}
+  {% endif %}
+  {% if reason and status != 'bot' %}<span class="badge bg-orange-lt" title="{{ reason[1] }}">{{ reason[0] }}</span>{% endif %}
+  {% if conversation.handoff_priority == 'urgent' and status == 'waiting_human' %}<span class="badge bg-red text-white">URGENTE</span>{% endif %}
+  <div class="chat-actions">
+    {% if not (status == 'human' and conversation.assigned_to == user) %}
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="take"><button type="submit" class="btn btn-sm btn-primary">Tomar control</button></form>
+    {% endif %}
+    {% if status != 'bot' %}
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="return"><button type="submit" class="btn btn-sm">Devolver al bot</button></form>
+    {% endif %}
+    {% if status != 'resolved' %}
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="resolve"><button type="submit" class="btn btn-sm btn-success">Resolver</button></form>
+    {% endif %}
+    <button type="button" class="btn btn-sm btn-warning js-note">Nota interna</button>
+  </div>
+</div>
+{% if conversation.handoff_summary and status in ('waiting_human', 'human') %}
+<div class="chat-summary">{{ reason[1] if reason else 'Derivada' }} · {{ conversation.handoff_summary }}</div>
+{% endif %}

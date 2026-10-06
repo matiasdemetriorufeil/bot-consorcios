@@ -598,3 +598,65 @@ class WaMessage(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     conversation: Mapped[WaConversation] = relationship()
+
+
+# --- Admin panel: users, WhatsApp templates and quick replies --------------------------------
+
+
+class PanelRole(StrEnum):
+    ADMIN = "admin"
+    OPERATOR = "operator"
+
+
+class PanelUser(Base):
+    """A user of the admin panel (one per employee). The .env user is a fixed rescue admin
+    and is not stored here (app.admin.auth)."""
+
+    __tablename__ = "panel_users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True)  # stored in lowercase
+    display_name: Mapped[str] = mapped_column(String(100))
+    # hash_password's "scrypt:..." (never the password).
+    password_hash: Mapped[str] = mapped_column(String(200))
+    role: Mapped[PanelRole] = mapped_column(_str_enum(PanelRole, "role_valid"))
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    # Raised when the password changes or the user is deactivated: open sessions end.
+    session_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+    last_login_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class WaTemplate(Base):
+    """An approved WhatsApp template (without variables) the panel can send outside the
+    24-hour window."""
+
+    __tablename__ = "wa_templates"
+    __table_args__ = (UniqueConstraint("name", "language"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))  # exactly as approved in Meta
+    language: Mapped[str] = mapped_column(String(10), default="es_AR", server_default="es_AR")
+    label: Mapped[str] = mapped_column(String(100))  # what the operators see
+    body: Mapped[str] = mapped_column(Text)  # its text, stored in the conversation's history
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class QuickReply(Base):
+    """A text saved by an admin that operators insert in a reply with one click."""
+
+    __tablename__ = "quick_replies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(60))
+    content: Mapped[str] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

@@ -22,6 +22,7 @@ REASONS: dict[str, tuple[str, str]] = {
     "other": ("otro-motivo", "Otro motivo"),
     "technical_error": ("error-tecnico", "Error técnico del bot"),
     "non_pilot": ("fuera-de-piloto", "Edificio fuera de la prueba piloto del bot"),
+    "window_closed": ("ventana-cerrada", "Ventana de 24 h cerrada: el bot no pudo responder"),
 }
 URGENT_LABEL = "urgente"
 BUILDING_LABEL_PREFIX = "edificio-"

@@ -7,7 +7,9 @@ webhook's 200). The channel (app.channels.base.Channel) does what depends on it.
 3. Known people of a building outside the pilot go straight to a human.
 4. Audio, stickers, locations... get a fixed "escribilo" reply; images and files a fixed
    thanks. Text goes to the agent with the channel's history.
-5. The reply is sent only if the conversation is still with the bot, as ONE message: the debt
+5. The reply is sent only if the conversation is still with the bot (checked again by the
+   channel right before each message: if a human took it meanwhile, ConversationTakenError
+   drops the rest of the turn, with no handoff), as ONE message: the debt
    blocks built by the code (as is) and the agent's text at the end. Only a turn longer than
    outgoing.MAX_MESSAGE is split (app.channels.outgoing), and its parts go in order (the
    channel makes each one go out before the next: Channel.send_text(more=True)). Then the
@@ -15,6 +17,9 @@ webhook's 200). The channel (app.channels.base.Channel) does what depends on it.
 6. A reply with options (offer_choices) goes as buttons or a list where the channel can
    (Channel.supports_choices), with the blocks in its text when they fit (otherwise the blocks
    go first, as text). Elsewhere, or if the channel rejects it, the options go numbered.
+
+7. If the channel does not allow free messages any more (WhatsApp's 24-hour window,
+   WindowClosedError), the conversation goes to a human with the reason window_closed.
 
 Messages of one conversation are processed one at a time: a lock in this process plus a
 Postgres advisory lock (app.channels.locks), so it also holds with several workers.
@@ -36,7 +41,14 @@ from app.bot.choices import Choice, numbered_text
 from app.bot.identity import Identity, identify_by_phone, to_e164
 from app.bot.prompts import handoff_notice
 from app.bot.tools import Handoff
-from app.channels.base import VIEWABLE_ATTACHMENTS, Channel, ChannelError, InboundMessage
+from app.channels.base import (
+    VIEWABLE_ATTACHMENTS,
+    Channel,
+    ChannelError,
+    ConversationTakenError,
+    InboundMessage,
+    WindowClosedError,
+)
 from app.channels.locks import ConversationLock, no_lock
 from app.channels.outgoing import pack, with_buttons
 from app.config import Settings
@@ -121,6 +133,13 @@ class BotProcessor:
             ):
                 try:
                     self._handle(session, message)
+                except WindowClosedError:
+                    session.rollback()
+                    logger.warning(
+                        "Conversation %s: outside the channel's window, handing off",
+                        conversation_id,
+                    )
+                    self._window_closed_handoff(session, message)
                 except Exception:
                     session.rollback()
                     logger.exception("%s message %s failed", self.channel.name, message.message_id)
@@ -210,7 +229,15 @@ class BotProcessor:
             )
             self._log(session, message, phone, "reply_dropped")
             return
-        sent = self._send_reply(message, debt_messages or [], reply, choices)
+        try:
+            sent = self._send_reply(message, debt_messages or [], reply, choices)
+        except ConversationTakenError:
+            logger.info(
+                "Conversation %s taken by a human while sending: rest of the turn dropped",
+                conversation_id,
+            )
+            self._log(session, message, phone, "reply_dropped", while_sending=True)
+            return
         logger.info(
             "Conversation %s: reply sent in %d message(s) (%d debt block(s), %d option(s))",
             conversation_id, sent, len(debt_messages or []), len(choices),
@@ -240,6 +267,8 @@ class BotProcessor:
             try:
                 self.channel.send_choices(message, text, choices)
                 return sent + 1
+            except (ConversationTakenError, WindowClosedError):
+                raise
             except (ChannelError, ValueError) as exc:
                 logger.warning(
                     "Conversation %s: options not sent as buttons (%s), sending them numbered",
@@ -288,6 +317,26 @@ class BotProcessor:
         except Exception:
             logger.exception(
                 "Emergency handoff failed for conversation %s", message.conversation_id
+            )
+
+    def _window_closed_handoff(self, session: Session, message: InboundMessage) -> None:
+        """The reply cannot go out (24-hour window): no fallback message either, the
+        conversation goes to a human with its own reason."""
+        try:
+            if not self.channel.still_with_bot(message):
+                return
+            phone = message.phone
+            who = identify_by_phone(session, phone) if phone else Identity()
+            handoff = Handoff(
+                "window_closed",
+                "La ventana de 24 h de WhatsApp estaba cerrada: el bot no pudo responder.",
+            )
+            self._hand_off(message, handoff, who, message.phone_trusted)
+            self._log(session, message, phone, "handoff", channel_event=False,
+                      **_handoff_payload(handoff))  # fmt: skip
+        except Exception:
+            logger.exception(
+                "Window-closed handoff failed for conversation %s", message.conversation_id
             )
 
     # --- Helpers ------------------------------------------------------------------------

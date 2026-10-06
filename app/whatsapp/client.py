@@ -20,6 +20,7 @@ import requests
 
 from app.bot.choices import MAX_BUTTONS, Choice, problems
 from app.channels.base import ChannelError
+from app.channels.base import WindowClosedError as ChannelWindowClosedError
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class WhatsAppError(ChannelError):
         self.code = code
 
 
-class WindowClosedError(WhatsAppError):
+class WindowClosedError(WhatsAppError, ChannelWindowClosedError):
     """More than 24 h since the contact's last message: only templates can be sent."""
 
 

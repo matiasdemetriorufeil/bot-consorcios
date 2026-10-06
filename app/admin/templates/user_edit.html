@@ -1,0 +1,65 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-lg-8">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ user.display_name }} · {{ user.username }}</h3>
+      <div class="card-actions">
+        {% if user.active %}<span class="badge bg-green-lt">Activo</span>{% else %}<span class="badge bg-secondary-lt">Desactivado</span>{% endif %}
+      </div>
+    </div>
+    <div class="card-body">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <p class="text-secondary small">Rol: {{ roles[user.role] }} · Último ingreso: {{ last_login or 'nunca' }}</p>
+
+      <form method="POST" class="mb-4">
+        <input type="hidden" name="change" value="name">
+        <label class="form-label" for="display_name">Nombre</label>
+        <div class="input-group">
+          <input class="form-control" id="display_name" name="display_name" maxlength="100" required value="{{ user.display_name }}">
+          <button type="submit" class="btn">Guardar nombre</button>
+        </div>
+      </form>
+
+      <form method="POST" class="mb-4">
+        <input type="hidden" name="change" value="role">
+        <label class="form-label" for="role">Rol</label>
+        <div class="input-group">
+          <select class="form-select" id="role" name="role" {% if myself %}disabled{% endif %}>
+            {% for value, label in roles.items() %}
+            <option value="{{ value.value }}" {% if user.role == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn" {% if myself %}disabled{% endif %}>Cambiar rol</button>
+        </div>
+        {% if myself %}<div class="form-hint">No podés cambiar tu propio rol.</div>{% endif %}
+      </form>
+
+      <form method="POST" class="mb-4" autocomplete="off">
+        <input type="hidden" name="change" value="password">
+        <div class="form-label">Nueva contraseña (mínimo {{ min_length }} caracteres)</div>
+        <div class="row g-2">
+          <div class="col-md"><input class="form-control" type="password" name="password" minlength="{{ min_length }}" required autocomplete="new-password" aria-label="Nueva contraseña"></div>
+          <div class="col-md"><input class="form-control" type="password" name="password2" minlength="{{ min_length }}" required autocomplete="new-password" aria-label="Repetila"></div>
+          <div class="col-md-auto"><button type="submit" class="btn btn-primary">Cambiar contraseña</button></div>
+        </div>
+        <div class="form-hint">Al cambiarla se cierran sus sesiones abiertas.</div>
+      </form>
+
+      {% if user.active %}
+      <form method="POST" onsubmit="return confirm('¿Desactivar este usuario? No va a poder entrar más.');">
+        <input type="hidden" name="change" value="deactivate">
+        <button type="submit" class="btn btn-danger" {% if myself %}disabled{% endif %}>Desactivar</button>
+        {% if myself %}<span class="form-hint d-inline ms-2">No podés desactivar tu propio usuario.</span>{% endif %}
+      </form>
+      {% else %}
+      <form method="POST">
+        <input type="hidden" name="change" value="reactivate">
+        <button type="submit" class="btn btn-success">Reactivar</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="card-footer"><a class="btn" href="{{ url_for('admin:view-users') }}">Volver a usuarios</a></div>
+  </div>
+</div>
+{% endblock %}

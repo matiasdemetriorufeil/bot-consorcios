@@ -1,0 +1,31 @@
+{# Messages of a conversation (page and poll). Bodies, file names and errors are autoescaped
+   text; line breaks come from CSS (white-space: pre-wrap), never from |safe. #}
+{% for m in messages %}
+{% if show_first_day and (loop.first or loop.previtem.day != m.day) %}
+<div class="msg-day" data-day="{{ m.day }}"><span>{{ m.day }}</span></div>
+{% elif not show_first_day and not loop.first and loop.previtem.day != m.day %}
+<div class="msg-day" data-day="{{ m.day }}"><span>{{ m.day }}</span></div>
+{% endif %}
+<div class="msg msg-{{ m.side }} msg-{{ m.author }}{% if m.is_handoff_note %} msg-handoff{% endif %}" data-id="{{ m.id }}">
+  {% if m.side == 'note' %}
+  <div class="msg-who">{% if m.is_handoff_note %}🤖 Derivación del bot (nota interna){% else %}📝 Nota interna · {{ m.author_name }}{% endif %}</div>
+  {% elif m.author_name %}
+  <div class="msg-who">{% if m.author == 'bot' %}🤖 {% endif %}{{ m.author_name }}</div>
+  {% endif %}
+  {% if m.kind_label %}<div class="msg-kind">{{ m.kind_label }}</div>{% endif %}
+  {% if m.media_url_ok %}
+    {% set media_url = url_for('admin:view-wa-media', message_id=m.id) %}
+    {% if m.media_inline %}
+    <a href="{{ media_url }}" target="_blank" rel="noopener"><img class="msg-img" src="{{ media_url }}" alt="Foto enviada" loading="lazy"></a>
+    {% else %}
+    <a class="msg-file" href="{{ media_url }}" rel="noopener">📎 {{ m.media_filename or 'Descargar adjunto' }}</a>
+    {% endif %}
+  {% elif m.media_problem %}
+  <div class="msg-problem">{{ m.media_problem }}{% if m.media_filename %} ({{ m.media_filename }}){% endif %}</div>
+  {% endif %}
+  {% if m.body %}<div class="msg-body">{{ m.body }}</div>{% endif %}
+  {% if m.choices %}<div class="msg-choices">{% for c in m.choices %}<span class="msg-choice">{{ c }}</span>{% endfor %}</div>{% endif %}
+  <div class="msg-meta">{{ m.time }}{% if m.side == 'out' %} <span class="msg-status" data-status="{{ m.status }}"></span>{% endif %}</div>
+  {% if m.status == 'failed' %}<div class="msg-problem">No se entregó{% if m.error_text %}: {{ m.error_text }}{% endif %}</div>{% endif %}
+</div>
+{% endfor %}

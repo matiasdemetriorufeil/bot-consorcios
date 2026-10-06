@@ -8,6 +8,10 @@
   the assistant's. A message with options keeps their titles (app.bot.choices.with_options).
 - 24-hour window: free text (and options) only within 24 h of the contact's last message;
   outside it only an approved template can go (WhatsAppClient.send_template).
+- Race with an operator: each send locks the conversation's row (SELECT ... FOR UPDATE) and
+  checks it is still with the bot; the panel's actions lock the same row. So either the bot's
+  message went out before the operator took it, or it does not go out at all
+  (ConversationTakenError: the processor drops the rest of the turn).
 - Order: each send waits for Meta's answer before the next one, so the parts of a turn go in
   order (there are no separate jobs as in Chatwoot).
 - Every message sent is stored (author bot); its status comes later by webhook.
@@ -27,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.bot.choices import Choice, with_options
 from app.bot.identity import Identity
 from app.bot.tools import Handoff
-from app.channels.base import InboundMessage
+from app.channels.base import ConversationTakenError, InboundMessage
 from app.channels.handoff import handoff_labels, handoff_note
 from app.channels.history import to_history
 from app.channels.locks import WHATSAPP_LOCK_NAMESPACE
@@ -75,6 +79,11 @@ def history_text(message: WaMessage) -> str:
     return ""
 
 
+def window_open_at(last_inbound_at: datetime | None, now: datetime) -> bool:
+    """Whether free messages can go (the contact wrote in the last 24 h)."""
+    return last_inbound_at is not None and now - last_inbound_at < WINDOW
+
+
 class WhatsAppChannel:
     name = "whatsapp"
     lock_namespace = WHATSAPP_LOCK_NAMESPACE
@@ -103,7 +112,7 @@ class WhatsAppChannel:
         last = session.scalar(
             select(WaConversation.last_inbound_at).where(WaConversation.id == conversation_id)
         )
-        return last is not None and self._now() - last < WINDOW
+        return window_open_at(last, self._now())
 
     def history(self, message: InboundMessage) -> list[Message]:
         source = _source(message)
@@ -153,11 +162,23 @@ class WhatsAppChannel:
         choices: tuple[Choice, ...],
         send: Callable[[str], str],
     ) -> None:
-        """Checks the window, sends and stores the message (also when Meta rejects it, with
-        the error, so the panel shows what did not go out)."""
+        """With the conversation's row locked: checks it is still with the bot and the window,
+        sends and stores the message (also when Meta rejects it, with the error, so the panel
+        shows what did not go out)."""
         source = _source(message)
         with self.session_factory() as session:
-            if not self.window_open(session, message.conversation_id):
+            conversation = session.scalar(
+                select(WaConversation)
+                .where(WaConversation.id == message.conversation_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            # Raising leaves the session: closing it releases the lock.
+            if conversation is None or conversation.status != WaConversationStatus.BOT:
+                raise ConversationTakenError(
+                    f"conversación {message.conversation_id}: ya la tiene una persona"
+                )
+            if not window_open_at(conversation.last_inbound_at, self._now()):
                 raise WindowClosedError(
                     f"conversación {message.conversation_id}: fuera de la ventana de 24 h"
                 )

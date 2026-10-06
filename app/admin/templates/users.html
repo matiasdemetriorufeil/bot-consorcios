@@ -1,0 +1,67 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-xl-7">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Usuarios</h3></div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th></th></tr></thead>
+        <tbody>
+          {% for user, last_login in rows %}
+          <tr class="{{ '' if user.active else 'text-secondary' }}">
+            <td>{{ user.display_name }}</td>
+            <td>{{ user.username }}</td>
+            <td>{{ roles[user.role] }}</td>
+            <td>{% if user.active %}<span class="badge bg-green-lt">Activo</span>{% else %}<span class="badge bg-secondary-lt">Desactivado</span>{% endif %}</td>
+            <td>{{ last_login or '—' }}</td>
+            <td><a class="btn btn-sm" href="{{ url_for('admin:view-user-edit', user_id=user.id) }}">Editar</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-secondary">Todavía no hay usuarios: creá uno por empleada.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if env_username %}
+    <div class="card-footer small text-secondary">
+      Además está el admin de rescate <strong>{{ env_username }}</strong> (definido en .env): no se cambia desde acá.
+    </div>
+    {% endif %}
+  </div>
+</div>
+<div class="col-12 col-xl-5">
+  <form class="card" method="POST" autocomplete="off">
+    <div class="card-header"><h3 class="card-title">Nuevo usuario</h3></div>
+    <div class="card-body">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <div class="mb-3">
+        <label class="form-label" for="display_name">Nombre (se ve en las conversaciones)</label>
+        <input class="form-control" id="display_name" name="display_name" maxlength="100" required value="{{ form.get('display_name', '') if form else '' }}">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="username">Usuario para entrar</label>
+        <input class="form-control" id="username" name="username" maxlength="100" required autocapitalize="none" value="{{ form.get('username', '') if form else '' }}">
+        <div class="form-hint">En minúsculas, sin espacios (por ejemplo: marta).</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="role">Rol</label>
+        <select class="form-select" id="role" name="role" required>
+          {% for value, label in roles.items() %}
+          <option value="{{ value.value }}" {% if (form and form.get('role') == value.value) or (not form and value.value == 'operator') %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-hint">Operadora: conversaciones, teléfonos, verificaciones, SUM y reclamos. Admin: además usuarios, plantillas y configuración.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="password">Contraseña (mínimo {{ min_length }} caracteres)</label>
+        <input class="form-control" type="password" id="password" name="password" minlength="{{ min_length }}" required autocomplete="new-password">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="password2">Repetila</label>
+        <input class="form-control" type="password" id="password2" name="password2" minlength="{{ min_length }}" required autocomplete="new-password">
+      </div>
+    </div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-primary">Crear usuario</button></div>
+  </form>
+</div>
+{% endblock %}

@@ -1,5 +1,6 @@
 """Views of the admin panel. Texts in Spanish (voseo); every change is audited in bot_events
-(app.admin.audit). Never registered here: verification codes, people's DNI, .env values."""
+(app.admin.audit). Never registered here: verification codes, people's DNI, .env values.
+Views with AdminOnly first are only for admins (operators get 403 and do not see them)."""
 
 import re
 from collections.abc import Callable
@@ -20,7 +21,7 @@ from starlette.responses import RedirectResponse, Response
 from wtforms import ValidationError
 
 from app.admin.audit import changed_fields, log_admin_action
-from app.admin.auth import admin_user
+from app.admin.auth import AdminOnly, admin_user
 from app.admin.metrics import compute_metrics
 from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
 from app.bot.identity import (
@@ -39,12 +40,14 @@ from app.db.models import (
     Person,
     PersonRole,
     Phone,
+    QuickReply,
     SyncJob,
     SyncRun,
     Unit,
     UnitPerson,
     VerificationRequest,
     VerificationRequestStatus,
+    WaTemplate,
 )
 
 _DATE_FORMAT = "%d/%m/%Y %H:%M"
@@ -117,7 +120,7 @@ class AuditedView(ModelView):
 # --- Buildings --------------------------------------------------------------------------
 
 
-class BuildingAdmin(AuditedView, model=Building):
+class BuildingAdmin(AdminOnly, AuditedView, model=Building):
     name = "Edificio"
     name_plural = "Edificios"
     icon = "fa-solid fa-building"
@@ -153,7 +156,7 @@ class BuildingAdmin(AuditedView, model=Building):
     page_size = 25
 
 
-class BuildingInfoAdmin(AuditedView, model=BuildingInfo):
+class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
     name = "Información de edificio"
     name_plural = "Información de edificios"
     icon = "fa-solid fa-book"
@@ -628,7 +631,7 @@ class VerificationRequestAdmin(ModelView, model=VerificationRequest):
 # --- Sync runs (read only) --------------------------------------------------------------
 
 
-class SyncRunAdmin(ModelView, model=SyncRun):
+class SyncRunAdmin(AdminOnly, ModelView, model=SyncRun):
     name = "Sincronización"
     name_plural = "Sincronizaciones"
     icon = "fa-solid fa-rotate"
@@ -691,7 +694,7 @@ _FALLBACK = "Vacío: se usa el valor de .env (o el predeterminado)."
 _BUILT_IN = "Vacío: el bot usa su texto automático."
 
 
-class BotSettingsAdmin(AuditedView, model=BotSettings):
+class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     """The single row of bot settings; values never shown here: the .env ones."""
 
     name = "Configuración general"
@@ -773,7 +776,7 @@ class BotSettingsAdmin(AuditedView, model=BotSettings):
 # --- Metrics ----------------------------------------------------------------------------
 
 
-class MetricsView(BaseView):
+class MetricsView(AdminOnly, BaseView):
     name = "Métricas"
     icon = "fa-solid fa-chart-line"
     session_maker: ClassVar[Any] = None
@@ -789,3 +792,75 @@ class MetricsView(BaseView):
             "metrics.html",
             {"title": "Métricas", "m": metrics, "peak": peak or 1},
         )
+
+
+# --- Inbox settings: WhatsApp templates and quick replies -------------------------------
+
+
+class WaTemplateAdmin(AdminOnly, AuditedView, model=WaTemplate):
+    """Approved templates the inbox offers when the 24-hour window is closed."""
+
+    name = "Plantilla de WhatsApp"
+    name_plural = "Plantillas de WhatsApp"
+    icon = "fa-solid fa-envelope-open-text"
+    audit_name = "wa_template"
+    can_delete = False  # deactivated instead: sent messages keep their text anyway
+    column_list = [WaTemplate.label, WaTemplate.name, WaTemplate.language, WaTemplate.active]
+    column_details_list = [*column_list, WaTemplate.body, WaTemplate.updated_at]
+    column_sortable_list = [WaTemplate.label, WaTemplate.active]
+    column_default_sort = [(WaTemplate.label, False)]
+    form_columns = [
+        WaTemplate.label,
+        WaTemplate.name,
+        WaTemplate.language,
+        WaTemplate.body,
+        WaTemplate.active,
+    ]
+    form_widget_args = {"body": {"rows": 5}}
+    column_labels = {
+        WaTemplate.label: "Nombre para las operadoras",
+        WaTemplate.name: "Nombre en Meta",
+        WaTemplate.language: "Idioma",
+        WaTemplate.body: "Texto",
+        WaTemplate.active: "Activa",
+        WaTemplate.updated_at: "Actualizada",
+    }
+    form_args = {
+        "name": {
+            "description": "Exactamente como figura aprobada en Meta (WhatsApp Manager > "
+            "Plantillas). Solo plantillas sin variables."
+        },
+        "language": {"description": "El código del idioma aprobado, por ejemplo es_AR o es."},
+        "body": {
+            "description": "El texto de la plantilla, tal cual: queda en el historial de la "
+            "conversación (lo que recibe la persona es lo aprobado en Meta)."
+        },
+    }
+    page_size = 50
+
+
+class QuickReplyAdmin(AdminOnly, AuditedView, model=QuickReply):
+    """Saved texts the operators insert in a reply with one click."""
+
+    name = "Respuesta rápida"
+    name_plural = "Respuestas rápidas"
+    icon = "fa-solid fa-bolt"
+    audit_name = "quick_reply"
+    column_list = [QuickReply.title, QuickReply.sort_order, QuickReply.active]
+    column_details_list = [*column_list, QuickReply.content, QuickReply.updated_at]
+    column_sortable_list = [QuickReply.title, QuickReply.sort_order]
+    column_default_sort = [(QuickReply.sort_order, False), (QuickReply.title, False)]
+    form_columns = [QuickReply.title, QuickReply.content, QuickReply.sort_order, QuickReply.active]
+    form_widget_args = {"content": {"rows": 5}}
+    column_labels = {
+        QuickReply.title: "Título",
+        QuickReply.content: "Texto",
+        QuickReply.sort_order: "Orden",
+        QuickReply.active: "Activa",
+        QuickReply.updated_at: "Actualizada",
+    }
+    form_args = {
+        "sort_order": {"description": "Las de número más chico aparecen primero."},
+        "content": {"description": "Se inserta tal cual en la caja de respuesta (editable)."},
+    }
+    page_size = 50

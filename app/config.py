@@ -119,7 +119,8 @@ class Settings(BaseSettings):
 
     timezone: str = "America/Argentina/Cordoba"
 
-    # Admin panel (/admin). With any of the three missing, every login is rejected.
+    # Admin panel (/admin). The .env user is the rescue admin (the others are created in the
+    # panel, app.admin.users). Without ADMIN_SECRET_KEY every login is rejected.
     admin_username: str = ""
     # Generate with: uv run python scripts/hash_admin_password.py (never the plain password).
     admin_password_hash: SecretStr | None = None

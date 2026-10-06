@@ -483,7 +483,12 @@ no pueden estar los dos canales a la vez.
 - Un mensaje mandado desde la app de WhatsApp Business del celular (`smb_message_echoes`) se
   guarda como mensaje del operador y la conversación pasa a **human**.
 - Ventana de 24 h: texto libre y botones solo dentro de las 24 h del último mensaje del
-  contacto; fuera, solo plantillas aprobadas.
+  contacto; fuera, solo plantillas aprobadas. Si el bot no puede contestar porque la ventana se
+  cerró, deriva con el motivo `window_closed` (etiqueta `ventana-cerrada`), sin intentar el
+  mensaje de disculpa.
+- Si una persona del panel toma la conversación mientras el bot arma la respuesta, no sale
+  nada más del bot: cada envío bloquea la fila de la conversación y vuelve a mirar el estado,
+  y los botones del panel bloquean la misma fila.
 - Estados: enviado, entregado, leído (y "reproducido", que cuenta como leído) o fallido (con el
   código de error de Meta) llegan por el webhook y actualizan el mensaje.
 - Adjuntos entrantes: se bajan enseguida (los links de Meta vencen en minutos) al volumen
@@ -492,6 +497,20 @@ no pueden estar los dos canales a la vez.
 - Si la api se reinicia con mensajes sin responder, al arrancar responde los de los últimos
   `WHATSAPP_RECOVERY_MINUTES` y deja los más viejos marcados sin responder (warning en el log
   y evento `unanswered_after_restart`).
+
+### Atender desde el panel
+
+Las conversaciones se atienden en **/admin → Conversaciones** (ver el README). Antes:
+
+1. Crear un usuario por empleada en **Usuarios** (rol Operadora o Admin).
+2. Cargar en **Plantillas de WhatsApp** las plantillas aprobadas en Meta (WhatsApp Manager →
+   Plantillas), sin variables: nombre exacto, idioma (`es_AR`, `es`...) y el texto.
+3. Opcional: **Respuestas rápidas**.
+4. En cada navegador, tocar **🔔 Avisos** una vez (el navegador pide permiso para las
+   notificaciones; funcionan con https o en localhost).
+
+Todo lo que se hace ahí (tomar, devolver, resolver, responder, plantilla, nota) queda en
+`bot_events` como `admin_action` con el usuario, sin el texto de los mensajes.
 
 ### Números argentinos con el número de prueba (canal directo)
 

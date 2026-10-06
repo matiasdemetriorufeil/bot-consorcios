@@ -144,8 +144,18 @@ El teléfono del contacto solo identifica en las bandejas de `CHATWOOT_TRUSTED_P
 
 ## Panel de administración (`app/admin/`, `/admin`)
 
-Panel SQLAdmin para los operadores en `http://localhost:8000/admin`:
+Panel SQLAdmin para el estudio en `http://localhost:8000/admin`:
 
+- **Conversaciones** (con `CHANNEL=whatsapp`): la bandeja de WhatsApp. Pestañas «Esperando
+  persona» (urgentes primero), «Mías», «Con el bot» y «Resueltas»; búsqueda por nombre,
+  teléfono o unidad en todas. La conversación se ve como en WhatsApp (contacto, bot y
+  operadora con su nombre; notas internas en amarillo, la de derivación con motivo y resumen;
+  fotos y documentos) con la ficha del contacto (unidades, rol, verificado, última deuda y
+  reservas de SUM). Botones **Tomar control**, **Devolver al bot**, **Resolver** y **Nota
+  interna**; responder toma la conversación. Fuera de la ventana de 24 h solo se puede mandar
+  una plantilla aprobada. Se actualiza sola cada 4 s y avisa con sonido y notificación del
+  navegador (botón «Avisos») cuando entra una conversación a «Esperando persona» o llega un
+  mensaje en una tuya. En el celular, lista y conversación van en pantallas separadas.
 - **Edificios**: nombre, dirección, activo y piloto (los edificios los crea la sincronización).
 - **Información de edificios**: reglamento, horarios, contactos, emergencias y otros, por edificio.
 - **Teléfonos**: todos los teléfonos, con búsqueda por número (se comparan los dígitos, así que
@@ -162,15 +172,26 @@ Panel SQLAdmin para los operadores en `http://localhost:8000/admin`:
   (vacío = se usa el de `.env`) y el bot lo toma en menos de un minuto, sin reiniciar.
 - **Métricas**: conversaciones por día, porcentaje derivado, herramientas más usadas y costo
   de IA del mes (de `bot_events`).
+- **Plantillas de WhatsApp** (nombre exacto aprobado en Meta, idioma y texto; sin variables) y
+  **Respuestas rápidas** (textos que se insertan con un clic al responder).
+- **Usuarios**: uno por empleada, con rol **Admin** u **Operadora**. Se crean, se les cambia
+  la contraseña o el rol y se desactivan (no se borran); cambiar la contraseña o desactivar
+  cierra sus sesiones abiertas.
 
-Ingreso con un único usuario de `.env`:
+Roles: la operadora ve Conversaciones, Teléfonos, Teléfonos a revisar, Verificaciones, Reservas
+de SUM y Reclamos; el resto (Usuarios, Plantillas, Respuestas rápidas, Edificios, Información de
+edificios, Configuración general, Sincronizaciones y Métricas) es solo para admins (403).
+
+El usuario de `.env` es el **admin de rescate**: entra siempre, no figura en «Usuarios» y no se
+cambia desde el panel.
 
 ```powershell
 uv run python scripts/hash_admin_password.py   # pide la contraseña e imprime el hash
 ```
 
 Completar en `.env` `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` (el hash, nunca la contraseña) y
-`ADMIN_SECRET_KEY`. Tras 5 intentos fallidos el ingreso se bloquea 15 minutos. Todas las
+`ADMIN_SECRET_KEY` (sin esta última nadie entra). Tras 5 intentos fallidos el ingreso se
+bloquea 15 minutos. Todas las
 acciones del panel quedan en `bot_events` (`event_type = 'admin_action'`, con el usuario y los
 campos cambiados, sin sus valores). El panel nunca muestra códigos de verificación ni valores
 de `.env`.

@@ -22,6 +22,16 @@ class ChannelError(Exception):
     """The channel failed or is not configured."""
 
 
+class WindowClosedError(ChannelError):
+    """The channel does not allow free messages now (WhatsApp: 24 h since the contact's last
+    message). The bot hands off with the reason window_closed."""
+
+
+class ConversationTakenError(ChannelError):
+    """A human took the conversation right before the message went out: it was not sent, and
+    the rest of the turn is dropped."""
+
+
 @dataclass(frozen=True)
 class InboundMessage:
     """One message of the person, as the processor sees it."""
@@ -64,7 +74,8 @@ class Channel(Protocol):
 
     def send_text(self, message: InboundMessage, text: str, *, more: bool) -> None:
         """Sends one text message. more: another message of the same turn follows (the
-        channel makes sure this one goes out first). ChannelError if it fails."""
+        channel makes sure this one goes out first). ChannelError if it fails
+        (ConversationTakenError if a human has it by now, WindowClosedError)."""
         ...
 
     def send_choices(self, message: InboundMessage, text: str, choices: tuple[Choice, ...]) -> None:

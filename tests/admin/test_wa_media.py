@@ -112,3 +112,25 @@ def test_not_in_the_menu(media_panel: Panel) -> None:
     media_panel.login()
 
     assert "Adjuntos de WhatsApp" not in media_panel.client.get("/admin/").text
+
+
+@pytest.mark.parametrize(
+    ("mime", "name", "content"),
+    [
+        ("image/svg+xml", "x.svg", b"<svg onload='alert(1)'></svg>"),
+        ("text/html", "x.html", b"<script>alert(1)</script>"),
+    ],
+)
+def test_svg_or_html_is_never_opened_in_the_panel(
+    media_panel: Panel, tmp_path: Path, mime: str, name: str, content: bytes
+) -> None:
+    """Even if one were stored, it goes as a download that the browser must not sniff."""
+    message = _message(media_panel.session, tmp_path, media_mime=mime, media_path=f"2026/09/{name}")
+    (tmp_path / "2026" / "09" / name).write_bytes(content)
+    media_panel.login()
+
+    response = media_panel.client.get(f"/admin/wa/media/{message.id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment")
+    assert response.headers["x-content-type-options"] == "nosniff"

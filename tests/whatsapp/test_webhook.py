@@ -355,6 +355,32 @@ def test_reply_dropped_if_a_human_took_it_meanwhile(make_wa: MakeWa) -> None:
     assert len(wa.events("whatsapp_reply_dropped")) == 1
 
 
+def test_taken_between_two_parts_of_a_turn_the_rest_is_dropped(make_wa: MakeWa) -> None:
+    long_reply = "\n\n".join(["Un párrafo largo de la respuesta. " * 40] * 6)  # > 4000: split
+    wa = make_wa([Say(long_reply)])
+    send_text = wa.fake.send_text
+
+    def send_then_an_operator_takes_it(to: str, text: str) -> str:
+        wamid = send_text(to, text)
+        conversation = wa.conversation()
+        assert conversation is not None
+        conversation.status = WaConversationStatus.HUMAN  # the panel's "Tomar control"
+        wa.session.commit()
+        return wamid
+
+    wa.fake.send_text = send_then_an_operator_takes_it  # type: ignore[method-assign]
+
+    wa.post(incoming(text_message("hola", wa.now)))
+
+    assert len(wa.fake.texts()) == 1  # the second part never went out
+    [event] = wa.events("whatsapp_reply_dropped")
+    assert event.payload["while_sending"] is True
+    conversation = wa.conversation()
+    assert conversation is not None
+    assert conversation.status == WaConversationStatus.HUMAN  # no handoff, no fallback
+    assert conversation.handoff_reason is None
+
+
 def test_an_error_hands_off_with_the_fixed_message(make_wa: MakeWa) -> None:
     wa = make_wa()
 
@@ -383,10 +409,20 @@ def test_outside_the_24_hour_window_nothing_free_goes_out(make_wa: MakeWa) -> No
     wa.post(incoming(text_message("hola", wa.now - timedelta(hours=24, minutes=1))))
 
     assert wa.fake.sent == []
-    # The fixed fallback cannot go either: the conversation is left to a human.
+    # The fixed fallback cannot go either: the conversation is left to a human, with its own
+    # reason (not technical_error) and label.
     conversation = wa.conversation()
     assert conversation is not None
     assert conversation.status == WaConversationStatus.WAITING_HUMAN
+    assert conversation.handoff_reason == "window_closed"
+    assert "ventana-cerrada" in conversation.handoff_labels
+    assert "error-tecnico" not in conversation.handoff_labels
+    [note] = [m for m in wa.messages() if m.is_internal_note]
+    assert "Ventana de 24 h cerrada" in (note.body or "")
+    [event] = wa.events("handoff")
+    assert event.payload["reason"] == "window_closed"
+    # No fallback message was even attempted (nothing failed stored).
+    assert [m for m in wa.messages() if m.author == WaAuthor.BOT] == []
 
 
 # --- Statuses -------------------------------------------------------------------------------
