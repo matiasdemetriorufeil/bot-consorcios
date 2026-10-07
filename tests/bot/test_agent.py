@@ -184,7 +184,7 @@ def test_debt_message_goes_before_the_agent_text(name: str, world: World) -> Non
     assert message.startswith(f"{FIRST_GREETING}\n\n*RODAS II 04-C*\nSaldo total: *$165.060,00*")
     assert tools.GREETED_STEP.strip() in last_tool_result(name, script.requests[1])
     assert reply.text == "¿Te ayudo con algo más?"
-    # The history keeps what the person saw, as Chatwoot gives it back next time.
+    # The history keeps what the person saw, as the channel gives it back next time.
     assert reply.history[-1] == AssistantMessage(f"{message}\n\n¿Te ayudo con algo más?")
     assert world.events("debt_amount_mismatch") == []
 

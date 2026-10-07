@@ -1,48 +1,3 @@
-x-chatwoot-base: &chatwoot-base
-  image: chatwoot/chatwoot:${CHATWOOT_VERSION:-v4.18.0}
-  profiles: ["chatwoot"]
-  # No env_file: our .env has POSTGRES_PASSWORD, SMTP_* etc. that Chatwoot would also read.
-  # Everything Chatwoot needs comes from CHATWOOT_* variables in .env.
-  environment:
-    NODE_ENV: production
-    RAILS_ENV: production
-    INSTALLATION_ENV: docker
-    SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE:-}
-    FRONTEND_URL: ${CHATWOOT_FRONTEND_URL:-http://localhost:3000}
-    DEFAULT_LOCALE: es
-    FORCE_SSL: "false"
-    ENABLE_ACCOUNT_SIGNUP: "false"
-    POSTGRES_HOST: chatwoot-db
-    POSTGRES_USERNAME: postgres
-    POSTGRES_PASSWORD: ${CHATWOOT_POSTGRES_PASSWORD:-}
-    POSTGRES_DATABASE: chatwoot_production
-    REDIS_URL: redis://chatwoot-redis:6379
-    REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD:-}
-    ACTIVE_STORAGE_SERVICE: local
-    RAILS_LOG_TO_STDOUT: "true"
-    LOG_LEVEL: info
-    TZ: America/Argentina/Cordoba
-    # ⚠️ DEVELOPMENT ONLY. Chatwoot refuses webhooks to private-network addresses (SSRF
-    # protection) and http://host.docker.internal:8000 (the Agent Bot URL in development, see
-    # docs/chatwoot.md) is one. This lets the Agent Bot call our api here. NEVER in
-    # production: there the webhook goes to a public HTTPS URL and this protection must stay on.
-    SAFE_FETCH_ALLOW_PRIVATE_NETWORK: "true"
-    # ⚠️ DEVELOPMENT ONLY. "from:to,..." pairs that rewrite the WhatsApp recipient, for Meta's
-    # test number with Argentine numbers (549... vs 54...15...). Empty = no-op. Used by the
-    # initializer mounted below; see docs/whatsapp.md. Leave empty in production.
-    CHATWOOT_DEV_WA_RECIPIENT_REWRITE: ${CHATWOOT_DEV_WA_RECIPIENT_REWRITE:-}
-  volumes:
-    - chatwoot_storage:/app/storage
-    - ./chatwoot/initializers/zz_dev_whatsapp_recipient_rewrite.rb:/app/config/initializers/zz_dev_whatsapp_recipient_rewrite.rb:ro
-    # Spanish label of the button that opens a WhatsApp list (see the file).
-    - ./chatwoot/locales/zz_bot_overrides.yml:/app/config/locales/zz_bot_overrides.yml:ro
-  depends_on:
-    chatwoot-db:
-      condition: service_healthy
-    chatwoot-redis:
-      condition: service_healthy
-  restart: unless-stopped
-
 services:
   db:
     image: postgres:16
@@ -75,7 +30,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./:/app
-      # Attachments received by WhatsApp (CHANNEL=whatsapp), served only to panel users.
+      # Attachments received by WhatsApp, served only to panel users.
       - wa_media:/data/wa_media
     depends_on:
       db:
@@ -98,84 +53,15 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # --- Chatwoot (panel de operadores) ---
-  # Based on the official docker-compose.production.yaml from chatwoot/chatwoot. Own Postgres and
-  # Redis, separate from ours. Behind the "chatwoot" profile because it needs ~4 GB of RAM:
-  #   docker compose --profile chatwoot up -d   (or COMPOSE_PROFILES=chatwoot in .env)
-  # Setup and first admin: docs/chatwoot.md
-  chatwoot-rails:
-    <<: *chatwoot-base
-    entrypoint: docker/entrypoints/rails.sh
-    command: ["bundle", "exec", "rails", "s", "-p", "3000", "-b", "0.0.0.0"]
-    ports:
-      - "127.0.0.1:3000:3000"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 120s
-
-  chatwoot-sidekiq:
-    <<: *chatwoot-base
-    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
-
-  chatwoot-db:
-    image: pgvector/pgvector:pg16
-    profiles: ["chatwoot"]
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${CHATWOOT_POSTGRES_PASSWORD:-}
-      POSTGRES_DB: chatwoot_production
-    volumes:
-      - chatwoot_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot_production"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  chatwoot-redis:
-    image: redis:7-alpine
-    profiles: ["chatwoot"]
-    command: ["sh", "-c", "redis-server --requirepass \"$$REDIS_PASSWORD\""]
-    environment:
-      REDIS_PASSWORD: ${CHATWOOT_REDIS_PASSWORD:-}
-    volumes:
-      - chatwoot_redis:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
-  # --- Túnel HTTPS hacia Chatwoot (SOLO DESARROLLO) ---
-  # Cloudflare "quick tunnel": publishes chatwoot-rails at a random https://*.trycloudflare.com
-  # so Meta can deliver WhatsApp webhooks. Own profile, never started by default: while it
-  # runs, the Chatwoot panel is reachable from the internet. Our api is NOT published.
-  #   docker compose --profile chatwoot --profile tunnel up -d cloudflared
-  #   docker compose logs cloudflared   (the URL is in the "trycloudflare.com" line)
-  # The URL changes every time the container starts: no restart policy, so it never changes
-  # behind our back. Step by step: docs/whatsapp.md
-  cloudflared:
-    image: cloudflare/cloudflared:${CLOUDFLARED_VERSION:-2026.9.2}
-    profiles: ["tunnel"]
-    command: ["tunnel", "--no-autoupdate", "--url", "http://chatwoot-rails:3000"]
-    depends_on:
-      chatwoot-rails:
-        condition: service_healthy
-    restart: "no"
-
-  # --- Túnel HTTPS hacia el webhook de WhatsApp (SOLO DESARROLLO, CHANNEL=whatsapp) ---
-  # Meta must reach /webhooks/whatsapp of our api, but the api also serves /admin and /dev.
+  # --- Túnel HTTPS hacia el webhook de WhatsApp (SOLO DESARROLLO) ---
+  # Meta must reach /webhooks/whatsapp of our api, but the api also serves the panel (/admin).
   # webhook-proxy (Caddy) forwards ONLY that path (deploy/webhook-proxy/Caddyfile, 404 for the
   # rest) and cloudflared-wa publishes the proxy, never the api. Own profile, never started
   # by default; no published ports and no restart (the quick tunnel URL would change).
   #   docker compose --profile tunnel-wa up -d cloudflared-wa
   #   docker compose --profile tunnel-wa logs cloudflared-wa   (the "trycloudflare.com" line)
-  # Step by step: docs/whatsapp.md, "Canal directo".
+  # Step by step: docs/whatsapp.md. Without it (and without a phone), the panel's "Chat de
+  # prueba" talks to the bot locally.
   webhook-proxy:
     image: caddy:${CADDY_VERSION:-2.10.2-alpine}
     profiles: ["tunnel-wa"]
@@ -195,7 +81,4 @@ services:
 
 volumes:
   pgdata:
-  chatwoot_pgdata:
-  chatwoot_redis:
-  chatwoot_storage:
   wa_media:

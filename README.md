@@ -3,7 +3,8 @@
 Bot de WhatsApp con IA para **Estudio Diego Rufeil**, administración de consorcios de Córdoba
 (~800 unidades en 53 consorcios). El bot identifica a los propietarios por teléfono, informa
 deuda de expensas y el código de pago de la unidad, responde sobre el reglamento del edificio y deriva a
-operadores humanos en Chatwoot. Los datos se leen (solo lectura) del sistema de gestión ConsorPlus.
+las operadoras del estudio, que atienden en el panel propio (`/admin`). Los datos se leen (solo
+lectura) del sistema de gestión ConsorPlus.
 
 Stack: Python 3.12 (uv), FastAPI, SQLAlchemy 2 + Alembic, PostgreSQL 16, pytest, ruff, Docker Compose.
 
@@ -19,11 +20,10 @@ docker compose up --build
 - API: http://localhost:8000 — chequeo: http://localhost:8000/health
 - PostgreSQL: `localhost:5432` (los datos persisten en el volumen `pgdata`)
 
-La API se recarga sola al editar archivos en `app/`.
+- Panel: http://localhost:8000/admin — con `APP_ENV=development`, **Chat de prueba** para
+  hablar con el bot sin celular (ver abajo).
 
-Chatwoot (panel de operadores) está en el mismo compose, en el perfil `chatwoot` (necesita ~4 GB
-de RAM): `docker compose --profile chatwoot up -d` → http://localhost:3000. Primer arranque,
-admin y API token: [docs/chatwoot.md](docs/chatwoot.md).
+La API se recarga sola al editar archivos en `app/`.
 
 ## Base de datos y migraciones
 
@@ -117,36 +117,34 @@ uv run python -m evals.run --provider anthropic --model claude-haiku-4-5
 uv run python -m evals.run --only deuda_simple urgencia_gas
 ```
 
-## Canales (`app/channels/`, `CHANNEL`)
+## WhatsApp (`app/whatsapp/`, `app/channels/`)
 
-El procesamiento de un mensaje (identificación, agente, bloques de deuda, botones, derivación,
-reservas) es uno solo, en `app/channels/processor.py`; lo que depende del canal va detrás de
-una interfaz (`app/channels/base.py`). `CHANNEL` elige cuál atiende: `chatwoot` (por defecto,
-abajo) o `whatsapp` (la WhatsApp Cloud API directo, `app/whatsapp/`: webhook propio
-`/webhooks/whatsapp`, conversaciones y mensajes en nuestra base, adjuntos en el volumen
-`wa_media`). El webhook del otro canal responde 404. Detalle y puesta en marcha:
-[docs/whatsapp.md](docs/whatsapp.md#canal-directo-channelwhatsapp-sin-chatwoot).
+WhatsApp es el único canal: el bot habla directo con la WhatsApp Cloud API. Meta manda los
+webhooks a `POST /webhooks/whatsapp` (firma `X-Hub-Signature-256` verificada, idempotente,
+respuesta en segundo plano) y el bot responde por la Graph API. Conversaciones, mensajes y
+estados quedan en nuestra base; los adjuntos, en el volumen `wa_media`.
 
-## Chatwoot (`app/chatwoot/`)
+El procesamiento de un mensaje (identificación por teléfono, agente, bloques de deuda,
+botones, derivación, reservas) está en `app/channels/processor.py`; lo que depende de WhatsApp
+(historial, envío, ventana de 24 h, derivación) va detrás de la interfaz de
+`app/channels/base.py`. Los propietarios de edificios fuera del piloto (`buildings.pilot`) van
+directo a una persona.
 
-El bot atiende como **Agent Bot** de Chatwoot: `POST /webhooks/chatwoot` recibe los mensajes
-(firma HMAC verificada, idempotente, respuesta en segundo plano), el historial (últimos 20
-mensajes) se lee de Chatwoot y, al derivar, deja una nota privada, etiquetas y pasa la
-conversación a Abierta. Solo atiende conversaciones **Pendientes**: una vez derivada o tomada
-por un operador, no contesta ni vuelve a derivar.
+Puesta en marcha (app de Meta, número de prueba, token, clave secreta, token de verificación,
+túnel y webhook): [docs/whatsapp.md](docs/whatsapp.md).
 
-El teléfono del contacto solo identifica en las bandejas de `CHATWOOT_TRUSTED_PHONE_INBOX_IDS`
-(en producción, solo WhatsApp). Los propietarios de edificios fuera del piloto
-(`buildings.pilot`) van directo a una persona.
-
-- Configuración, Agent Bot y prueba con el chat web (`/dev/chat`): [docs/chatwoot.md](docs/chatwoot.md)
-- Conectar WhatsApp cuando Meta apruebe: [docs/whatsapp.md](docs/whatsapp.md)
+En desarrollo no hace falta celular ni túnel: **/admin → Chat de prueba** escribe como un
+teléfono inventado o como el de una persona de la base, con el mismo procesamiento que
+WhatsApp. La conversación aparece en Conversaciones y lo que responde una operadora se ve en el
+chat; lo que se le manda a ese teléfono nunca sale a Meta. Detalle:
+[docs/whatsapp.md](docs/whatsapp.md#0-sin-celular-el-chat-de-prueba).
 
 ## Panel de administración (`app/admin/`, `/admin`)
 
-Panel SQLAdmin para el estudio en `http://localhost:8000/admin`:
+Panel SQLAdmin para el estudio en `http://localhost:8000/admin` (la portada abre
+Conversaciones):
 
-- **Conversaciones** (con `CHANNEL=whatsapp`): la bandeja de WhatsApp. Pestañas «Esperando
+- **Conversaciones**: la bandeja de WhatsApp. Pestañas «Esperando
   persona» (urgentes primero), «Mías», «Con el bot» y «Resueltas»; búsqueda por nombre,
   teléfono o unidad en todas. La conversación se ve como en WhatsApp (contacto, bot y
   operadora con su nombre; notas internas en amarillo, la de derivación con motivo y resumen;
@@ -156,6 +154,8 @@ Panel SQLAdmin para el estudio en `http://localhost:8000/admin`:
   una plantilla aprobada. Se actualiza sola cada 4 s y avisa con sonido y notificación del
   navegador (botón «Avisos») cuando entra una conversación a «Esperando persona» o llega un
   mensaje en una tuya. En el celular, lista y conversación van en pantallas separadas.
+- **Chat de prueba** (solo `APP_ENV=development`): escribirle al bot como si fuera un celular;
+  ver [docs/whatsapp.md](docs/whatsapp.md#0-sin-celular-el-chat-de-prueba).
 - **Edificios**: nombre, dirección, activo y piloto (los edificios los crea la sincronización).
 - **Información de edificios**: reglamento, horarios, contactos, emergencias y otros, por edificio.
 - **Teléfonos**: todos los teléfonos, con búsqueda por número (se comparan los dígitos, así que

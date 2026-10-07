@@ -738,7 +738,7 @@ def _send(
 ) -> SendResult:
     if sender is None:
         raise InboxError(
-            "WhatsApp no está configurado en este servidor (CHANNEL=whatsapp y sus claves)."
+            "WhatsApp no está configurado en este servidor (faltan sus claves en .env)."
         )
     conversation = _locked(session, conversation_id)
     contact = _contact(session, conversation)

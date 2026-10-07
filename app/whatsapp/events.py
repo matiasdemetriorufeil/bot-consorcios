@@ -10,7 +10,7 @@ change has a "field" and a "value":
 
 Options tapped: an "interactive" message with button_reply / list_reply ({id, title}), or a
 "button" message (template quick reply) with button.text. The bot takes the TITLE as what the
-person wrote, as it did with Chatwoot (app.bot.choices).
+person wrote (app.bot.choices).
 """
 
 from dataclasses import dataclass, field

@@ -11,7 +11,7 @@ The reply carries those blocks in AgentReply.debt_messages and the channel sends
 same message as AgentReply.text, before it. In the first message of a conversation the first
 one starts with the greeting: the admin panel's welcome_message, or FIRST_GREETING when it
 is empty (the model is told it already went). The history keeps them
-joined with the text (join_blocks), as the person gets them and Chatwoot reads them back.
+joined with the text (join_blocks), as the person gets them and the channel reads them back.
 "$" amounts in the text that match no debt message are logged (debt_amount_mismatch).
 
 Options: offer_choices ends the turn without another model call. Its text is AgentReply.text
@@ -19,8 +19,8 @@ and its options AgentReply.choices; the channel sends them as buttons or a list 
 where it cannot). It runs after the other tools of its round, so a handoff of that round
 rejects it. The history keeps the titles offered (app.bot.choices.with_options).
 
-History: the caller passes it each time (the channel reads it: Chatwoot's conversation or our
-WhatsApp messages, app.channels; the CLI keeps it in memory). It is trimmed to the last
+History: the caller passes it each time (the channel reads it from the stored WhatsApp
+messages, app.whatsapp.channel; the CLI keeps it in memory). It is trimmed to the last
 HISTORY_MESSAGES user/assistant messages, keeping the tool exchanges in between (so unit ids
 found earlier are not lost).
 """
@@ -237,7 +237,7 @@ class Agent:
             self._check_amounts(ctx, reply, debt_messages)
         choices = ctx.offer.choices if ctx.offer is not None else ()
         if debt_messages or choices:
-            # As the person sees it (and as Chatwoot gives it back next time).
+            # As the person sees it (and as the history gives it back next time).
             shown = with_options(reply, [c.title for c in choices]) if choices else reply
             turn[-1] = AssistantMessage(join_blocks(debt_messages, shown))
         return AgentReply(

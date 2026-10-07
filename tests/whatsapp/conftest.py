@@ -45,7 +45,6 @@ NON_PILOT_WA_ID = "5493515550303"
 
 def wa_settings(media_dir: Path, **overrides: Any) -> Settings:
     values: dict[str, Any] = {
-        "channel": "whatsapp",
         "whatsapp_app_secret": APP_SECRET,
         "whatsapp_verify_token": VERIFY_TOKEN,
         "whatsapp_phone_number_id": PHONE_NUMBER_ID,
@@ -65,6 +64,8 @@ class Wa:
     settings: Settings
     client: TestClient
     clock: list[datetime]
+    # One True per ConsorPlus warm-up the processor asked for.
+    warm_ups: list[bool]
 
     def post(self, payload: dict[str, Any], headers: dict[str, str] | None = None) -> Any:
         body = body_of(payload)
@@ -143,7 +144,15 @@ def make_wa(db_session: Session, people: None, tmp_path: Path) -> Iterator[MakeW
         agent = Agent(llm, settings=settings, refresh_debt=refresh_debt or no_debt, now=now)
         sessions = lambda: nullcontext(db_session)  # noqa: E731
         channel = WhatsAppChannel(fake, sessions, now=now)  # type: ignore[arg-type]
-        processor = BotProcessor(channel, sessions, lambda: agent, settings, now=now)
+        warm_ups: list[bool] = []
+        processor = BotProcessor(
+            channel,
+            sessions,
+            lambda: agent,
+            settings,
+            now=now,
+            warm_up=lambda: warm_ups.append(True),
+        )
         media = MediaStore(fake, settings.whatsapp_media_dir, settings.whatsapp_media_max_bytes)  # type: ignore[arg-type]
         bot = WhatsAppBot(processor, sessions, media, now=now)
 
@@ -153,7 +162,7 @@ def make_wa(db_session: Session, people: None, tmp_path: Path) -> Iterator[MakeW
         app.dependency_overrides[get_session] = session_override
         app.dependency_overrides[get_settings] = lambda: settings
         app.dependency_overrides[get_whatsapp_bot] = lambda: bot
-        return Wa(db_session, fake, bot, script, settings, TestClient(app), clock)
+        return Wa(db_session, fake, bot, script, settings, TestClient(app), clock, warm_ups)
 
     try:
         yield make

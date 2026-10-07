@@ -13,7 +13,7 @@ from sqlalchemy import Engine, text
 
 ConversationLock = Callable[[int, int], AbstractContextManager[object]]
 
-CHATWOOT_LOCK_NAMESPACE = 1
+# 1 is no longer used (it was another channel's).
 WHATSAPP_LOCK_NAMESPACE = 2
 
 

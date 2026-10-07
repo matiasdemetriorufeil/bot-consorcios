@@ -1,7 +1,7 @@
 """Mark (or unmark) buildings as part of the bot pilot (buildings.pilot).
 
 Known people whose buildings are all outside the pilot are handed straight to a human by the
-Chatwoot bot. Only touches our database: never ConsorPlus.
+bot. Only touches our database: never ConsorPlus.
 
 Usage (from the repo root, with the db running):
     uv run python scripts/set_pilot.py --buildings 31,40          # mark

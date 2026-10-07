@@ -1,6 +1,6 @@
-# Publishes ONLY the WhatsApp webhook of our api (CHANNEL=whatsapp). cloudflared-wa (profile
-# "tunnel-wa" in docker-compose.yml) points here: the admin panel, /dev and everything else
-# stay off the internet. tests/test_compose.py checks this file.
+# Publishes ONLY the WhatsApp webhook of our api. cloudflared-wa (profile "tunnel-wa" in
+# docker-compose.yml) points here: the admin panel (its test chat included) and everything
+# else stay off the internet. tests/test_compose.py checks this file.
 {
 	admin off
 	auto_https off

@@ -84,7 +84,7 @@ def _check_local(host: Any) -> None:
 
 @pytest.fixture(autouse=True, scope="session")
 def _no_network() -> Iterator[None]:
-    """No test may reach ConsorPlus, Chatwoot, Meta, the LLM providers or SMTP.
+    """No test may reach ConsorPlus, Meta, the LLM providers or SMTP.
 
     Only Python sockets are guarded; the test Postgres host is allowed.
     """

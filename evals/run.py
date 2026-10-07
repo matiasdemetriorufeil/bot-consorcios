@@ -341,8 +341,8 @@ def check(case: Case, result: CaseResult) -> list[str]:
 
 
 def text_only(history: list[Message]) -> list[Message]:
-    """What the next turn gets in production: Chatwoot keeps only the texts, so tool calls
-    and results (unit_ids included) of earlier turns are lost."""
+    """What the next turn gets in production: the stored messages keep only the texts, so
+    tool calls and results (unit_ids included) of earlier turns are lost."""
     return [
         m
         for m in history

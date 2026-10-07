@@ -1,5 +1,5 @@
-"""What a handoff leaves for the operators: labels and an internal note (in Chatwoot, a
-private note and conversation labels; in our WhatsApp channel, the same on WaConversation)."""
+"""What a handoff leaves for the operators: labels (WaConversation.handoff_labels) and an
+internal note in the conversation."""
 
 import re
 import unicodedata
@@ -9,8 +9,7 @@ from app.bot.tools import Handoff
 from app.bot.unit_search import display_building_name
 from app.db.models import PersonRole
 
-# Handoff reason -> (label, text for the note). Labels: create them in Chatwoot
-# (Configuración > Etiquetas) so they show with a color; see docs/chatwoot.md.
+# Handoff reason -> (label, text for the note). The panel's inbox shows the text.
 REASONS: dict[str, tuple[str, str]] = {
     "person_requested": ("pide-persona", "Pidió hablar con una persona"),
     "upset": ("molesto", "Está molesto o enojado"),
@@ -29,7 +28,7 @@ BUILDING_LABEL_PREFIX = "edificio-"
 
 
 def slug(text: str) -> str:
-    """ "Rodas II" -> "rodas-ii" (Chatwoot labels: lowercase letters, digits, - and _)."""
+    """ "Rodas II" -> "rodas-ii" (labels: lowercase letters, digits, - and _)."""
     plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
 
@@ -74,16 +73,3 @@ def handoff_note(handoff: Handoff, who: Identity, *, phone_trusted: bool) -> str
             f"Resumen: {handoff.summary}",
         ]
     )
-
-
-def contact_attributes(who: Identity) -> dict[str, object]:
-    """Custom attributes of the Chatwoot contact (keys: unit, building, verified)."""
-    if not who.known:
-        return {"verified": False}
-    return {
-        "unit": "; ".join(
-            f"{display_building_name(u.building_name)} {u.unit_label}" for u in who.units
-        ),
-        "building": ", ".join(building_names(who)),
-        "verified": True,
-    }

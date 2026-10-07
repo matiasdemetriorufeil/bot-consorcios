@@ -1,5 +1,5 @@
 """Chat with the REAL agent over the REAL local database (synced from ConsorPlus), from the
-terminal: no WhatsApp, no Chatwoot. DEVELOPMENT ONLY (requires EMAIL_BACKEND=console).
+terminal: no WhatsApp. DEVELOPMENT ONLY (requires EMAIL_BACKEND=console).
 
 Usage (from the repo root, with the db running):
     uv run python scripts/chat_cli.py --phone +5493515550977

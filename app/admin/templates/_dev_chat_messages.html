@@ -1,0 +1,15 @@
+{# Messages of the test chat as the contact's phone shows them (page and poll). Autoescaped:
+   line breaks come from CSS (white-space: pre-wrap), never from |safe. #}
+{% for m in messages %}
+<div class="phone-msg {% if m.side == 'in' %}phone-mine{% else %}phone-theirs{% endif %}" data-id="{{ m.id }}">
+  {% if m.side == 'out' %}<div class="phone-who">{% if m.author == 'bot' %}🤖 Bot{% else %}{{ m.author_name }}{% endif %}</div>{% endif %}
+  {% if m.kind_label %}<div class="phone-kind">{{ m.kind_label }}</div>{% endif %}
+  {% if m.body %}<div class="phone-body">{{ m.body }}</div>{% endif %}
+  {% if m.choices %}
+  <div class="phone-choices">
+    {% for c in m.choices %}<button type="button" class="phone-choice" data-title="{{ c }}">{{ c }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="phone-meta">{{ m.time }}{% if m.status == 'failed' %} · no se envió{% endif %}</div>
+</div>
+{% endfor %}

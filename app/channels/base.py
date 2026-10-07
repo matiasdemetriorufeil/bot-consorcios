@@ -1,4 +1,4 @@
-"""What the bot needs from a messaging channel (Chatwoot, or the WhatsApp Cloud API directly).
+"""What the bot needs from its messaging channel (the WhatsApp Cloud API, app.whatsapp).
 
 app.channels.processor answers a message the same way whatever the channel: it identifies the
 person, runs the agent and sends the turn. Everything that depends on the channel (whether
@@ -55,7 +55,7 @@ class InboundMessage:
 
 
 class Channel(Protocol):
-    # Prefix of the channel's own bot_events ("chatwoot" -> chatwoot_skipped, ...).
+    # Prefix of the channel's own bot_events ("whatsapp" -> whatsapp_skipped, ...).
     name: str
     # Namespace of the conversation's Postgres advisory lock (app.channels.locks).
     lock_namespace: int

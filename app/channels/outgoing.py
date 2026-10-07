@@ -1,7 +1,6 @@
 """What the bot sends in one turn -> the channel messages to send, in order.
 
-A turn is one message (Chatwoot sends each message to WhatsApp in its own job, without
-keeping their order, so the parts of a turn must not go apart): the blocks
+A turn is one message (what belongs together reads together in WhatsApp): the blocks
 (app.bot.debt_message), a blank line between them, and the agent's text at the end
 (join_blocks). Only when it does not fit in MAX_MESSAGE (WhatsApp cuts at 4096) it
 is split, at block boundaries; a block is cut (at line ends) only if it alone does not fit.

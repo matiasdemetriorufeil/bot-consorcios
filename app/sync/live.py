@@ -8,7 +8,7 @@ and the login alone may take ~5 s). If the answer does not arrive in time, the c
 the last stored debt flagged as stale, and the fetch keeps going in the background and is
 stored when it ends.
 
-warm_up() logs in on the worker thread ahead of time (the Chatwoot bot calls it when an
+warm_up() logs in on the worker thread ahead of time (the bot calls it when an
 identified owner writes), so that the login happens while the LLM is thinking.
 """
 

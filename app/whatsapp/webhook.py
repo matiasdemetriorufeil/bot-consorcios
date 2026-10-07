@@ -1,5 +1,4 @@
-"""GET/POST /webhooks/whatsapp: the WhatsApp Cloud API's webhook (CHANNEL=whatsapp; 404
-otherwise).
+"""GET/POST /webhooks/whatsapp: the WhatsApp Cloud API's webhook (the bot's only channel).
 
 GET: Meta's verification when the webhook is set up (hub.mode=subscribe, hub.verify_token =
 WHATSAPP_VERIFY_TOKEN): answers hub.challenge.
@@ -34,9 +33,10 @@ from app.sync import live
 from app.whatsapp import store
 from app.whatsapp.bot import WhatsAppBot
 from app.whatsapp.channel import WhatsAppChannel
-from app.whatsapp.client import WhatsAppClient, WhatsAppError
+from app.whatsapp.client import WhatsAppError
 from app.whatsapp.events import parse_delivery
 from app.whatsapp.media import MediaStore
+from app.whatsapp.simulator import build_client
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,9 @@ def verify_signature(secret: str, body: bytes, signature: str | None) -> bool:
 
 
 def build_whatsapp_bot(settings: Settings) -> WhatsAppBot:
-    client = WhatsAppClient.from_settings(settings)
+    """The bot of the webhook, the recovery and the panel's test chat (in development its
+    client simulates what goes to the test chat's contacts: app.whatsapp.simulator)."""
+    client = build_client(settings, SessionLocal)
     processor = BotProcessor(
         WhatsAppChannel(client, SessionLocal),
         SessionLocal,
@@ -69,13 +71,7 @@ def _cached_bot() -> WhatsAppBot:
     return build_whatsapp_bot(get_settings())
 
 
-def _only_whatsapp(settings: Annotated[Settings, Depends(get_settings)]) -> Settings:
-    if settings.channel != "whatsapp":
-        raise HTTPException(404, "Not Found")
-    return settings
-
-
-def get_whatsapp_bot(settings: Annotated[Settings, Depends(_only_whatsapp)]) -> WhatsAppBot:
+def get_whatsapp_bot() -> WhatsAppBot:
     try:
         return _cached_bot()
     except WhatsAppError as exc:
@@ -87,7 +83,7 @@ async def _raw_body(request: Request) -> bytes:
 
 
 @router.get("/webhooks/whatsapp", response_class=PlainTextResponse)
-def verify_webhook(request: Request, settings: Annotated[Settings, Depends(_only_whatsapp)]) -> str:
+def verify_webhook(request: Request, settings: Annotated[Settings, Depends(get_settings)]) -> str:
     if settings.whatsapp_verify_token is None:
         raise HTTPException(503, "WHATSAPP_VERIFY_TOKEN no configurado")
     params = request.query_params
@@ -107,7 +103,7 @@ def whatsapp_webhook(
     request: Request,
     background: BackgroundTasks,
     body: Annotated[bytes, Depends(_raw_body)],
-    settings: Annotated[Settings, Depends(_only_whatsapp)],
+    settings: Annotated[Settings, Depends(get_settings)],
     session: Annotated[Session, Depends(get_session)],
     bot: Annotated[WhatsAppBot, Depends(get_whatsapp_bot)],
 ) -> dict[str, Any]:

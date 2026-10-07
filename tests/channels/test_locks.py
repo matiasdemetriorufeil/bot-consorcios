@@ -6,9 +6,10 @@ import time
 
 from sqlalchemy import Engine
 
-from app.channels.locks import CHATWOOT_LOCK_NAMESPACE, WHATSAPP_LOCK_NAMESPACE, advisory_lock
+from app.channels.locks import WHATSAPP_LOCK_NAMESPACE, advisory_lock
 
 WA = WHATSAPP_LOCK_NAMESPACE
+OTHER_NAMESPACE = 99
 
 
 def _run_both(engine: Engine, first: tuple[int, int], second: tuple[int, int]) -> list[str]:
@@ -42,9 +43,9 @@ def test_same_conversation_waits(db_engine: Engine) -> None:
     assert order == ["one in", "one out", "two in"]
 
 
-def test_other_conversations_and_channels_do_not_wait(db_engine: Engine) -> None:
+def test_other_conversations_and_namespaces_do_not_wait(db_engine: Engine) -> None:
     other_conversation = _run_both(db_engine, (WA, 7), (WA, 8))
-    other_channel = _run_both(db_engine, (WA, 7), (CHATWOOT_LOCK_NAMESPACE, 7))
+    other_namespace = _run_both(db_engine, (WA, 7), (OTHER_NAMESPACE, 7))
 
     assert other_conversation == ["one in", "two in", "one out"]
-    assert other_channel == ["one in", "two in", "one out"]
+    assert other_namespace == ["one in", "two in", "one out"]

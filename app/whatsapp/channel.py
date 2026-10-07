@@ -1,4 +1,4 @@
-"""The WhatsApp Cloud API as a channel of app.channels.processor (CHANNEL=whatsapp).
+"""The WhatsApp Cloud API as the channel of app.channels.processor.
 
 - With the bot = WaConversation.status "bot" (app.whatsapp.conversations).
 - Who writes: "+" + the wa_id Meta gives, always trusted (Meta sets it and every webhook is
@@ -13,10 +13,12 @@
   message went out before the operator took it, or it does not go out at all
   (ConversationTakenError: the processor drops the rest of the turn).
 - Order: each send waits for Meta's answer before the next one, so the parts of a turn go in
-  order (there are no separate jobs as in Chatwoot).
+  order.
 - Every message sent is stored (author bot); its status comes later by webhook.
 - Handoff: the conversation goes to "waiting_human" with the reason, priority, summary and
-  labels, and the same note Chatwoot got is left as an internal note.
+  labels, and an internal note for the operators (app.channels.handoff).
+- In development the client is app.whatsapp.simulator.DevClient: what goes to the panel's
+  test chat is stored the same way but never reaches Meta.
 """
 
 import logging

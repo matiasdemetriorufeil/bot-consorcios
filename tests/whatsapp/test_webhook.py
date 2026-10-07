@@ -8,7 +8,6 @@ from sqlalchemy import func, select
 
 from app.bot.agent import FALLBACK_REPLY
 from app.channels.processor import ATTACHMENT_REPLY, NON_PILOT_GREETING, UNSUPPORTED_REPLY
-from app.config import Settings, get_settings
 from app.db.models import (
     WaAuthor,
     WaConversationStatus,
@@ -16,7 +15,6 @@ from app.db.models import (
     WaMessage,
     WaMessageStatus,
 )
-from app.main import app
 from app.whatsapp.webhook import verify_signature
 from tests.llm.fakes import Call, Say
 from tests.whatsapp.conftest import NON_PILOT_WA_ID, OWNER_PHONE, MakeWa
@@ -98,18 +96,11 @@ def test_without_app_secret_rejects_everything(make_wa: MakeWa) -> None:
     assert wa.post(incoming(text_message("hola", wa.now))).status_code == 503
 
 
-def test_404_when_the_channel_is_chatwoot(make_wa: MakeWa) -> None:
-    wa = make_wa()
-    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
-
-    assert wa.post(incoming(text_message("hola", wa.now))).status_code == 404
-    assert wa.client.get("/webhooks/whatsapp").status_code == 404
-
-
-def test_the_chatwoot_webhook_404s_with_channel_whatsapp(make_wa: MakeWa) -> None:
+def test_there_is_no_chatwoot_webhook_nor_the_old_dev_chat(make_wa: MakeWa) -> None:
     wa = make_wa()
 
     assert wa.client.post("/webhooks/chatwoot", content=b"{}").status_code == 404
+    assert wa.client.get("/dev/chat").status_code == 404
 
 
 # --- Messages -------------------------------------------------------------------------------

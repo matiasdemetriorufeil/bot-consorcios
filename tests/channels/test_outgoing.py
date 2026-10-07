@@ -1,4 +1,4 @@
-"""One turn -> the Chatwoot messages to create: one message, split only when too long."""
+"""One turn -> the WhatsApp messages to send: one message, split only when too long."""
 
 from app.bot.choices import MAX_TEXT
 from app.bot.debt_message import join_blocks

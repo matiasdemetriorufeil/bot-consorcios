@@ -355,7 +355,7 @@ class BotProcessor:
         channel_event: bool = True,
         **payload: object,
     ) -> None:
-        """channel_event: the event is the channel's own (prefixed: chatwoot_skipped...)."""
+        """channel_event: the event is the channel's own (prefixed: whatsapp_skipped...)."""
         session.add(
             BotEvent(
                 conversation_id=message.conversation_id,

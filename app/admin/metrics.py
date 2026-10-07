@@ -1,6 +1,6 @@
 """Simple bot metrics for the admin panel, computed from bot_events (Córdoba time).
 
-- Conversations per day: distinct Chatwoot conversations with any event that day.
+- Conversations per day: distinct conversations with any event that day.
 - Handed off: share of this month's conversations with a "handoff" event.
 - Most used tools: "tool_call" events of the month.
 - AI cost of the month: sum of the estimated cost of each model call ("llm_usage"; not

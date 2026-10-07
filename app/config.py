@@ -1,19 +1,20 @@
 from functools import lru_cache
-from typing import Annotated, Any, Literal
+from typing import Literal
 
-from pydantic import SecretStr, field_validator
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings, read from environment variables and `.env`."""
 
-    # Empty values (e.g. CHATWOOT_ACCOUNT_ID=) fall back to the defaults.
+    # Empty values (e.g. LLM_MODEL=) fall back to the defaults.
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True
     )
 
-    # "development" enables /dev/chat. Anything else is treated as production.
+    # "development" enables the panel's test chat ("Chat de prueba"). Anything else is treated
+    # as production.
     app_env: Literal["development", "production"] = "production"
     # Level of the app's own logs (stdout): DEBUG also shows the ignored webhooks.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -64,11 +65,8 @@ class Settings(BaseSettings):
     # server's ASP.NET session lasts ~20). The bot then logs in first. 0 disables it.
     consorplus_session_idle_minutes: float = 15
 
-    # Where the bot talks to people: "chatwoot" (Chatwoot's Agent Bot, /webhooks/chatwoot) or
-    # "whatsapp" (the WhatsApp Cloud API directly, /webhooks/whatsapp). The other webhook 404s.
-    channel: Literal["chatwoot", "whatsapp"] = "chatwoot"
-
-    # WhatsApp Cloud API (CHANNEL=whatsapp). Token of a system user with whatsapp_business_*.
+    # WhatsApp Cloud API: the bot's only channel (app.whatsapp). Token of a system user with
+    # whatsapp_business_*. In development, without them, only the test chat works.
     whatsapp_access_token: SecretStr | None = None
     whatsapp_phone_number_id: str = ""
     whatsapp_waba_id: str = ""
@@ -87,22 +85,6 @@ class Settings(BaseSettings):
     # ⚠️ DEVELOPMENT ONLY (APP_ENV=development; ignored otherwise). "from:to,..." digits that
     # rewrite the recipient for Meta's test number with Argentine numbers (549... -> 54...15...).
     whatsapp_dev_recipient_rewrite: str = ""
-
-    chatwoot_base_url: str = ""
-    # Agent Bot access token: sends messages and notes, hands off, adds labels.
-    chatwoot_bot_token: SecretStr | None = None
-    # A user's access token: reads the history and updates contacts (the bot token can't).
-    chatwoot_api_token: SecretStr | None = None
-    chatwoot_account_id: int | None = None
-    # The Agent Bot's "Webhook Secret": Chatwoot signs every webhook with it (HMAC-SHA256).
-    chatwoot_webhook_secret: SecretStr | None = None
-    chatwoot_timeout_seconds: float = 10
-    # Inboxes whose contact phone was set by the channel itself (WhatsApp: Meta), "3" or "3,5".
-    # In any other inbox the phone could be typed by anyone: it is never used to identify.
-    chatwoot_trusted_phone_inbox_ids: Annotated[list[int], NoDecode] = []
-    # Browser-side URL of Chatwoot and the Website inbox token, for /dev/chat.
-    chatwoot_frontend_url: str = "http://localhost:3000"
-    chatwoot_website_token: str = ""
 
     # "console" (development: logs the email, including the code) or "smtp".
     email_backend: Literal["console", "smtp"] = "console"
@@ -126,14 +108,6 @@ class Settings(BaseSettings):
     admin_password_hash: SecretStr | None = None
     # Signs the panel's session cookie.
     admin_secret_key: SecretStr | None = None
-
-    @field_validator("chatwoot_trusted_phone_inbox_ids", mode="before")
-    @classmethod
-    def _split_ids(cls, value: Any) -> Any:
-        """ "3, 5" or "[3, 5]" -> [3, 5]."""
-        if isinstance(value, str):
-            return [int(item) for item in value.strip("[] ").split(",") if item.strip()]
-        return value
 
 
 @lru_cache

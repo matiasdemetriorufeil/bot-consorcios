@@ -100,7 +100,16 @@ class Panel:
         return [p for p in payloads if action is None or p["action"] == action]
 
 
-def build_panel(db_session: Session, settings: Settings, *, whatsapp_ready: bool = True) -> Panel:
+def build_panel(
+    db_session: Session,
+    settings: Settings,
+    *,
+    whatsapp_ready: bool = True,
+    sender: Any = None,
+    bot_factory: Any = None,
+) -> Panel:
+    """sender: the inbox's WhatsApp client (default: a FakeWhatsApp); bot_factory: the test
+    chat's bot (only with APP_ENV=development)."""
     # Panel sessions share the test connection: their commits only release SAVEPOINTs.
     maker = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint")
     clock = FakeClock()
@@ -113,8 +122,9 @@ def build_panel(db_session: Session, settings: Settings, *, whatsapp_ready: bool
         maker,
         settings,
         auth=auth,
-        sender_factory=(lambda: whatsapp) if whatsapp_ready else (lambda: None),
+        sender_factory=(lambda: sender or whatsapp) if whatsapp_ready else (lambda: None),
         clock=lambda: now[0],
+        bot_factory=bot_factory,
     )
     # https: APP_ENV defaults to production, so the session cookie is Secure.
     client = TestClient(app, base_url="https://testserver")

@@ -23,13 +23,13 @@ def test_smtp_is_blocked() -> None:
 def test_settings_ignore_dotenv_in_working_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / ".env").write_text("APP_ENV=development\nCHATWOOT_ACCOUNT_ID=7\n")
+    (tmp_path / ".env").write_text("APP_ENV=development\nWHATSAPP_PHONE_NUMBER_ID=7\n")
     monkeypatch.chdir(tmp_path)
 
     settings = get_settings()
 
     assert settings.app_env == "production"
-    assert settings.chatwoot_account_id is None
+    assert settings.whatsapp_phone_number_id == ""
 
 
 def test_environment_still_works_when_set_by_the_test(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,4 +1,4 @@
-"""On startup with CHANNEL=whatsapp, the api answers what a restart left unanswered."""
+"""On startup, the api answers what a restart left unanswered."""
 
 from datetime import timedelta
 
@@ -17,11 +17,7 @@ class _Bot:
         self.calls.append(max_age)
 
 
-@pytest.mark.parametrize(("channel", "runs"), [("whatsapp", True), ("chatwoot", False)])
-def test_recovery_runs_on_startup_only_for_whatsapp(
-    monkeypatch: pytest.MonkeyPatch, channel: str, runs: bool
-) -> None:
-    monkeypatch.setenv("CHANNEL", channel)
+def test_recovery_runs_on_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WHATSAPP_RECOVERY_MINUTES", "20")
     get_settings.cache_clear()
     bot = _Bot()
@@ -41,8 +37,8 @@ def test_recovery_runs_on_startup_only_for_whatsapp(
     with TestClient(main.app):
         pass
 
-    assert bot.calls == ([timedelta(minutes=20)] if runs else [])
-    assert started == (["wa-recovery"] if runs else [])
+    assert bot.calls == [timedelta(minutes=20)]
+    assert started == ["wa-recovery"]
 
 
 def test_recovery_survives_a_missing_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -52,3 +48,13 @@ def test_recovery_survives_a_missing_configuration(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(main.whatsapp_webhook, "build_whatsapp_bot", broken)
 
     main.recover_whatsapp()  # logs, never raises
+
+
+def test_recovery_without_whatsapp_configured_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("WHATSAPP_ACCESS_TOKEN", raising=False)
+    get_settings.cache_clear()
+
+    main.recover_whatsapp()  # a warning (WhatsAppError), never raises

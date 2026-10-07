@@ -1,0 +1,192 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<style>
+  .devchat { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .phone { border: 10px solid #1f2937; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column;
+           height: calc(100vh - 200px); min-height: 460px; background: #efeae2; }
+  .phone-top { background: #075e54; color: #fff; padding: 10px 14px; }
+  .phone-top small { display: block; opacity: .85; }
+  .phone-thread { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; min-height: 0; }
+  .phone-msg { max-width: 82%; margin: 3px 0; padding: 6px 9px 4px; border-radius: 8px; font-size: .92rem;
+               box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+  .phone-mine { align-self: flex-end; background: #d9fdd3; }
+  .phone-theirs { align-self: flex-start; background: #fff; }
+  .phone-who { font-size: .72rem; font-weight: 700; color: #2c5c97; }
+  .phone-kind { font-size: .7rem; text-transform: uppercase; color: #667382; }
+  .phone-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .phone-choices { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .phone-choice { border: 0; border-top: 1px solid #e6e7e9; background: transparent; color: #027eb5; padding: 4px; font-weight: 600; }
+  .phone-choice:hover { background: #f2f7fb; }
+  .phone-meta { font-size: .68rem; color: #667382; text-align: right; }
+  .phone-empty { margin: auto; color: #667382; text-align: center; padding: 20px; }
+  .phone-input { display: flex; gap: 6px; padding: 8px; background: #f0f2f5; }
+  .phone-input textarea { flex: 1; resize: none; border-radius: 18px; padding: 6px 12px; }
+  #phone-typing { font-size: .75rem; color: #667382; padding: 0 12px 4px; min-height: 1.1em; background: #f0f2f5; }
+  @media (max-width: 991.98px) {
+    .devchat { grid-template-columns: minmax(0, 1fr); }
+    .phone { height: calc(100vh - 140px); border-width: 0; border-radius: 0; }
+  }
+</style>
+
+<div class="alert alert-warning">
+  Solo en desarrollo. Lo que escribís acá le llega al bot como un mensaje de WhatsApp de ese
+  teléfono; las respuestas (del bot o de una operadora desde Conversaciones) se ven acá y
+  <strong>nunca se mandan a WhatsApp</strong>.
+</div>
+
+<div class="devchat">
+  <div>
+    {% if phone %}
+    <div class="phone">
+      <div class="phone-top">
+        <strong>Estudio Diego Rufeil</strong>
+        <small>Escribís como {{ phone }}{% if who %} ({{ who.full_name }}){% endif %}</small>
+      </div>
+      <div class="phone-thread" id="phone-thread"
+           data-poll-url="{{ url_for('admin:view-dev-chat-poll') }}"
+           data-send-url="{{ url_for('admin:view-dev-chat-send') }}"
+           data-phone="{{ phone }}" data-last-id="{{ last_id }}" data-seconds="{{ poll_seconds }}">
+        {% if messages %}{% include "_dev_chat_messages.html" %}{% else %}
+        <div class="phone-empty" id="phone-empty">Escribí el primer mensaje, como si fueras esa persona.</div>
+        {% endif %}
+      </div>
+      <div id="phone-typing"></div>
+      <form class="phone-input" id="phone-form" autocomplete="off">
+        <textarea id="phone-text" rows="1" class="form-control" maxlength="4096" placeholder="Mensaje" required></textarea>
+        <button class="btn btn-success" type="submit"><i class="fa-solid fa-paper-plane"></i></button>
+      </form>
+    </div>
+    {% else %}
+    <div class="card"><div class="card-body text-muted">Elegí un teléfono para empezar.</div></div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Teléfono de prueba</h3></div>
+      <div class="card-body">
+        <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
+          <div class="col-12 col-md-8">
+            <input class="form-control{% if phone_invalid %} is-invalid{% endif %}" name="phone"
+                   value="{{ raw_phone or phone or default_phone }}" placeholder="+5493515550000" required>
+            {% if phone_invalid %}<div class="invalid-feedback">Ese teléfono no es válido (poné el número completo, con característica).</div>{% endif %}
+          </div>
+          <div class="col-12 col-md-4"><button class="btn btn-primary w-100" type="submit">Usar este teléfono</button></div>
+        </form>
+        <p class="text-muted small mt-2 mb-0">
+          Un número inventado escribe como alguien desconocido. Para probar como un propietario
+          (deuda, reservas), buscalo abajo y usá su teléfono: el bot lo reconoce como si le
+          escribiera desde su celular.
+        </p>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Buscar una persona de la base</h3></div>
+      <div class="card-body">
+        <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
+          {% if phone %}<input type="hidden" name="phone" value="{{ phone }}">{% endif %}
+          <div class="col-12 col-md-8"><input class="form-control" name="q" value="{{ term }}" placeholder="Nombre, unidad o edificio"></div>
+          <div class="col-12 col-md-4"><button class="btn w-100" type="submit">Buscar</button></div>
+        </form>
+        {% if term %}
+        <div class="list-group list-group-flush mt-2">
+          {% for r in results %}
+          <a class="list-group-item list-group-item-action" href="{{ url_for('admin:view-dev-chat') }}?phone={{ r.phone | urlencode }}">
+            <strong>{{ r.name }}</strong> · {{ r.phone }}<br><small class="text-muted">{{ r.units or 'sin unidades' }}</small>
+          </a>
+          {% else %}
+          <div class="text-muted mt-2">No encontré a nadie con un teléfono usable.</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if phone %}
+    <div class="card">
+      <div class="card-body">
+        <p class="mb-2">Estado: <strong id="phone-status">{{ status_label or 'Sin mensajes todavía' }}</strong></p>
+        <div class="d-flex flex-wrap gap-2">
+          {% if conversation_id %}
+          <a class="btn btn-outline-primary" href="{{ url_for('admin:view-conversation', conversation_id=conversation_id) }}" target="_blank" rel="noopener">Ver en Conversaciones</a>
+          <form method="post" action="{{ url_for('admin:view-dev-chat-restart') }}"
+                onsubmit="return confirm('¿Borrar los mensajes de esta conversación de prueba?');">
+            <input type="hidden" name="phone" value="{{ phone }}">
+            <button class="btn btn-outline-danger" type="submit">Empezar de nuevo</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if phone %}
+<script>
+(function () {
+  var thread = document.getElementById("phone-thread");
+  var form = document.getElementById("phone-form");
+  var input = document.getElementById("phone-text");
+  var typing = document.getElementById("phone-typing");
+  var status = document.getElementById("phone-status");
+  var phone = thread.dataset.phone;
+  var lastId = parseInt(thread.dataset.lastId, 10) || 0;
+
+  function bottom() { thread.scrollTop = thread.scrollHeight; }
+
+  function poll() {
+    var params = new URLSearchParams({ phone: phone, after: String(lastId) });
+    fetch(thread.dataset.pollUrl + "?" + params.toString(), { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.html) {
+          var empty = document.getElementById("phone-empty");
+          if (empty) empty.remove();
+          thread.insertAdjacentHTML("beforeend", data.html);
+          var mine = thread.querySelectorAll(".phone-msg");
+          if (mine.length && !mine[mine.length - 1].classList.contains("phone-mine")) {
+            typing.textContent = "";
+          }
+          bottom();
+        }
+        lastId = data.last_id || lastId;
+        if (data.status) status.textContent = data.status;
+      })
+      .catch(function () { /* next poll */ });
+  }
+
+  function send(text, tapped) {
+    var body = new URLSearchParams({ phone: phone, text: text, tapped: tapped ? "1" : "0" });
+    typing.textContent = "Enviado. Esperando respuesta…";
+    return fetch(thread.dataset.sendUrl, { method: "POST", credentials: "same-origin", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) typing.textContent = data.error;
+        poll();
+      })
+      .catch(function () { typing.textContent = "No se pudo enviar."; });
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    send(text, false);
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  thread.addEventListener("click", function (e) {
+    var button = e.target.closest(".phone-choice");
+    if (button) send(button.dataset.title, true);
+  });
+
+  bottom();
+  setInterval(poll, (parseInt(thread.dataset.seconds, 10) || 2) * 1000);
+})();
+</script>
+{% endif %}
+{% endblock %}

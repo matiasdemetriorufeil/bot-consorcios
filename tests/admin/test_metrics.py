@@ -32,7 +32,7 @@ def _seed(session: Session) -> None:
     _event(session, oct_5, 2, "tool_call", tool="find_unit", status="found")
     _event(session, oct_5, 2, "handoff", reason="payment_plan")
     _event(session, oct_5, 2, "llm_usage", cost_usd=None)
-    _event(session, oct_5, 3, "chatwoot_fixed_reply")
+    _event(session, oct_5, 3, "whatsapp_fixed_reply")
     _event(session, oct_5, None, "admin_action", action="phone_approved")
     _event(session, september, 9, "tool_call", tool="get_debt")
     _event(session, september, 9, "llm_usage", cost_usd=5)

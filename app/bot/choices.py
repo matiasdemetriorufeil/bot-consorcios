@@ -1,12 +1,12 @@
 """Options the person can tap instead of typing (WhatsApp reply buttons and lists).
 
-WhatsApp Cloud limits (Chatwoot v4.18 sends them as is, it does not cut anything): up to 3
+WhatsApp Cloud limits (Meta rejects what exceeds them, it does not cut anything): up to 3
 reply buttons with titles of 20 characters at most; a list of up to 10 rows with titles of 24
-at most; the text of an interactive message up to 1024 characters. Chatwoot sends 3 options
-or fewer as buttons and more as a list.
+at most; the text of an interactive message up to 1024 characters. 3 options or fewer go as
+buttons and more as a list (app.whatsapp.client).
 
-When the person taps, WhatsApp gives back the option's TITLE as an ordinary text message (the
-web widget gives the chosen title too), so titles must be distinct and make sense alone. Where
+When the person taps, WhatsApp gives back the option's TITLE, which the bot takes as what the
+person wrote, so titles must be distinct and make sense alone. Where
 buttons cannot be shown, the options go numbered in the text (numbered_text).
 """
 
