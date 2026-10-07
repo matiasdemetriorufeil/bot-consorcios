@@ -6,6 +6,11 @@
 - GET  /admin/conversations/poll                 JSON every few seconds: the list, new messages
                                                  of the open one and what makes the page beep
 - POST /admin/conversations/{id}/action          take, return, resolve, note, reply, template
+- POST /admin/conversations/tour-seen            the tour (app.admin.help.TOUR) was seen
+
+The tour opens by itself until the user sees (or skips) it: panel_users.tour_seen_at, or the
+session for the .env rescue admin (not in that table). With ?tour=1 it opens anyway (the
+menu's "¿Cómo se usa?", app.admin.guide.TourView).
 
 The page and the poll render the same Jinja partials (autoescaped: whatever the contact
 sends is only ever text). Forms that send something carry a one-time token kept in the
@@ -25,10 +30,13 @@ from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
-from app.admin import inbox
-from app.admin.auth import admin_user, display_names
+from app.admin import help, inbox
+from app.admin.auth import admin_user, current_user_id, display_names
 from app.config import Settings
-from app.db.models import QuickReply, WaConversationStatus
+from app.db.models import PanelUser, QuickReply, WaConversationStatus
+
+# The .env rescue admin's "tour seen" (it has no row in panel_users).
+SESSION_TOUR_SEEN = "tour_seen"
 
 POLL_SECONDS = 4
 # One-time tokens of the send forms remembered per session (a double submit is ignored).
@@ -60,6 +68,26 @@ def use_form_token(request: Request, token: str) -> bool:
         return False
     request.session["used_form_tokens"] = [*used, token][-USED_TOKENS_KEPT:]
     return True
+
+
+def tour_seen(session: Any, request: Request) -> bool:
+    """Whether the logged-in user already saw (or skipped) the tour."""
+    user_id = current_user_id(request)
+    if user_id is None:
+        return bool(request.session.get(SESSION_TOUR_SEEN))
+    user = session.get(PanelUser, user_id)
+    return user is None or user.tour_seen_at is not None
+
+
+def mark_tour_seen(session: Any, request: Request, now: datetime) -> None:
+    user_id = current_user_id(request)
+    if user_id is None:
+        request.session[SESSION_TOUR_SEEN] = True
+        return
+    user = session.get(PanelUser, user_id)
+    if user is not None and user.tour_seen_at is None:
+        user.tour_seen_at = now
+        session.commit()
 
 
 class ConversationsView(BaseView):
@@ -148,6 +176,9 @@ class ConversationsView(BaseView):
                     "user": user,
                     "form_token": new_form_token(),
                     "poll_seconds": POLL_SECONDS,
+                    "tour_auto": request.query_params.get("tour") == "1"
+                    or not tour_seen(session, request),
+                    "tour_steps": {"steps": help.TOUR, "missing": help.TOUR_MISSING},
                 },
             )
 
@@ -215,6 +246,12 @@ class ConversationsView(BaseView):
                         },
                     }
         return JSONResponse(data, headers={"Cache-Control": "no-store"})
+
+    @expose("/conversations/tour-seen", methods=["POST"], identity="tour-seen")
+    async def tour_seen_page(self, request: Request) -> Response:
+        with self.session_maker() as session:
+            mark_tour_seen(session, request, self.clock())
+        return Response(status_code=204)
 
     # --- Actions --------------------------------------------------------------------------
 

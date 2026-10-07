@@ -5,7 +5,9 @@
        data-poll-url="{{ url_for('admin:view-conversations-poll') }}"
        data-tab="{{ tab }}" data-q="{{ query }}" data-open="{{ open_id or '' }}"
        data-last="{{ last_id or 0 }}" data-window="{{ '1' if window_open else '0' }}"
-       data-seconds="{{ poll_seconds }}">
+       data-seconds="{{ poll_seconds }}"
+       data-tour-auto="{{ 'true' if tour_auto else 'false' }}" data-tour-seen-url="{{ url_for('admin:view-tour-seen') }}">
+    <script type="application/json" id="tour-steps">{{ tour_steps | tojson }}</script>
     <section class="card inbox-list">
       <form class="inbox-top" method="GET" action="{{ url_for('admin:view-conversations') }}">
         <input type="hidden" name="tab" value="{{ tab }}">
@@ -31,7 +33,7 @@
         {% with show_first_day=True %}{% include "_thread_messages.html" %}{% endwith %}
       </div>
       {% set action_url = url_for('admin:view-conversation-action', conversation_id=conversation.id) %}
-      <div class="chat-composer">
+      <div class="chat-composer" data-tour="reply">
         <div class="btn-group mb-2" role="group">
           <button type="button" class="btn btn-sm active" data-pane="reply">Responder</button>
           <button type="button" class="btn btn-sm" data-pane="note">Nota interna</button>
@@ -72,14 +74,14 @@
               <input type="hidden" name="action" value="template">
               <input type="hidden" name="form_token" value="{{ form_token }}">
               <div class="composer-row">
-                <select class="form-select form-select-sm" name="template_id" required aria-label="Plantilla" style="flex:1">
+                <select class="form-select form-select-sm flex-fill" name="template_id" required aria-label="Mensaje preparado">
                   {% for t in templates_list %}<option value="{{ t.id }}" title="{{ t.body }}">{{ t.label }}</option>{% endfor %}
                 </select>
-                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i>Enviar plantilla</button>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i>Enviar mensaje preparado</button>
               </div>
             </form>
             {% else %}
-            <div class="small text-secondary">No hay plantillas cargadas: un admin las carga en «Plantillas de WhatsApp».</div>
+            <div class="small text-secondary empty-help">No hay mensajes preparados todavía: pedile a un admin que los cargue.</div>
             {% endif %}
           {% endif %}
         </div>
@@ -95,7 +97,7 @@
     </section>
     <aside class="card inbox-card d-none d-lg-flex">{% include "_contact_card.html" %}</aside>
     {% else %}
-    <section class="card inbox-empty d-none d-lg-flex">Elegí una conversación de la lista.</section>
+    <section class="card inbox-empty d-none d-lg-flex"><p class="empty-help mb-0">Elegí una conversación de la lista para leerla y responder.</p></section>
     {% endif %}
   </div>
 </div>

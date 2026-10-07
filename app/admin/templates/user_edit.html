@@ -47,7 +47,7 @@
       </form>
 
       {% if user.active %}
-      <form method="POST" onsubmit="return confirm('¿Desactivar este usuario? No va a poder entrar más.');">
+      <form method="POST" {{ confirm_attrs('deactivate_user', user.display_name ~ '.') | xmlattr }}>
         <input type="hidden" name="change" value="deactivate">
         <button type="submit" class="btn btn-danger" {% if myself %}disabled{% endif %}>Desactivar</button>
         {% if myself %}<span class="form-hint d-inline ms-2">No podés desactivar tu propio usuario.</span>{% endif %}

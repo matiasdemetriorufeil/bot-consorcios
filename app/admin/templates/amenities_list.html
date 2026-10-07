@@ -38,7 +38,7 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="card-body text-muted">Todavía ningún edificio tiene SUM cargado.</div>
+    <div class="card-body"><p class="empty-help mb-0">{{ empty_texts['amenities:admin' if is_admin else 'amenities:operator'] }}</p></div>
     {% endif %}
   </div>
 </div>

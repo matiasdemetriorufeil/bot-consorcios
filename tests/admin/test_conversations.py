@@ -295,7 +295,8 @@ def test_window_closed_offers_templates_only(operator: Panel) -> None:
     page = _page(operator, conv)
 
     assert 'id="reply-text"' not in page
-    assert "solo permite mandarle una plantilla aprobada" in page
+    assert "solo deja mandarle uno de los mensajes ya preparados" in page
+    assert "Enviar mensaje preparado" in page
     assert "Seguimiento" in page and "Vieja" not in page
 
     _act(operator, conv, "reply", text="Hola", form_token=_token(page))
@@ -424,7 +425,8 @@ def test_a_resolved_one_shows_no_take_nor_return(operator: Panel) -> None:
 
     page = _page(operator, conv)
 
-    assert "Tomar control" not in page and "Devolver al bot" not in page
+    # (Their names are still in the tour's steps: the buttons are what must be gone.)
+    assert 'value="take"' not in page and 'value="return"' not in page
     assert 'value="resolve"' not in page
     assert "Nota interna" in page and 'id="reply-text"' in page
     assert "Si respondés, la conversación se vuelve a abrir y queda en Mías." in page

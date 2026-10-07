@@ -7,7 +7,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.admin.formatting import phone
-from app.admin.phones import PAGE_SIZE, UNLINK_CONFIRMATION
+from app.admin.help import CONFIRM
+from app.admin.phones import PAGE_SIZE
 from app.db.models import DataSource, PersonRole, Phone
 from tests.admin.conftest import ADMIN, OPERATOR, Panel
 from tests.bot import factories as f
@@ -123,9 +124,12 @@ def test_unlink_confirmation_explains_what_happens(
     logged_in: Panel, phones: dict[str, int]
 ) -> None:
     page = _page(logged_in, tab="all")
-    assert "La persona va a tener que volver a identificarse por WhatsApp" in UNLINK_CONFIRMATION
-    assert "la sincronización nocturna lo vuelve a crear" in UNLINK_CONFIRMATION
-    assert "La persona va a tener que volver a identificarse por WhatsApp" in page
+    text = CONFIRM["unlink"]["text"]
+    assert "va a tener que volver a identificarse por WhatsApp" in text
+    assert "a la mañana siguiente vuelve a aparecer" in text
+    # The dialog says which number and whose (panel.js opens it with these).
+    assert 'data-confirm-title="¿Desvincular este teléfono?"' in page
+    assert "351 555-0401 · Ana Inventada. Se borra este número." in page
 
 
 # --- Search, filters and pages ----------------------------------------------------------------

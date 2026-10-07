@@ -616,6 +616,8 @@ class PanelUser(Base):
     # Raised when the password changes or the user is deactivated: open sessions end.
     session_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
     last_login_at: Mapped[datetime | None]
+    # When the tour of "Conversaciones" was seen (or skipped): until then it opens by itself.
+    tour_seen_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 

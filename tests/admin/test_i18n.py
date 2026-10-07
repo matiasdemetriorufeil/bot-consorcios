@@ -274,7 +274,7 @@ def test_information_categories_and_filters_in_spanish(
     logged_in: Panel, data: dict[str, int]
 ) -> None:
     listing = visible(logged_in.client.get("/admin/building-info/list").text)
-    assert "Horarios" in listing and "horarios" not in listing
+    assert "Horarios Horario de pileta" in listing  # the category in Spanish, not "horarios"
     assert "Todos" in listing and "Reglamento" in listing
     url = f"/admin/building-info/edit/{data['info']}"
     form = logged_in.client.get(url).text

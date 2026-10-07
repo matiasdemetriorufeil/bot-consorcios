@@ -1,5 +1,23 @@
 # Inventario del panel `/admin`
 
+## Actualización 5d.5: ayudas para aprender solas (2026-10-07)
+
+- **Línea de ayuda:** debajo del título de cada pantalla, una línea dice para qué sirve
+  (`app/admin/help.py`, `PAGE_HELP`). Un test hace fallar una pantalla nueva que no tenga la suya.
+- **Pantallas vacías:** explican qué significa estar vacía y qué hacer (`help.EMPTY`). Abarca
+  las pestañas de Conversaciones, Teléfonos, Verificaciones, SUM y las listas de SQLAdmin.
+- **Confirmaciones:** antes de Desvincular, Rechazar, Cancelar reserva, Resolver, Eliminar
+  turno, Desactivar usuario y Empezar de nuevo aparece un único diálogo
+  (`_confirm_dialog.html` + `panel.js`). Dice qué le pasa a la persona del otro lado: en ningún
+  caso le llega un aviso.
+- **Recorrido de Conversaciones:** 5 pasos en globos. Aparece solo hasta que cada usuaria lo ve
+  (`panel_users.tour_seen_at`) y se vuelve a ver desde «¿Cómo se usa?» en el menú.
+- **Guía:** «Guía» en el menú abre `docs/guia-empleadas.md` dentro del panel. Sus imágenes, con
+  datos inventados, están en `docs/guia-empleadas/` y van a Git.
+- **Textos de Conversaciones para la operadora:** donde decía «plantilla» ahora dice «mensajes ya
+  preparados».
+- **Menú:** «¿Cómo se usa?» y «Guía» aparecen para los dos roles, después de Reservas de SUM.
+
 ## Actualización 5d.4: castellano y un solo estilo (2026-10-07)
 
 Lo que sigue reemplaza lo que el relevamiento original decía de textos en inglés, valores

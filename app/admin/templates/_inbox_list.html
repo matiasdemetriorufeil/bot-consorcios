@@ -2,7 +2,7 @@
 {% set list_base = url_for('admin:view-conversation', conversation_id=open_id) if open_id else url_for('admin:view-conversations') %}
 <nav class="inbox-tabs" aria-label="Pestañas de la bandeja">
   {% for key, label in tabs.items() %}
-  <a class="inbox-tab {% if key == tab and not query %}active{% endif %}" href="{{ list_base }}?{{ {'tab': key}|urlencode }}">
+  <a class="inbox-tab {% if key == tab and not query %}active{% endif %}" href="{{ list_base }}?{{ {'tab': key}|urlencode }}"{% if key == 'waiting' %} data-tour="waiting"{% endif %}>
     {{ label }}{% if key in counts and counts[key] %} <span class="badge {{ 'bg-red text-white' if key == 'waiting' else 'bg-blue-lt' }}">{{ counts[key] }}</span>{% endif %}
   </a>
   {% endfor %}
@@ -34,6 +34,6 @@
     </div>
   </a>
   {% else %}
-  <div class="inbox-empty-list">{{ 'No se encontró nada.' if query else 'No hay conversaciones acá.' }}</div>
+  <div class="inbox-empty-list empty-help">{{ empty_texts['conversations:search'] if query else empty_texts['conversations:' ~ tab] }}</div>
   {% endfor %}
 </div>

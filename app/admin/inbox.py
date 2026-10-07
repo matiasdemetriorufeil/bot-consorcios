@@ -80,9 +80,10 @@ _MEDIA_PROBLEMS = {
     WaMediaStatus.TYPE_NOT_ALLOWED: "Adjunto no disponible: tipo de archivo no permitido.",
     WaMediaStatus.FAILED: "Adjunto no disponible: no se pudo descargar.",
 }
+# Plain words for the operators: a "template" is one of the "mensajes ya preparados".
 WINDOW_CLOSED_TEXT = (
-    "Pasaron más de 24 h desde el último mensaje de esta persona: WhatsApp solo permite "
-    "mandarle una plantilla aprobada."
+    "Pasó más de un día (24 h) desde el último mensaje de esta persona: WhatsApp solo deja "
+    "mandarle uno de los mensajes ya preparados."
 )
 
 
@@ -804,7 +805,7 @@ def send_template(
     """An approved template (what can go outside the window). Takes the conversation."""
     template = session.get(WaTemplate, template_id)
     if template is None or not template.active:
-        raise InboxError("Elegí una plantilla.")
+        raise InboxError("Elegí uno de los mensajes preparados.")
     name, language = template.name, template.language
     return _send(
         session, conversation_id, user, now, sender,

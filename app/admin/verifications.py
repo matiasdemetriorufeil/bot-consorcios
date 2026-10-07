@@ -40,7 +40,6 @@ from app.db.models import (
 )
 
 STATUS_LABELS = labels.VERIFICATION_STATUS
-REJECT_CONFIRMATION = "¿Rechazar esta verificación? El número no se asocia."
 
 
 def problem_text(exc: IdentityError) -> str:
@@ -138,7 +137,7 @@ class VerificationsView(BaseView):
         return await self.templates.TemplateResponse(
             request,
             "verifications.html",
-            {"title": "Verificaciones", "rows": rows, "reject_confirmation": REJECT_CONFIRMATION},
+            {"title": "Verificaciones", "rows": rows},
         )
 
     @expose(

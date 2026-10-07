@@ -1,10 +1,18 @@
-{#- SQLAdmin's layout with a page title on every page: SQLAdmin's own lists, records and forms
-    pass none (ours do). Blocks only: the original stays as is. -#}
+{#- SQLAdmin's layout with, on every page: its title (SQLAdmin's own lists, records and forms pass
+    none; ours do), a line saying what the page is for (app.admin.help.page_help) and the one
+    confirmation dialog of the panel (_confirm_dialog.html, opened by panel.js). Blocks only:
+    the original stays as is. -#}
 {% extends "sqladmin_original/layout.html" %}
 {% block content_header %}
 <div class="row align-items-center">
   <div class="col">
     <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
+    {% set help_line = page_help(request) %}
+    {% if help_line %}<p class="page-help mb-0">{{ help_line }}</p>{% endif %}
   </div>
 </div>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+{% include "_confirm_dialog.html" %}
 {% endblock %}

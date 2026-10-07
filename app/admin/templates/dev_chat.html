@@ -85,7 +85,7 @@
           {% if conversation_id %}
           <a class="btn btn-outline-primary" href="{{ url_for('admin:view-conversation', conversation_id=conversation_id) }}" target="_blank" rel="noopener">Ver en Conversaciones</a>
           <form method="post" action="{{ url_for('admin:view-dev-chat-restart') }}"
-                onsubmit="return confirm('¿Borrar los mensajes de esta conversación de prueba?');">
+                {{ confirm_attrs('restart_test_chat') | xmlattr }}>
             <input type="hidden" name="phone" value="{{ phone }}">
             <button class="btn btn-danger" type="submit"><i class="fa-solid fa-rotate-left me-1"></i>Empezar de nuevo</button>
           </form>

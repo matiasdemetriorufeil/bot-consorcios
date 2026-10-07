@@ -58,7 +58,14 @@ NOW = datetime(2026, 10, 5, 10, 0, tzinfo=CBA)  # Monday
 FRIDAY = date(2026, 10, 9)
 ONLY_ADMINS = "Esta sección es solo para administradores."
 
-OPERATOR_MENU = ["Conversaciones", "Teléfonos", "Verificaciones", "Reservas de SUM"]
+OPERATOR_MENU = [
+    "Conversaciones",
+    "Teléfonos",
+    "Verificaciones",
+    "Reservas de SUM",
+    "¿Cómo se usa?",
+    "Guía",
+]
 ADMIN_SECTION = [
     "Edificios",
     "Información de edificios",

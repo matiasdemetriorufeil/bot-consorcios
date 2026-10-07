@@ -280,3 +280,49 @@ a { color: var(--panel-primary); }
     .rows-table td.row-actions form, .rows-table td.row-actions > a { flex: 1; display: flex; }
     .rows-table td.row-actions .btn { flex: 1; }
   }
+
+/* --- Help (app.admin.help): a line under each title, empty pages ------------------------------ */
+.page-help { color: var(--panel-muted); margin-top: .25rem; max-width: 60rem; }
+.empty-help { color: var(--panel-muted); }
+.list-empty td { padding: 1.5rem 1rem !important; }
+
+/* --- The confirmation dialog (templates/_confirm_dialog.html) ----------------------------------- */
+.confirm-dialog { border: 0; border-radius: .6rem; padding: 1.5rem; max-width: 28rem; width: calc(100% - 2rem);
+  box-shadow: 0 1rem 3rem rgba(15, 23, 42, .25); color: var(--panel-text); }
+.confirm-dialog::backdrop { background: rgba(15, 23, 42, .45); }
+.confirm-title { font-size: 1.15rem; margin: 0 0 .5rem; }
+.confirm-text { margin: 0 0 1.25rem; line-height: 1.5; }
+.confirm-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+
+/* --- The tour of "Conversaciones" (panel.js) --------------------------------------------------- */
+.tour-shade { position: fixed; inset: 0; background: rgba(15, 23, 42, .35); z-index: 1050; }
+.tour-target { position: relative; z-index: 1060 !important; border-radius: .4rem;
+  box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--panel-primary); background: var(--tblr-bg-surface, #fff); }
+.tour-bubble { position: fixed; z-index: 1070; width: min(340px, calc(100vw - 24px)); background: #fff;
+  border-radius: .6rem; padding: 1rem 1.1rem; box-shadow: 0 1rem 3rem rgba(15, 23, 42, .3); }
+.tour-bubble.tour-centered { top: 50% !important; left: 50% !important; transform: translate(-50%, -50%); }
+.tour-count { font-size: .78rem; color: var(--panel-muted); }
+.tour-title { font-size: 1.05rem; margin: .15rem 0 .35rem; }
+.tour-text { margin: 0 0 .9rem; line-height: 1.5; }
+.tour-buttons { display: flex; gap: .4rem; justify-content: flex-end; flex-wrap: wrap; }
+.tour-buttons [data-tour-skip] { margin-right: auto; }
+@media (max-width: 767.98px) {
+  .tour-bubble:not(.tour-centered) { left: 12px !important; top: auto !important; bottom: 12px; }
+}
+
+/* --- The guide (templates/guide.html) ----------------------------------------------------------- */
+.guide { max-width: 52rem; line-height: 1.6; }
+.guide h2 { font-size: 1.25rem; margin: 1.75rem 0 .6rem; }
+.guide h2:first-child { margin-top: 0; }
+.guide h3 { font-size: 1.05rem; margin: 1.25rem 0 .5rem; }
+.guide ol, .guide ul { padding-left: 1.4rem; }
+.guide li { margin-bottom: .35rem; }
+.guide-image { display: block; max-width: 100%; height: auto; margin: .75rem 0 1.25rem;
+  border: 1px solid var(--panel-line); border-radius: .4rem; }
+
+/* --- Small shared helpers ----------------------------------------------------------------------- */
+.text-pre-line { white-space: pre-line; }
+.legend-free { background: #d3f2dc; border-color: #2fb344; }
+.legend-reserved { background: var(--tblr-primary); }
+.legend-blocked { background: #e9ecef; border-color: #d0d5db; }
+.legend-none { background: #f4f5f7; border-color: #e3e5e8; }

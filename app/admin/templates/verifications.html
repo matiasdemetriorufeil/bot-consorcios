@@ -22,7 +22,7 @@
             <td data-label="Estado"><span class="badge bg-orange-lt">{{ row.status }}</span></td>
             <td class="row-actions">
               <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-verification-approve', request_id=row.id) }}"><i class="fa-solid fa-check me-1"></i>Aprobar</a>
-              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" class="js-reject">
+              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>
                 <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-xmark me-1"></i>Rechazar</button>
               </form>
             </td>
@@ -32,18 +32,8 @@
       </table>
     </div>
     {% else %}
-    <div class="card-body text-secondary">No hay verificaciones pendientes.</div>
+    <div class="card-body"><p class="empty-help mb-0">{{ empty_texts['verifications'] }}</p></div>
     {% endif %}
   </div>
 </div>
-<script>
-(function () {
-  var message = {{ reject_confirmation | tojson }};
-  document.querySelectorAll("form.js-reject").forEach(function (form) {
-    form.addEventListener("submit", function (event) {
-      if (!window.confirm(message)) event.preventDefault();
-    });
-  });
-})();
-</script>
 {% endblock %}

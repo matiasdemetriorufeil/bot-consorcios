@@ -7,9 +7,9 @@
 {% endblock %}
 {% block head_css %}
 {{ super() }}
-<link rel="stylesheet" href="{{ url_for('admin:panel-static', path='panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('admin:panel-static', path='panel.css') }}?v={{ static_version }}">
 {% endblock %}
 {% block tail_js %}
 {{ super() }}
-<script type="text/javascript" src="{{ url_for('admin:panel-static', path='panel.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('admin:panel-static', path='panel.js') }}?v={{ static_version }}"></script>
 {% endblock %}

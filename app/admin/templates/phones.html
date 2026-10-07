@@ -93,7 +93,7 @@
                 <button class="btn btn-sm btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Aprobar</button>
               </form>
               {% endif %}
-              <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" class="js-unlink">
+              <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" {{ confirm_attrs('unlink', row.number ~ ' · ' ~ row.person ~ '.') | xmlattr }}>
                 <input type="hidden" name="back" value="{{ back }}">
                 <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-link-slash me-1"></i>Desvincular</button>
               </form>
@@ -105,9 +105,9 @@
     </div>
     {% else %}
     <div class="card-body text-secondary">
-      {% if result.query or result.status or result.source %}No se encontró ningún teléfono.
-      {% elif result.tab == 'review' %}No hay teléfonos a revisar.
-      {% else %}Todavía no hay teléfonos cargados.{% endif %}
+      <p class="empty-help mb-0">{% if result.query or result.status or result.source %}{{ empty_texts['phones:search'] }}
+      {% elif result.tab == 'review' %}{{ empty_texts['phones:review'] }}
+      {% else %}{{ empty_texts['phones:all'] }}{% endif %}</p>
     </div>
     {% endif %}
 
@@ -124,12 +124,6 @@
 </div>
 <script>
 (function () {
-  var message = {{ unlink_confirmation | tojson }};
-  document.querySelectorAll("form.js-unlink").forEach(function (form) {
-    form.addEventListener("submit", function (event) {
-      if (!window.confirm(message)) event.preventDefault();
-    });
-  });
   var all = document.getElementById("select-all");
   if (all) {
     all.addEventListener("change", function () {

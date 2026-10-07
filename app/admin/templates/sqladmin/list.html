@@ -212,6 +212,8 @@
                     {% endif %}
                     {% endfor %}
                   </tr>
+                  {% else %}
+                  <tr class="list-empty"><td colspan="99"><p class="empty-help mb-0">{{ empty_for(model_view.identity) }}</p></td></tr>
                   {% endfor %}
                 </tbody>
               </table>

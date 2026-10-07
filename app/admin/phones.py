@@ -34,11 +34,6 @@ PAGE_SIZE = 50
 TABS = {"review": "A revisar", "all": "Todos"}
 SOURCE_LABELS = labels.PHONE_SOURCE
 STATUS_LABELS = labels.PHONE_STATUS  # by priority: see phone_status
-UNLINK_CONFIRMATION = (
-    "¿Desvincular este teléfono? La persona va a tener que volver a identificarse por "
-    "WhatsApp. Si el número sigue cargado en ConsorPlus, la sincronización nocturna lo vuelve "
-    "a crear: corregilo también allá."
-)
 # The query string the actions go back to: only these keys (never a URL).
 LIST_PARAMS = ("tab", "q", "status", "source", "page")
 
@@ -259,7 +254,6 @@ class PhonesView(BaseView):
                 "source_labels": {s.value: label for s, label in SOURCE_LABELS.items()},
                 "link": link,
                 "back": link(page=result.page)[1:],
-                "unlink_confirmation": UNLINK_CONFIRMATION,
             },
         )
 

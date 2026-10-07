@@ -18,10 +18,10 @@
     <span class="text-muted">
       Semana del {{ agenda.days[0].day.strftime("%d/%m") }} al {{ agenda.days[-1].day.strftime("%d/%m/%Y") }}
     </span>
-    <span><span class="legend-swatch" style="background:#d3f2dc;border-color:#2fb344"></span>Disponible</span>
-    <span><span class="legend-swatch" style="background:#206bc4"></span>Reservado</span>
-    <span><span class="legend-swatch" style="background:#e9ecef;border-color:#d0d5db"></span>No reservable ahora</span>
-    <span><span class="legend-swatch" style="background:#f4f5f7;border-color:#e3e5e8"></span>Sin turno</span>
+    <span><span class="legend-swatch legend-free"></span>Disponible</span>
+    <span><span class="legend-swatch legend-reserved"></span>Reservado</span>
+    <span><span class="legend-swatch legend-blocked"></span>No reservable ahora</span>
+    <span><span class="legend-swatch legend-none"></span>Sin turno</span>
   </div>
   {% if not amenity.active %}
   <div class="alert alert-warning mt-2 mb-0">El SUM está deshabilitado para reservas.</div>

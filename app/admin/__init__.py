@@ -1,8 +1,9 @@
 """Admin panel (SQLAdmin) at /admin, for the studio's employees.
 
 The menu, for everyone: "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
-"Teléfonos" (app.admin.phones), "Verificaciones" (app.admin.verifications) and "Reservas de
-SUM" (app.admin.amenities). Then, under "Administración" and only for admins: buildings and
+"Teléfonos" (app.admin.phones), "Verificaciones" (app.admin.verifications), "Reservas de
+SUM" (app.admin.amenities), "¿Cómo se usa?" and "Guía" (app.admin.guide). Then, under
+"Administración" and only for admins: buildings and
 their information, the bot settings, the WhatsApp templates and quick replies of the inbox,
 the panel users (app.admin.users), metrics, sync runs (read only) and, in development only,
 the test chat (app.admin.dev_chat). Out of the menu: "Reclamos" (an empty page for now) and
@@ -10,13 +11,15 @@ the attachments of WhatsApp messages (app.admin.wa_media). /admin/ goes to "Conv
 
 Everything in Spanish and in one style: SQLAdmin's texts through app.admin.i18n, values
 through app.admin.labels and app.admin.formatting (also Jinja filters: phone, building, when,
-full, day, money), and one style sheet (app/admin/static, served at /admin/static).
+full, day, money), and one style sheet (app/admin/static, served at /admin/static). Help on
+every page from app.admin.help: a line under the title, empty pages, confirmations.
 
 Login: the users of panel_users (admin | operator) plus the .env user as rescue admin
 (app.admin.auth). Operators neither see nor open (403, a page of the panel) the views marked
 AdminOnly, nor the SUM's set-up.
 """
 
+import hashlib
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -31,11 +34,12 @@ from starlette.responses import RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app.admin import formatting, i18n, labels
+from app.admin import formatting, help, i18n, labels
 from app.admin.amenities import AmenitiesView, ClaimsView
 from app.admin.auth import AdminAuth, LoginLimiter
 from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
+from app.admin.guide import GUIDE_FILES_DIR, GuideView, TourView
 from app.admin.inbox import Sender
 from app.admin.phones import PhonesView
 from app.admin.users import UsersView
@@ -69,6 +73,8 @@ VIEWS = (
     PhonesView,
     VerificationsView,
     AmenitiesView,
+    TourView,
+    GuideView,
     BuildingAdmin,
     BuildingInfoAdmin,
     BotSettingsAdmin,
@@ -125,6 +131,14 @@ def _bot_settings_form(session_maker: sessionmaker) -> Callable[[Request], Respo
     return endpoint
 
 
+def static_version() -> str:
+    """A short hash of the panel's style sheet and script."""
+    digest = hashlib.sha256()
+    for name in ("panel.css", "panel.js"):
+        digest.update((STATIC_DIR / name).read_bytes())
+    return digest.hexdigest()[:10]
+
+
 def _install_texts(env: object, timezone: str) -> None:
     """Spanish for SQLAdmin's templates, and the panel's formats as Jinja filters."""
     i18n.install(env)
@@ -136,6 +150,9 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["day"] = lambda value: formatting.day(value, timezone)
     filters["money"] = formatting.money
     filters["reason_short"] = lambda code: (labels.reason(code) or ("", ""))[0]
+    env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
+    # In the style sheet's and script's URLs: a change reaches every browser (no stale cache).
+    env.globals["static_version"] = static_version()  # type: ignore[attr-defined]
 
 
 def setup_admin(
@@ -177,6 +194,7 @@ def setup_admin(
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
+        TourView: {"session_maker": session_maker},
         UsersView: {
             "timezone": settings.timezone,
             "session_maker": session_maker,
@@ -210,6 +228,10 @@ def setup_admin(
     routes[:] = [r for r in routes if getattr(r, "name", None) != "index"]
     routes.insert(0, Route("/", endpoint=_home, name="index"))
     routes.insert(0, Mount(STATIC_PATH, StaticFiles(directory=STATIC_DIR), name="panel-static"))
+    # The guide's pictures (invented data only: they are in the repository).
+    routes.insert(
+        0, Mount("/guide-files", StaticFiles(directory=GUIDE_FILES_DIR), name="guide-files")
+    )
     # Before SQLAdmin's "/{identity}/list".
     routes.insert(
         1,
