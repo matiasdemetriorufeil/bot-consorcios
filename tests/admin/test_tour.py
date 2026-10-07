@@ -1,5 +1,5 @@
 """The tour of "Conversaciones": it opens by itself until each user sees (or skips) it, and the
-menu's "¿Cómo se usa?" shows it again over a conversation. Invented data only."""
+page's "Ver recorrido" button shows it again over a conversation. Invented data only."""
 
 import json
 import re
@@ -114,3 +114,28 @@ def test_marking_it_needs_login(panel: Panel, db_session: Session) -> None:
     response = panel.client.post("/admin/conversations/tour-seen", follow_redirects=False)
     assert response.status_code == 302 and "/admin/login" in response.headers["location"]
     assert _seen_at(db_session, OPERATOR) is None
+
+
+def test_see_the_tour_is_a_button_of_the_page_not_a_menu_entry(operator: Panel) -> None:
+    page = operator.client.get("/admin/conversations").text
+    button = re.search(r'<a class="btn btn-sm btn-secondary" id="tour-start" href="([^"]+)"', page)
+    assert button and button.group(1).endswith("/admin/tour")
+    assert "Ver recorrido" in page and "fa-circle-question" in page
+    nav = page.split('id="navbarSupportedContent"', 1)[1].split("</nav>", 1)[0]
+    assert "Ver recorrido" not in nav and "Cómo se usa" not in nav
+
+
+def test_see_the_tour_is_on_an_open_conversation_too(operator: Panel) -> None:
+    conv = conversation(operator.session, status=WaConversationStatus.WAITING_HUMAN)
+    operator.session.commit()
+    page = operator.client.get(f"/admin/conversations/{conv.id}").text
+    # panel.js starts it right there (the conversation's id is in data-open).
+    assert 'id="tour-start"' in page and f'data-open="{conv.id}"' in page
+
+
+def test_the_guide_points_to_the_button() -> None:
+    from app.admin.guide import GUIDE_FILE
+
+    text = GUIDE_FILE.read_text(encoding="utf-8")
+    assert "tocá **Ver recorrido** arriba de\n**Conversaciones**" in text
+    assert "Cómo se usa" not in text

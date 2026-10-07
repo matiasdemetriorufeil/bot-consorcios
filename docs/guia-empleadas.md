@@ -1,11 +1,13 @@
 # Guía del panel
 
+Para ver un recorrido rápido por la pantalla, tocá **Ver recorrido** arriba de
+**Conversaciones**.
+
 Esta guía explica las tareas de todos los días en el panel del estudio. Las capturas usan
 nombres y números inventados.
 
 Si en algún momento no sabés qué hacer en una pantalla, leé la línea gris que está debajo del
-título: dice para qué sirve. En **Conversaciones** podés volver a ver el recorrido desde
-**¿Cómo se usa?**, en el menú.
+título: dice para qué sirve.
 
 ![El recorrido de Conversaciones, paso a paso](guia-empleadas/09-recorrido.png)
 

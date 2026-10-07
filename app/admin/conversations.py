@@ -9,8 +9,9 @@
 - POST /admin/conversations/tour-seen            the tour (app.admin.help.TOUR) was seen
 
 The tour opens by itself until the user sees (or skips) it: panel_users.tour_seen_at, or the
-session for the .env rescue admin (not in that table). With ?tour=1 it opens anyway (the
-menu's "¿Cómo se usa?", app.admin.guide.TourView).
+session for the .env rescue admin (not in that table). The page's "Ver recorrido" button
+starts it again right there; with no conversation open it goes through /admin/tour
+(app.admin.guide.TourView), which opens the first waiting one with ?tour=1.
 
 The page and the poll render the same Jinja partials (autoescaped: whatever the contact
 sends is only ever text). Forms that send something carry a one-time token kept in the

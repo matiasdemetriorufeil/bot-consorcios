@@ -1,4 +1,12 @@
 {% extends "sqladmin/layout.html" %}
+{% block header_actions %}
+<div class="col-auto">
+  {# With a conversation open, panel.js starts the tour right here; else the link opens the
+     first waiting one with the tour (/admin/tour). #}
+  <a class="btn btn-sm btn-secondary" id="tour-start" href="{{ url_for('admin:view-tour') }}"
+     data-tour-start><i class="fa-solid fa-circle-question me-1"></i>Ver recorrido</a>
+</div>
+{% endblock %}
 {% block content %}
 <div class="col-12">
   <div id="inbox-app" class="inbox{% if open_id %} has-open{% endif %}"

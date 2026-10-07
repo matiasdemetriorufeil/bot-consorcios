@@ -4,12 +4,14 @@
     the original stays as is. -#}
 {% extends "sqladmin_original/layout.html" %}
 {% block content_header %}
-<div class="row align-items-center">
+<div class="row align-items-center g-2">
   <div class="col">
     <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
     {% set help_line = page_help(request) %}
     {% if help_line %}<p class="page-help mb-0">{{ help_line }}</p>{% endif %}
   </div>
+  {# A page's own buttons beside its title (e.g. "Ver recorrido" in Conversaciones). #}
+  {% block header_actions %}{% endblock %}
 </div>
 {% endblock %}
 {% block tail %}

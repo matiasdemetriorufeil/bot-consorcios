@@ -142,5 +142,14 @@
   }
 
   window.panelTour = start;
+  // "Ver recorrido": right here when a conversation is open (all its buttons are on the page);
+  // otherwise the link opens the first waiting conversation with the tour.
+  var startButton = document.querySelector("[data-tour-start]");
+  if (startButton && app.dataset.open) {
+    startButton.addEventListener("click", function (event) {
+      event.preventDefault();
+      start();
+    });
+  }
   if (app.dataset.tourAuto === "true") start();
 })();

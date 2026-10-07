@@ -63,7 +63,6 @@ OPERATOR_MENU = [
     "Teléfonos",
     "Verificaciones",
     "Reservas de SUM",
-    "¿Cómo se usa?",
     "Guía",
 ]
 ADMIN_SECTION = [

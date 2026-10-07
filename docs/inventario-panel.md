@@ -11,12 +11,14 @@
   (`_confirm_dialog.html` + `panel.js`). Dice qué le pasa a la persona del otro lado: en ningún
   caso le llega un aviso.
 - **Recorrido de Conversaciones:** 5 pasos en globos. Aparece solo hasta que cada usuaria lo ve
-  (`panel_users.tour_seen_at`) y se vuelve a ver desde «¿Cómo se usa?» en el menú.
+  (`panel_users.tour_seen_at`) y se vuelve a ver con el botón «Ver recorrido» del encabezado
+  de Conversaciones (con una conversación abierta arranca ahí mismo; si no, abre primero la
+  primera esperando). No está en el menú: parecía otra sección.
 - **Guía:** «Guía» en el menú abre `docs/guia-empleadas.md` dentro del panel. Sus imágenes, con
   datos inventados, están en `docs/guia-empleadas/` y van a Git.
 - **Textos de Conversaciones para la operadora:** donde decía «plantilla» ahora dice «mensajes ya
   preparados».
-- **Menú:** «¿Cómo se usa?» y «Guía» aparecen para los dos roles, después de Reservas de SUM.
+- **Menú:** «Guía» aparece para los dos roles, después de Reservas de SUM.
 
 ## Actualización 5d.4: castellano y un solo estilo (2026-10-07)
 

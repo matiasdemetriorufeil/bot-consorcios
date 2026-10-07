@@ -1,5 +1,6 @@
-"""The menu's "¿Cómo se usa?" (the tour of "Conversaciones") and "Guía" (docs/guia-empleadas.md
-shown inside the panel), for every panel user.
+"""The menu's "Guía" (docs/guia-empleadas.md shown inside the panel) and the start of the tour
+of "Conversaciones" (/admin/tour, behind the page's "Ver recorrido" button), for every panel
+user.
 
 The guide is converted here with only what it uses (headings, paragraphs, lists, bold, links,
 images): every text is escaped, links go only to http(s) or the panel, and images only to the
@@ -131,11 +132,15 @@ class GuideView(BaseView):
 
 
 class TourView(BaseView):
-    """ "¿Cómo se usa?": the tour, over a conversation (so every button it shows is there)."""
+    """The tour, over a conversation (so every button it shows is there): what "Ver recorrido"
+    opens when no conversation is open. Not in the menu: it looked like another section."""
 
-    name = "¿Cómo se usa?"
+    name = "Ver recorrido"
     icon = "fa-solid fa-circle-question"
     session_maker: ClassVar[Any] = None
+
+    def is_visible(self, request: Request) -> bool:
+        return False
 
     @expose("/tour", methods=["GET"], identity="tour")
     async def tour_page(self, request: Request) -> Response:

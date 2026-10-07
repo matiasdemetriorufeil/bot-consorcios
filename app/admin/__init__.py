@@ -2,7 +2,7 @@
 
 The menu, for everyone: "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
 "Teléfonos" (app.admin.phones), "Verificaciones" (app.admin.verifications), "Reservas de
-SUM" (app.admin.amenities), "¿Cómo se usa?" and "Guía" (app.admin.guide). Then, under
+SUM" (app.admin.amenities) and "Guía" (app.admin.guide). Then, under
 "Administración" and only for admins: buildings and
 their information, the bot settings, the WhatsApp templates and quick replies of the inbox,
 the panel users (app.admin.users), metrics, sync runs (read only) and, in development only,

@@ -19,7 +19,7 @@ PAGE_HELP: dict[str, str] = {
     # What the operators use
     "view-conversations": (
         "Las charlas de WhatsApp. En «Esperando persona» están las que el bot no pudo "
-        "resolver y necesitan a alguien del estudio."
+        "resolver y necesitan a alguien del estudio. Para un repaso, tocá «Ver recorrido»."
     ),
     "view-conversation": (
         "Tomá la conversación para contestar vos. Cuando termines, resolvela o devolvésela al bot."
