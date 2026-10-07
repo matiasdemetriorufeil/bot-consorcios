@@ -6,12 +6,14 @@
 - GET  /admin/conversations/poll                 JSON every few seconds: the list, new messages
                                                  of the open one and what makes the page beep
 - POST /admin/conversations/{id}/action          take, return, resolve, note, reply, template
-- POST /admin/conversations/tour-seen            the tour (app.admin.help.TOUR) was seen
+- GET  /admin/conversations/example?tab=        "Cómo usar": a made-up inbox (app.admin.example)
+                                                 with the tour (app.admin.help.TOUR) over it
+- POST /admin/conversations/tour-seen            the tour was seen (or skipped)
 
-The tour opens by itself until the user sees (or skips) it: panel_users.tour_seen_at, or the
-session for the .env rescue admin (not in that table). The page's "Ver recorrido" button
-starts it again right there; with no conversation open it goes through /admin/tour
-(app.admin.guide.TourView), which opens the first waiting one with ?tour=1.
+The tour only ever runs over the example, never over a real conversation: nothing there is in
+the database nor can be sent. A user of panel_users who has not seen it yet (tour_seen_at) is
+sent to the example the first time she opens "Conversaciones". Never the .env rescue admin:
+its "seen" lives in the session, which starts over at each login (for it, only "Cómo usar").
 
 The page and the poll render the same Jinja partials (autoescaped: whatever the contact
 sends is only ever text). Forms that send something carry a one-time token kept in the
@@ -31,7 +33,7 @@ from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
-from app.admin import help, inbox
+from app.admin import example, inbox
 from app.admin.auth import admin_user, current_user_id, display_names
 from app.config import Settings
 from app.db.models import PanelUser, QuickReply, WaConversationStatus
@@ -78,6 +80,11 @@ def tour_seen(session: Any, request: Request) -> bool:
         return bool(request.session.get(SESSION_TOUR_SEEN))
     user = session.get(PanelUser, user_id)
     return user is None or user.tour_seen_at is not None
+
+
+def first_time(session: Any, request: Request) -> bool:
+    """A user of panel_users who has not seen the tour yet (never the .env rescue admin)."""
+    return current_user_id(request) is not None and not tour_seen(session, request)
 
 
 def mark_tour_seen(session: Any, request: Request, now: datetime) -> None:
@@ -156,6 +163,8 @@ class ConversationsView(BaseView):
     async def _page(self, request: Request, conversation_id: int | None) -> Response:
         user = admin_user(request)
         with self.session_maker() as session:
+            if first_time(session, request):
+                return self._to_example(request)
             if conversation_id is not None:
                 inbox.mark_read(session, conversation_id)  # first: the list shows it read
             context = self._list_context(session, request, user)
@@ -177,11 +186,15 @@ class ConversationsView(BaseView):
                     "user": user,
                     "form_token": new_form_token(),
                     "poll_seconds": POLL_SECONDS,
-                    "tour_auto": request.query_params.get("tour") == "1"
-                    or not tour_seen(session, request),
-                    "tour_steps": {"steps": help.TOUR, "missing": help.TOUR_MISSING},
+                    "tour_auto": False,  # only over the example
                 },
             )
+
+    def _to_example(self, request: Request) -> RedirectResponse:
+        url = request.url_for("admin:view-conversation-example").include_query_params(
+            tab=_tab(request)
+        )
+        return RedirectResponse(url, status_code=302)
 
     # --- Pages ----------------------------------------------------------------------------
 
@@ -192,6 +205,19 @@ class ConversationsView(BaseView):
     @expose("/conversations/{conversation_id:int}", methods=["GET"], identity="conversation")
     async def conversation_page(self, request: Request) -> Response:
         return await self._page(request, request.path_params["conversation_id"])
+
+    @expose("/conversations/example", methods=["GET"], identity="conversation-example")
+    async def example_page(self, request: Request) -> Response:
+        """The made-up inbox of "Cómo usar": built from fixed data, nothing read or written."""
+        return await self.templates.TemplateResponse(
+            request,
+            "conversations.html",
+            {
+                **example.context(self.clock(), self.timezone, _tab(request)),
+                "user": admin_user(request),
+                "poll_seconds": POLL_SECONDS,
+            },
+        )
 
     @expose("/conversations/poll", methods=["GET"], identity="conversations-poll")
     async def poll(self, request: Request) -> Response:

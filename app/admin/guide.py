@@ -1,6 +1,4 @@
-"""The menu's "Guía" (docs/guia-empleadas.md shown inside the panel) and the start of the tour
-of "Conversaciones" (/admin/tour, behind the page's "Ver recorrido" button), for every panel
-user.
+"""The menu's "Guía": docs/guia-empleadas.md shown inside the panel, for every panel user.
 
 The guide is converted here with only what it uses (headings, paragraphs, lists, bold, links,
 images): every text is escaped, links go only to http(s) or the panel, and images only to the
@@ -9,19 +7,13 @@ guide's own folder (docs/guia-empleadas/, served at /admin/guide-files by setup_
 
 import html
 import re
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from markupsafe import Markup
 from sqladmin import BaseView, expose
-from sqlalchemy import select
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
-
-from app.admin import inbox
-from app.admin.auth import admin_user
-from app.db.models import WaConversation
+from starlette.responses import Response
 
 DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
 GUIDE_FILE = DOCS_DIR / "guia-empleadas.md"
@@ -129,31 +121,3 @@ class GuideView(BaseView):
             "guide.html",
             {"title": "Guía", "guide": markdown_to_html(source, files_url)},
         )
-
-
-class TourView(BaseView):
-    """The tour, over a conversation (so every button it shows is there): what "Ver recorrido"
-    opens when no conversation is open. Not in the menu: it looked like another section."""
-
-    name = "Ver recorrido"
-    icon = "fa-solid fa-circle-question"
-    session_maker: ClassVar[Any] = None
-
-    def is_visible(self, request: Request) -> bool:
-        return False
-
-    @expose("/tour", methods=["GET"], identity="tour")
-    async def tour_page(self, request: Request) -> Response:
-        with self.session_maker() as session:
-            now = datetime.now(UTC)
-            waiting = inbox.list_conversations(session, "waiting", admin_user(request), now)
-            target = waiting[0].id if waiting else None
-            if target is None:
-                target = session.scalar(
-                    select(WaConversation.id).order_by(WaConversation.updated_at.desc()).limit(1)
-                )
-        if target is None:
-            url = request.url_for("admin:view-conversations")
-        else:
-            url = request.url_for("admin:view-conversation", conversation_id=target)
-        return RedirectResponse(f"{url}?tour=1", status_code=302)

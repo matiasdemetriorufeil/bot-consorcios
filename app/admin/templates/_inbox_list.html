@@ -1,8 +1,8 @@
 {# The inbox list (page and poll). Everything the contact sends is autoescaped text. #}
-{% set list_base = url_for('admin:view-conversation', conversation_id=open_id) if open_id else url_for('admin:view-conversations') %}
+{% set list_base = url_for('admin:view-conversation', conversation_id=open_id) if open_id and not example else url_for('admin:view-conversations') %}
 <nav class="inbox-tabs" aria-label="Pestañas de la bandeja">
   {% for key, label in tabs.items() %}
-  <a class="inbox-tab {% if key == tab and not query %}active{% endif %}" href="{{ list_base }}?{{ {'tab': key}|urlencode }}"{% if key == 'waiting' %} data-tour="waiting"{% endif %}>
+  <a class="inbox-tab {% if key == tab and not query %}active{% endif %}" href="{% if example %}#{% else %}{{ list_base }}?{{ {'tab': key}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}{% if key == 'waiting' %} data-tour="waiting"{% endif %}>
     {{ label }}{% if key in counts and counts[key] %} <span class="badge {{ 'bg-red text-white' if key == 'waiting' else 'bg-blue-lt' }}">{{ counts[key] }}</span>{% endif %}
   </a>
   {% endfor %}
@@ -11,7 +11,7 @@
 <div class="inbox-rows">
   {% for r in rows %}
   <a class="inbox-row{% if r.id == open_id %} active{% endif %}{% if r.urgent %} urgent{% endif %}{% if r.unread %} unread{% endif %}"
-     href="{{ url_for('admin:view-conversation', conversation_id=r.id) }}?{{ {'tab': tab, 'q': query}|urlencode }}">
+     href="{% if example %}#{% else %}{{ url_for('admin:view-conversation', conversation_id=r.id) }}?{{ {'tab': tab, 'q': query}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}>
     <div class="inbox-line">
       <span class="inbox-name">{{ r.name }}</span>
       <span class="inbox-ago">{{ r.ago }}</span>

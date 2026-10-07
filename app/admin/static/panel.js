@@ -65,7 +65,40 @@
     dialog.showModal();
   }, true);
 
-  // --- The tour of "Conversaciones" (app.admin.help.TOUR) ------------------------------------
+  // --- The example of "Cómo usar" (app.admin.example) -----------------------------------------
+  // Its buttons and links do nothing: a short note says what they would do in a real one.
+  var note = null, noteTimer = null;
+  function showNote(el, text) {
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "example-note";
+      note.setAttribute("role", "status");
+      document.body.appendChild(note);
+    }
+    note.textContent = text;
+    note.hidden = false;
+    var box = el.getBoundingClientRect();
+    var width = Math.min(320, window.innerWidth - 24);
+    note.style.left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12)) + "px";
+    note.style.top = Math.min(box.bottom + 8, window.innerHeight - 90) + "px";
+    window.clearTimeout(noteTimer);
+    noteTimer = window.setTimeout(function () { note.hidden = true; }, 4500);
+  }
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!form.dataset || !form.dataset.exampleNote) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    showNote(event.submitter || form, form.dataset.exampleNote);
+  }, true);
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest && event.target.closest("a[data-example-note]");
+    if (!link) return;
+    event.preventDefault();
+    showNote(link, link.dataset.exampleNote);
+  });
+
+  // --- The tour of "Conversaciones" (app.admin.help.TOUR), over the example -------------------
   var app = document.getElementById("inbox-app");
   var stepsData = document.getElementById("tour-steps");
   if (!app || !stepsData) return;
@@ -104,6 +137,20 @@
     bubble.style.top = top + "px";
   }
 
+  // The last bubble of the example: done, and the way back to the real inbox.
+  function done() {
+    var last = document.createElement("div");
+    last.className = "tour-bubble tour-centered tour-done";
+    last.setAttribute("role", "dialog");
+    last.innerHTML = '<h3 class="tour-title">Listo</h3><p class="tour-text"></p>' +
+      '<div class="tour-buttons"><button type="button" class="btn btn-sm btn-secondary" data-tour-stay>Seguir mirando el ejemplo</button>' +
+      '<a class="btn btn-sm btn-primary" data-example-back><i class="fa-solid fa-arrow-left me-1"></i>Volver a mis conversaciones</a></div>';
+    last.querySelector(".tour-text").textContent = app.dataset.exampleDone || "";
+    last.querySelector("[data-example-back]").href = app.dataset.exampleBack;
+    last.querySelector("[data-tour-stay]").addEventListener("click", function () { last.remove(); });
+    document.body.appendChild(last);
+  }
+
   function finish() {
     window.clearInterval(keeper);
     document.querySelectorAll(".tour-target").forEach(function (el) { el.classList.remove("tour-target"); });
@@ -111,6 +158,7 @@
     if (bubble) bubble.remove();
     shade = bubble = null;
     fetch(app.dataset.tourSeenUrl, { method: "POST", credentials: "same-origin" }).catch(function () {});
+    if (app.dataset.example === "true") done();
   }
 
   function start() {
@@ -137,19 +185,9 @@
       index += 1; place();
     });
     place();
-    // The conversation's header is redrawn every few seconds: keep its button marked.
     keeper = window.setInterval(mark, 700);
   }
 
   window.panelTour = start;
-  // "Ver recorrido": right here when a conversation is open (all its buttons are on the page);
-  // otherwise the link opens the first waiting conversation with the tour.
-  var startButton = document.querySelector("[data-tour-start]");
-  if (startButton && app.dataset.open) {
-    startButton.addEventListener("click", function (event) {
-      event.preventDefault();
-      start();
-    });
-  }
   if (app.dataset.tourAuto === "true") start();
 })();

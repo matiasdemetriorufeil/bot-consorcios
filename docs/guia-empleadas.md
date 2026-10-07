@@ -1,7 +1,7 @@
 # Guía del panel
 
-Para ver un recorrido rápido por la pantalla, tocá **Ver recorrido** arriba de
-**Conversaciones**.
+Para ver un recorrido rápido por la pantalla, tocá **Cómo usar** arriba de
+**Conversaciones**. Se abre una conversación de ejemplo: lo que toques ahí no se manda a nadie.
 
 Esta guía explica las tareas de todos los días en el panel del estudio. Las capturas usan
 nombres y números inventados.
@@ -9,7 +9,7 @@ nombres y números inventados.
 Si en algún momento no sabés qué hacer en una pantalla, leé la línea gris que está debajo del
 título: dice para qué sirve.
 
-![El recorrido de Conversaciones, paso a paso](guia-empleadas/09-recorrido.png)
+![El recorrido, sobre la conversación de ejemplo](guia-empleadas/09-recorrido.png)
 
 ## 1. Atender una conversación que necesita a alguien
 

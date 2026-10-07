@@ -39,7 +39,7 @@ from app.admin.amenities import AmenitiesView, ClaimsView
 from app.admin.auth import AdminAuth, LoginLimiter
 from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
-from app.admin.guide import GUIDE_FILES_DIR, GuideView, TourView
+from app.admin.guide import GUIDE_FILES_DIR, GuideView
 from app.admin.inbox import Sender
 from app.admin.phones import PhonesView
 from app.admin.users import UsersView
@@ -73,7 +73,6 @@ VIEWS = (
     PhonesView,
     VerificationsView,
     AmenitiesView,
-    TourView,
     GuideView,
     BuildingAdmin,
     BuildingInfoAdmin,
@@ -194,7 +193,6 @@ def setup_admin(
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
-        TourView: {"session_maker": session_maker},
         UsersView: {
             "timezone": settings.timezone,
             "session_maker": session_maker,

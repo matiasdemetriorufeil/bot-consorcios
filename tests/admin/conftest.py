@@ -40,13 +40,17 @@ def make_user(
     display_name: str | None = None,
     password: str = USER_PASSWORD,
     active: bool = True,
+    tour_seen: bool = True,
 ) -> PanelUser:
+    """tour_seen: False for a user who has not seen the tour of "Conversaciones" yet (her
+    first visit goes to the example, app.admin.conversations)."""
     user = PanelUser(
         username=username,
         display_name=display_name or username.title(),
         password_hash=hash_password(password),
         role=role,
         active=active,
+        tour_seen_at=NOW if tour_seen else None,
     )
     session.add(user)
     session.flush()

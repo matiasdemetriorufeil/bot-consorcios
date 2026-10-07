@@ -1,5 +1,7 @@
 {# State and buttons of the open conversation (page and poll). #}
-{% set action_url = url_for('admin:view-conversation-action', conversation_id=conversation.id) %}
+{# In the example (app.admin.example) the buttons are forms that do nothing: panel.js says
+   what they would do in a real conversation. #}
+{% set action_url = '' if example else url_for('admin:view-conversation-action', conversation_id=conversation.id) %}
 {% set status = conversation.status.value %}
 <div class="chat-state">
   <span class="badge chat-status chat-status-{{ status }}">{{ status_label }}</span>
@@ -12,13 +14,13 @@
   <div class="chat-actions">
     {# A resolved one only shows its history: replying reopens it (in "Mías"). #}
     {% if status != 'resolved' and not (status == 'human' and conversation.assigned_to == user) %}
-    <form method="POST" action="{{ action_url }}" data-tour="take"><input type="hidden" name="action" value="take"><button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-hand me-1"></i>Tomar control</button></form>
+    <form {% if example %}method="dialog" data-example-note="{{ example_notes.take }}"{% else %}method="POST" action="{{ action_url }}"{% endif %} data-tour="take"><input type="hidden" name="action" value="take"><button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-hand me-1"></i>Tomar control</button></form>
     {% endif %}
     {% if status not in ('bot', 'resolved') %}
-    <form method="POST" action="{{ action_url }}" data-tour="return"><input type="hidden" name="action" value="return"><button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-robot me-1"></i>Devolver al bot</button></form>
+    <form {% if example %}method="dialog" data-example-note="{{ example_notes.return }}"{% else %}method="POST" action="{{ action_url }}"{% endif %} data-tour="return"><input type="hidden" name="action" value="return"><button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-robot me-1"></i>Devolver al bot</button></form>
     {% endif %}
     {% if status != 'resolved' %}
-    <form method="POST" action="{{ action_url }}" data-tour="resolve" {{ confirm_attrs('resolve') | xmlattr }}><input type="hidden" name="action" value="resolve"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-check me-1"></i>Resolver</button></form>
+    <form {% if example %}method="dialog" data-example-note="{{ example_notes.resolve }}"{% else %}method="POST" action="{{ action_url }}"{% endif %} data-tour="resolve"{% if not example %} {{ confirm_attrs('resolve') | xmlattr }}{% endif %}><input type="hidden" name="action" value="resolve"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-check me-1"></i>Resolver</button></form>
     {% endif %}
     <button type="button" class="btn btn-sm btn-outline-primary js-note"><i class="fa-solid fa-note-sticky me-1"></i>Nota interna</button>
   </div>

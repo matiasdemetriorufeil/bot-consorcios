@@ -10,10 +10,13 @@
   turno, Desactivar usuario y Empezar de nuevo aparece un único diálogo
   (`_confirm_dialog.html` + `panel.js`). Dice qué le pasa a la persona del otro lado: en ningún
   caso le llega un aviso.
-- **Recorrido de Conversaciones:** 5 pasos en globos. Aparece solo hasta que cada usuaria lo ve
-  (`panel_users.tour_seen_at`) y se vuelve a ver con el botón «Ver recorrido» del encabezado
-  de Conversaciones (con una conversación abierta arranca ahí mismo; si no, abre primero la
-  primera esperando). No está en el menú: parecía otra sección.
+- **Recorrido de Conversaciones:** 5 pasos en globos sobre una **conversación de ejemplo**
+  (`/admin/conversations/example`, `app/admin/example.py`): datos fijos armados en el servidor,
+  con la misma plantilla que la bandeja real. No se guarda en la base y nunca manda nada: sus
+  botones solo dicen qué harían. Se abre con el botón «Cómo usar» del encabezado de
+  Conversaciones (no está en el menú). La primera vez que una usuaria del panel entra a
+  Conversaciones la lleva sola al ejemplo (`panel_users.tour_seen_at`); al admin de rescate del
+  `.env` nunca. Al terminar, «Volver a mis conversaciones» vuelve a la pestaña donde estaba.
 - **Guía:** «Guía» en el menú abre `docs/guia-empleadas.md` dentro del panel. Sus imágenes, con
   datos inventados, están en `docs/guia-empleadas/` y van a Git.
 - **Textos de Conversaciones para la operadora:** donde decía «plantilla» ahora dice «mensajes ya

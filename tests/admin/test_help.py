@@ -25,7 +25,6 @@ NOT_PAGES = {
     "view-conversations-poll",
     "view-dev-chat-poll",
     "view-wa-media",
-    "view-tour",
 }
 
 

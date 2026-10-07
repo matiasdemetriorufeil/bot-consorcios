@@ -127,7 +127,11 @@ def ids(db_session: Session) -> Ids:
 
 def _user(session: Session, username: str, role: PanelRole) -> PanelUser:
     user = PanelUser(
-        username=username, display_name=username.title(), password_hash=USER_HASH, role=role
+        username=username,
+        display_name=username.title(),
+        password_hash=USER_HASH,
+        role=role,
+        tour_seen_at=NOW,  # straight to the real inbox (not the example of the first time)
     )
     session.add(user)
     session.flush()

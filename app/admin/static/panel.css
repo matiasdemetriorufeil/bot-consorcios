@@ -105,15 +105,17 @@ a { color: var(--panel-primary); }
 }
 
 /* --- Conversaciones (conversations.html) -------------------------------------- */
-  .inbox { display: grid; grid-template-columns: 340px minmax(0, 1fr) 300px; gap: 12px;
+  .inbox { display: grid; grid-template-columns: 360px minmax(0, 1fr) 300px; gap: 12px;
            height: calc(100vh - 175px); min-height: 480px; }
   .inbox .card { margin: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .inbox-top { padding: 10px; border-bottom: 1px solid #e6e7e9; display: flex; gap: 6px; }
   .inbox-top input[type=search] { flex: 1; }
   #inbox-list { overflow-y: auto; flex: 1; min-height: 0; }
-  .inbox-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid #e6e7e9;
+  /* The four tabs on one line ("Resueltas" used to wrap): scrolls sideways if ever too narrow. */
+  .inbox-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 2px; padding: 6px; border-bottom: 1px solid #e6e7e9;
                 position: sticky; top: 0; background: #fff; z-index: 1; }
-  .inbox-tab { padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; font-size: .85rem; }
+  .inbox-tab { padding: 5px 7px; border-radius: 6px; color: inherit; text-decoration: none; font-size: .8rem;
+                white-space: nowrap; flex: 0 0 auto; }
   .inbox-tab.active { background: var(--tblr-primary); color: #fff; }
   .inbox-tab.active .badge { background: #fff !important; color: var(--tblr-primary) !important; }
   .inbox-searching { padding: 6px 10px; font-size: .8rem; color: #667382; }
@@ -177,6 +179,11 @@ a { color: var(--panel-primary); }
   .contact-section { margin-top: 12px; font-size: .72rem; text-transform: uppercase; color: #667382; font-weight: 700; }
   .contact-unit { margin-top: 6px; }
   #inbox-banner { display: none; }
+  /* Under 1400 px the contact card goes into the conversation ("Ficha del contacto"): three
+     columns do not fit beside the menu. */
+  @media (max-width: 1399.98px) {
+    .inbox { grid-template-columns: 360px minmax(0, 1fr); }
+  }
   @media (max-width: 991.98px) {
     .inbox { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 110px); }
     .inbox.has-open .inbox-list { display: none; }
@@ -326,3 +333,10 @@ a { color: var(--panel-primary); }
 .legend-reserved { background: var(--tblr-primary); }
 .legend-blocked { background: #e9ecef; border-color: #d0d5db; }
 .legend-none { background: #f4f5f7; border-color: #e3e5e8; }
+
+/* --- The example of "Cómo usar" (app.admin.example) --------------------------------------------- */
+.example-banner { border-left: 4px solid var(--panel-primary); }
+.example-note { position: fixed; z-index: 1080; width: min(320px, calc(100vw - 24px)); padding: .6rem .8rem;
+  background: #1f2933; color: #fff; border-radius: .5rem; font-size: .88rem; line-height: 1.4;
+  box-shadow: 0 .5rem 1.5rem rgba(15, 23, 42, .3); }
+.tour-done { max-width: 26rem; width: calc(100% - 2rem); }

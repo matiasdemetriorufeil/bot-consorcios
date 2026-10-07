@@ -19,7 +19,10 @@ PAGE_HELP: dict[str, str] = {
     # What the operators use
     "view-conversations": (
         "Las charlas de WhatsApp. En «Esperando persona» están las que el bot no pudo "
-        "resolver y necesitan a alguien del estudio. Para un repaso, tocá «Ver recorrido»."
+        "resolver y necesitan a alguien del estudio. Para un repaso, tocá «Cómo usar»."
+    ),
+    "view-conversation-example": (
+        "Un ejemplo para aprender a usar Conversaciones. Nada de lo que toques acá se manda."
     ),
     "view-conversation": (
         "Tomá la conversación para contestar vos. Cuando termines, resolvela o devolvésela al bot."
@@ -270,6 +273,25 @@ TOUR: list[dict[str, str]] = [
     },
 ]
 TOUR_MISSING = "Abrí una conversación para ver este botón."
+
+# --- The example of "Cómo usar" (app.admin.example) -----------------------------------------------
+# What each button would do in a real conversation (the example's do nothing).
+
+EXAMPLE_BANNER = "Esto es un ejemplo: nada de lo que toques acá se manda."
+EXAMPLE_DONE = (
+    "Esto era un ejemplo: en tu bandeja vas a ver tus conversaciones reales. Si querés "
+    "repasarlo, tocá «Cómo usar» cuando quieras."
+)
+EXAMPLE_NOTES: dict[str, str] = {
+    "take": "En una conversación real, esto la pasa a «Mías» y el bot deja de contestar.",
+    "return": "En una conversación real, el bot vuelve a contestar solo.",
+    "resolve": "En una conversación real, esto la pasa a «Resueltas».",
+    "reply": "En una conversación real, esto le manda tu mensaje por WhatsApp.",
+    "template": "En una conversación real, esto le manda el mensaje preparado por WhatsApp.",
+    "note": "En una conversación real, la nota queda guardada y solo la ve el estudio.",
+    "link": "En tu bandeja real, esto te lleva a esa conversación o pestaña.",
+    "search": "En tu bandeja real, esto busca entre tus conversaciones.",
+}
 
 
 def globals_for_templates() -> dict[str, Any]:
