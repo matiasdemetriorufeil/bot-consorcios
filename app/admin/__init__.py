@@ -8,6 +8,10 @@ the panel users (app.admin.users), metrics, sync runs (read only) and, in develo
 the test chat (app.admin.dev_chat). Out of the menu: "Reclamos" (an empty page for now) and
 the attachments of WhatsApp messages (app.admin.wa_media). /admin/ goes to "Conversaciones".
 
+Everything in Spanish and in one style: SQLAdmin's texts through app.admin.i18n, values
+through app.admin.labels and app.admin.formatting (also Jinja filters: phone, building, when,
+full, day, money), and one style sheet (app/admin/static, served at /admin/static).
+
 Login: the users of panel_users (admin | operator) plus the .env user as rescue admin
 (app.admin.auth). Operators neither see nor open (403, a page of the panel) the views marked
 AdminOnly, nor the SUM's set-up.
@@ -18,14 +22,16 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI
-from sqladmin import Admin
+from sqladmin import Admin, ModelView
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
-from starlette.routing import Route
+from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
+from app.admin import formatting, i18n, labels
 from app.admin.amenities import AmenitiesView, ClaimsView
 from app.admin.auth import AdminAuth, LoginLimiter
 from app.admin.conversations import ConversationsView
@@ -42,6 +48,7 @@ from app.admin.views import (
     QuickReplyAdmin,
     SyncRunAdmin,
     WaTemplateAdmin,
+    type_formatters,
 )
 from app.admin.wa_media import WaMediaView
 from app.config import Settings
@@ -52,6 +59,8 @@ from app.whatsapp.client import WhatsAppError
 from app.whatsapp.simulator import build_client
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
+STATIC_PATH = "/static"
 BOT_SETTINGS_IDENTITY = "bot-settings"
 # In the menu's order: first what the operators use, then the admin-only ones (AdminOnly,
 # under "Administración"; the test chat goes last, in development). The rest is not in the menu.
@@ -116,6 +125,19 @@ def _bot_settings_form(session_maker: sessionmaker) -> Callable[[Request], Respo
     return endpoint
 
 
+def _install_texts(env: object, timezone: str) -> None:
+    """Spanish for SQLAdmin's templates, and the panel's formats as Jinja filters."""
+    i18n.install(env)
+    filters = env.filters  # type: ignore[attr-defined]
+    filters["phone"] = formatting.phone
+    filters["building"] = formatting.building
+    filters["when"] = lambda value: formatting.when(value, timezone=timezone)
+    filters["full"] = lambda value: formatting.full(value, timezone)
+    filters["day"] = lambda value: formatting.day(value, timezone)
+    filters["money"] = formatting.money
+    filters["reason_short"] = lambda code: (labels.reason(code) or ("", ""))[0]
+
+
 def setup_admin(
     app: FastAPI,
     session_maker: sessionmaker,
@@ -136,9 +158,11 @@ def setup_admin(
         session_maker=session_maker,
         base_url="/admin",
         title="Estudio Diego Rufeil",
+        favicon_url=f"/admin{STATIC_PATH}/logo.svg",
         templates_dir=str(TEMPLATES_DIR),
         authentication_backend=auth,
     )
+    _install_texts(admin.templates.env, settings.timezone)
     auth.templates = admin.templates
     conversations: dict[str, object] = {
         "timezone": settings.timezone,
@@ -172,13 +196,20 @@ def setup_admin(
             dev_chat["clock"] = staticmethod(clock)
         extra[DevChatView] = dev_chat
         views.insert(views.index(SyncRunAdmin) + 1, DevChatView)
+    listed, detail = type_formatters(settings.timezone)
     for view in views:
+        attributes = dict(extra.get(view, {}))
+        if issubclass(view, ModelView):
+            attributes["column_type_formatters"] = listed
+            attributes["column_type_formatters_detail"] = detail
+            attributes["form_base_class"] = i18n.SpanishForm
         # A subclass per panel: SQLAdmin stores state on the view class (session_maker...).
-        admin.add_view(type(view.__name__, (view,), dict(extra.get(view, {}))))
+        admin.add_view(type(view.__name__, (view,), attributes))
     # Replaces SQLAdmin's empty index (same name: the logo links to it).
     routes = admin.admin.router.routes
     routes[:] = [r for r in routes if getattr(r, "name", None) != "index"]
     routes.insert(0, Route("/", endpoint=_home, name="index"))
+    routes.insert(0, Mount(STATIC_PATH, StaticFiles(directory=STATIC_DIR), name="panel-static"))
     # Before SQLAdmin's "/{identity}/list".
     routes.insert(
         1,

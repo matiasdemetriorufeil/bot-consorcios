@@ -23,28 +23,17 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
-from app.admin.views import _in_thread, _local
-from app.bot.unit_search import display_building_name
+from app.admin.views import _in_thread
 from app.config import Settings
-from app.db.models import DataSource, Person, PersonRole, Phone, Unit, UnitPerson
+from app.db.models import DataSource, Person, Phone, Unit, UnitPerson
 
 PAGE_SIZE = 50
 TABS = {"review": "A revisar", "all": "Todos"}
-SOURCE_LABELS = {
-    DataSource.CONSORPLUS: "ConsorPlus",
-    DataSource.BOT_VERIFIED: "Bot (código por email)",
-    DataSource.MANUAL: "Operador",
-}
-# By priority: a phone in conflict may also be to review, and so on.
-STATUS_LABELS = {
-    "conflict": "En conflicto",
-    "review": "A revisar",
-    "verified": "Verificado",
-    "unverified": "Sin verificar",
-}
-ROLE_LABELS = {PersonRole.OWNER: "propietario", PersonRole.TENANT: "inquilino"}
+SOURCE_LABELS = labels.PHONE_SOURCE
+STATUS_LABELS = labels.PHONE_STATUS  # by priority: see phone_status
 UNLINK_CONFIRMATION = (
     "¿Desvincular este teléfono? La persona va a tener que volver a identificarse por "
     "WhatsApp. Si el número sigue cargado en ConsorPlus, la sincronización nocturna lo vuelve "
@@ -78,8 +67,8 @@ def person_units(phone: Phone) -> str:
         key=lambda link: (link.unit.building.name, link.unit.label, link.role),
     )
     return "; ".join(
-        f"{display_building_name(link.unit.building.name)} · {link.unit.label}"
-        f" ({ROLE_LABELS.get(link.role, link.role)})"
+        f"{formatting.building(link.unit.building.name)} · {link.unit.label}"
+        f" ({labels.label(labels.PERSON_ROLE, link.role)})"
         for link in links
     )
 
@@ -163,13 +152,13 @@ def list_phones(
     rows = [
         PhoneRow(
             id=p.id,
-            number=p.e164,
+            number=formatting.phone(p.e164),
             person=p.person.full_name,
             units=person_units(p),
-            source=SOURCE_LABELS.get(DataSource(p.source), str(p.source)),
+            source=labels.label(SOURCE_LABELS, p.source),
             status=phone_status(p),
             status_label=STATUS_LABELS[phone_status(p)],
-            date=_local(p.created_at, timezone),
+            date=formatting.when(p.created_at, timezone=timezone),
         )
         for p in phones
     ]

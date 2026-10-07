@@ -18,15 +18,15 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
-from app.admin.views import _in_thread, _local
+from app.admin.views import _in_thread
 from app.bot.identity import (
     IdentityError,
     approve_verification_request,
     reject_verification_request,
 )
-from app.bot.unit_search import display_building_name
 from app.config import Settings
 from app.db.models import (
     Person,
@@ -39,11 +39,7 @@ from app.db.models import (
     WaConversation,
 )
 
-STATUS_LABELS = {
-    VerificationRequestStatus.PENDING: "Pendiente",
-    VerificationRequestStatus.APPROVED: "Aprobada",
-    VerificationRequestStatus.REJECTED: "Rechazada",
-}
+STATUS_LABELS = labels.VERIFICATION_STATUS
 REJECT_CONFIRMATION = "¿Rechazar esta verificación? El número no se asocia."
 
 
@@ -130,11 +126,11 @@ class VerificationsView(BaseView):
             rows = [
                 {
                     "id": v.id,
-                    "building": display_building_name(v.unit.building.name),
+                    "building": formatting.building(v.unit.building.name),
                     "unit": v.unit.label,
                     "claimed_name": v.claimed_name,
-                    "phone": v.phone_e164,
-                    "date": _local(v.created_at, self.timezone),
+                    "phone": formatting.phone(v.phone_e164),
+                    "date": formatting.when(v.created_at, timezone=self.timezone),
                     "status": STATUS_LABELS[VerificationRequestStatus(v.status)],
                 }
                 for v in pending
@@ -195,8 +191,8 @@ class VerificationsView(BaseView):
             context = {
                 "title": "Aprobar verificación",
                 "verification": verification,
-                "building": display_building_name(verification.unit.building.name),
-                "created_at": _local(verification.created_at, self.timezone),
+                "building": formatting.building(verification.unit.building.name),
+                "created_at": formatting.full(verification.created_at, self.timezone),
                 "owners": unit_owners(session, verification.unit_id),
                 "pending": verification.status == VerificationRequestStatus.PENDING,
                 "status_label": STATUS_LABELS[VerificationRequestStatus(verification.status)],

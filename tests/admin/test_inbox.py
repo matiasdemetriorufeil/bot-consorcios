@@ -88,7 +88,7 @@ def test_waiting_tab_puts_urgent_first_then_the_oldest_handoff(db_session: Sessi
     rows = inbox.list_conversations(db_session, "waiting", ME, NOW)
 
     assert _ids(rows) == [urgent.id, old.id, new.id]
-    assert rows[0].urgent and rows[0].reason == ("emergencia", "Urgencia en el edificio")
+    assert rows[0].urgent and rows[0].reason == ("Urgencia", "Urgencia en el edificio")
 
 
 def test_mine_bot_and_resolved_tabs(db_session: Session) -> None:
@@ -174,7 +174,7 @@ def test_window_closed_handoff_shows_its_label(db_session: Session) -> None:
 
     [row] = inbox.list_conversations(db_session, "waiting", ME, NOW)
 
-    assert row.reason is not None and row.reason[0] == "ventana-cerrada"
+    assert row.reason == ("Ventana cerrada", "Ventana de 24 h cerrada: el bot no pudo responder")
 
 
 # --- Contact card and thread ------------------------------------------------------------------
@@ -227,7 +227,7 @@ def test_contact_card(db_session: Session, owner: int) -> None:
     assert owner_unit.unit.role == "propietario" and tenant_unit.unit.role == "inquilino"
     assert owner_unit.debt is not None
     assert owner_unit.debt.total == "$165.060,00" and not owner_unit.debt.up_to_date
-    assert owner_unit.debt.fetched_at == "30/09/2026 09:00"
+    assert owner_unit.debt.fetched_at == "hoy 09:00"  # the card's day, in Argentina's time
     assert tenant_unit.debt is None
     [reservation] = card.reservations  # only the upcoming one
     assert reservation.day == NOW.date() + timedelta(days=2)

@@ -90,7 +90,7 @@ def dev(db_session: Session) -> Iterator[DevPanel]:
 def test_a_test_message_is_answered_by_the_bot_and_never_reaches_meta(dev: DevPanel) -> None:
     page = dev.client.get("/admin/dev-chat", params={"phone": OWNER_PHONE})
     assert page.status_code == 200
-    assert "Escribís como +5493515550101 (Ana Prueba)" in page.text
+    assert "Escribís como 351 555-0101 (Ana Prueba)" in page.text
 
     assert dev.send("hola").status_code == 200
 
@@ -152,7 +152,7 @@ def test_restart_and_search(dev: DevPanel) -> None:
     assert dev.poll(INVENTED_PHONE)["html"] == ""
     assert dev.conversation(INVENTED_PHONE).last_inbound_at is None
     found = dev.client.get("/admin/dev-chat", params={"q": "ana"})
-    assert "Ana Prueba" in found.text and OWNER_PHONE in found.text
+    assert "Ana Prueba" in found.text and "351 555-0101" in found.text
 
 
 def test_invalid_phone_or_empty_text(dev: DevPanel) -> None:

@@ -91,8 +91,8 @@ def test_list_shows_waiting_conversations(operator: Panel) -> None:
 
     assert "Esperando persona" in page and "Mías" in page and "Con el bot" in page
     assert "Contacto Inventado" in page and "necesito ayuda" in page
-    # The reason in Spanish (the label used to be the tag, "ventana-cerrada").
-    assert "Ventana de 24 h cerrada: el bot no pudo responder" in page
+    # The reason's short label in Spanish (it used to be the tag, "ventana-cerrada").
+    assert ">Ventana cerrada</span>" in page
     assert "ventana-cerrada" not in page
     assert f"/admin/conversations/{conv.id}" in page
 
@@ -460,5 +460,9 @@ def test_the_reason_label_is_in_spanish_in_the_conversation(operator: Panel) -> 
 
     page = _page(operator, conv)
 
-    assert '<span class="badge bg-orange-lt chat-reason">Reclamo por la deuda</span>' in page
+    # A short label (the long text in its tooltip and in the handoff summary).
+    assert (
+        '<span class="badge bg-orange-lt chat-reason" title="Reclamo por la deuda">'
+        "Reclamo de deuda</span>"
+    ) in page
     assert "reclamo-deuda" not in page

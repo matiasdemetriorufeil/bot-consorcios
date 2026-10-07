@@ -1,0 +1,10 @@
+{#- SQLAdmin's layout with a page title on every page: SQLAdmin's own lists, records and forms
+    pass none (ours do). Blocks only: the original stays as is. -#}
+{% extends "sqladmin_original/layout.html" %}
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
+  </div>
+</div>
+{% endblock %}

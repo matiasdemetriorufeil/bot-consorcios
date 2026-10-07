@@ -3,7 +3,7 @@
 <div class="col-12 col-lg-8">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Reserva #{{ reservation.id }}</h3>
+      <h3 class="card-title">Reserva</h3>
       <div class="card-actions">
         {% if confirmed %}
         <span class="badge bg-success-lt">Confirmada</span>
@@ -22,8 +22,8 @@
         <dd class="col-7 col-sm-8">{{ reservation.unit.label }}{% if reservation.unit.owner_name %} · {{ reservation.unit.owner_name }}{% endif %}</dd>
         <dt class="col-5 col-sm-4">Origen</dt>
         <dd class="col-7 col-sm-8">
-          {% if reservation.source.value == 'bot' %}WhatsApp (bot){% else %}Panel{% endif %}
-          {% if reservation.created_by_phone %}· {{ reservation.created_by_phone }}{% endif %}
+          {{ source_label }}
+          {% if reservation.created_by_phone %}· {{ reservation.created_by_phone | phone }}{% endif %}
         </dd>
         <dt class="col-5 col-sm-4">Creada</dt><dd class="col-7 col-sm-8">{{ created_at }}</dd>
         {% if cancelled_at %}
@@ -35,12 +35,12 @@
       </dl>
     </div>
     <div class="card-footer d-flex flex-wrap gap-2 justify-content-end">
-      <a class="btn" href="{{ url_for('admin:view-amenity-week', amenity_id=reservation.amenity_id) }}?start={{ reservation.date.isoformat() }}">Volver a la planilla</a>
+      <a class="btn btn-secondary" href="{{ url_for('admin:view-amenity-week', amenity_id=reservation.amenity_id) }}?start={{ reservation.date.isoformat() }}"><i class="fa-solid fa-arrow-left me-1"></i>Volver a la planilla</a>
       {% if confirmed %}
       <form method="POST" id="cancel-form"
         onsubmit="return confirm('¿Cancelar la reserva de {{ reservation.unit.label }}? El turno queda libre.');">
         <input type="hidden" name="confirm" value="yes">
-        <button type="submit" class="btn btn-danger">Cancelar reserva</button>
+        <button type="submit" class="btn btn-danger"><i class="fa-solid fa-xmark me-1"></i>Cancelar reserva</button>
       </form>
       {% endif %}
     </div>

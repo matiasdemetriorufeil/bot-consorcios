@@ -24,9 +24,9 @@
   <div class="card">
     <div class="card-body">
       <div class="subheader">Costo de IA del mes (estimado)</div>
-      <div class="h1 mb-0" id="month-cost">US$ {{ "%.2f" | format(m.month_cost_usd) }}</div>
+      <div class="h1 mb-0" id="month-cost">{{ m.month_cost_usd | money("US$") }}</div>
       <div class="text-muted">
-        {% if m.month_calls_without_cost %}{{ m.month_calls_without_cost }} llamadas sin precio cargado (LLM_PRICE_*){% else %}según LLM_PRICE_*{% endif %}
+        {% if m.month_calls_without_cost %}{{ m.month_calls_without_cost }} consulta(s) sin precio cargado{% else %}según el precio por consulta de la IA{% endif %}
       </div>
     </div>
   </div>
@@ -58,7 +58,7 @@
     <div class="card-header"><h3 class="card-title">Herramientas más usadas (mes)</h3></div>
     <table class="table card-table table-vcenter" id="top-tools">
       <tbody>
-        {% for tool, count in m.top_tools %}
+        {% for tool, count in tools %}
         <tr><td>{{ tool }}</td><td class="w-1 text-end">{{ count }}</td></tr>
         {% else %}
         <tr><td class="text-muted">Sin datos este mes.</td></tr>

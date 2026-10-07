@@ -24,6 +24,7 @@ from starlette.datastructures import FormData
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.admin import formatting, labels
 from app.admin.agenda import build_agenda
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user, is_admin, require_admin
@@ -37,7 +38,6 @@ from app.amenities.booking import (
     describe_slot,
     problem_message,
 )
-from app.bot.unit_search import display_building_name
 from app.config import Settings
 from app.db.models import (
     Amenity,
@@ -98,7 +98,7 @@ def _weekdays(form: FormData, name: str) -> list[int]:
 
 
 def building_name(amenity: Amenity) -> str:
-    return display_building_name(amenity.building.name)
+    return formatting.building(amenity.building.name)
 
 
 # --- Changes (sync, one transaction each) ---------------------------------------------------
@@ -109,7 +109,7 @@ def create_amenity(session: Session, building_id: int, user: str) -> Amenity:
     if building is None:
         raise FormProblem("Elegí un edificio.")
     if session.scalar(select(Amenity.id).where(Amenity.building_id == building_id)):
-        raise FormProblem(f"{display_building_name(building.name)} ya tiene SUM.")
+        raise FormProblem(f"{formatting.building(building.name)} ya tiene SUM.")
     amenity = Amenity(building_id=building_id)
     session.add(amenity)
     session.flush()
@@ -332,7 +332,7 @@ class AmenitiesView(BaseView):
             )
             with_amenity = {a.building_id for a in amenities}
             buildings = [
-                (b.id, display_building_name(b.name))
+                (b.id, formatting.building(b.name))
                 for b in session.scalars(
                     select(Building).where(Building.active.is_(True)).order_by(Building.name)
                 )
@@ -671,7 +671,6 @@ class AmenitiesView(BaseView):
                             amenity_id=amenity_id,
                             query=f"start={reservation.date.isoformat()}",
                         )
-            tz = ZoneInfo(self.timezone)
             return await self._page(
                 request,
                 "amenity_reservation.html",
@@ -681,12 +680,13 @@ class AmenitiesView(BaseView):
                 slot_text=describe_slot(reservation.slot),
                 weekday=WEEKDAYS[reservation.date.weekday()],
                 confirmed=reservation.status == ReservationStatus.CONFIRMED,
-                created_at=reservation.created_at.astimezone(tz).strftime("%d/%m/%Y %H:%M"),
+                created_at=formatting.full(reservation.created_at, self.timezone),
                 cancelled_at=(
-                    reservation.cancelled_at.astimezone(tz).strftime("%d/%m/%Y %H:%M")
+                    formatting.full(reservation.cancelled_at, self.timezone)
                     if reservation.cancelled_at
                     else None
                 ),
+                source_label=labels.label(labels.RESERVATION_SOURCE, reservation.source),
                 error=error,
             )
 

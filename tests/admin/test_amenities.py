@@ -562,7 +562,8 @@ def test_one_hour_block_keeps_its_times_and_state(
     [short] = [b for b in agenda.blocks if b["day"] == "2026-10-07"]
     assert short["state"] == "free" and short["height"] == pytest.approx(100 / 18, abs=1e-3)
     assert short["text"] == "09:00 a 10:00 Disponible"  # times first, the state after
-    page = agenda.page
+    # The agenda's style lives in the panel's style sheet.
+    page = logged_in.client.get("/admin/static/panel.css").text
     # The times line never wraps; the hour rows are at least 22 px; the grid scrolls inside.
     assert re.search(r"\.block-time, \.block-state \{[^}]*white-space: nowrap", page)
     assert "--hour: max(22px, calc((100vh - var(--agenda-offset)" in page
@@ -589,4 +590,4 @@ def test_a_bot_reservation_shows_in_the_panel(
     blocks = {b["slot"]: b for b in _agenda(logged_in, sum_).blocks}
     assert blocks[sum_.night_id]["state"] == "reserved"
     detail = logged_in.client.get(blocks[sum_.night_id]["href"]).text
-    assert "WhatsApp (bot)" in detail and "+5493515550401" in detail
+    assert "Por WhatsApp" in detail and "351 555-0401" in detail

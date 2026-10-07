@@ -2,7 +2,7 @@
 <div class="contact-card">
   <div class="contact-name">{{ card.name }}</div>
   <div class="text-secondary small">
-    {{ card.phone }}{% if card.profile_name and card.profile_name != card.name %} · en WhatsApp: {{ card.profile_name }}{% endif %}
+    {{ card.phone | phone }}{% if card.profile_name and card.profile_name != card.name %} · en WhatsApp: {{ card.profile_name }}{% endif %}
   </div>
   {% if card.known %}
   <div class="mt-2">
@@ -17,7 +17,7 @@
     <div class="small">
       Última deuda: <strong>{{ item.debt.total }}</strong>
       {% if item.debt.up_to_date %}<span class="badge bg-green-lt">al día</span>{% else %}<span class="badge bg-red-lt">con deuda</span>{% endif %}
-      <div class="text-secondary">consultada el {{ item.debt.fetched_at }}</div>
+      <div class="text-secondary">consultada {{ item.debt.fetched_at }}</div>
     </div>
     {% else %}
     <div class="small text-secondary">Sin deuda consultada todavía.</div>

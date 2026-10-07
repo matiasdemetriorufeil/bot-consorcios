@@ -6,7 +6,7 @@
       <h3 class="card-title">Verificación</h3>
       {% if conversation_url %}
       <div class="card-actions">
-        <a class="btn btn-sm" id="see-conversation" href="{{ conversation_url }}"><i class="fa-solid fa-comments me-2"></i>Ver conversación</a>
+        <a class="btn btn-sm btn-secondary" id="see-conversation" href="{{ conversation_url }}"><i class="fa-solid fa-comments me-2"></i>Ver conversación</a>
       </div>
       {% endif %}
     </div>
@@ -15,7 +15,7 @@
         <dt class="col-4">Edificio</dt><dd class="col-8">{{ building }}</dd>
         <dt class="col-4">Unidad</dt><dd class="col-8">{{ verification.unit.label }}</dd>
         <dt class="col-4">Nombre declarado</dt><dd class="col-8">{{ verification.claimed_name }}</dd>
-        <dt class="col-4">Teléfono</dt><dd class="col-8">{{ verification.phone_e164 }}</dd>
+        <dt class="col-4">Teléfono</dt><dd class="col-8">{{ verification.phone_e164 | phone }}</dd>
         <dt class="col-4">Fecha</dt><dd class="col-8">{{ created_at }}</dd>
       </dl>
       {% if error %}
@@ -39,8 +39,8 @@
         </label>
         {% endfor %}
         <div class="mt-3">
-          <button type="submit" class="btn btn-primary">Aprobar</button>
-          <a href="{{ list_url }}" class="btn">Cancelar</a>
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>Aprobar</button>
+          <a href="{{ list_url }}" class="btn btn-secondary"><i class="fa-solid fa-arrow-left me-1"></i>Cancelar</a>
         </div>
       </form>
       {% endif %}

@@ -37,6 +37,7 @@ LOCKOUT_SECONDS = 15 * 60
 SESSION_SECONDS = 8 * 60 * 60
 SESSION_COOKIE = "admin_session"
 MIN_PASSWORD_LENGTH = 12
+WRONG_CREDENTIALS = "Usuario o contraseña incorrectos."
 
 _SCRYPT_N = 2**14
 _SCRYPT_R = 8
@@ -198,7 +199,7 @@ class AdminAuth(AuthenticationBackend):
         logger.warning("Admin panel: failed login from %s%s", client, " (locked)" if locked else "")
         if locked:
             return await self._locked_response(request, LOCKOUT_SECONDS)
-        return False
+        return await self._login_page(request, WRONG_CREDENTIALS, 400)
 
     def _check_credentials(self, username: str, password: str) -> PanelLogin | None:
         """Who logs in, or None. A hash is always checked, so that a wrong username takes as
@@ -226,8 +227,13 @@ class AdminAuth(AuthenticationBackend):
     async def _locked_response(self, request: Request, seconds: float) -> Response:
         minutes = max(1, round(seconds / 60))
         error = f"Demasiados intentos fallidos. Probá de nuevo en {minutes} minutos."
+        return await self._login_page(request, error, 429)
+
+    async def _login_page(self, request: Request, error: str, status_code: int) -> Response:
+        """The login page with its error (SQLAdmin's own says "Invalid credentials.": the same
+        page and status code, in Spanish)."""
         return await self.templates.TemplateResponse(
-            request, "sqladmin/login.html", {"error": error}, status_code=429
+            request, "sqladmin/login.html", {"error": error}, status_code=status_code
         )
 
     async def logout(self, request: Request) -> Response | bool:

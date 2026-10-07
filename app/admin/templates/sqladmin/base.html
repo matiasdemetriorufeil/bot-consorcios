@@ -1,0 +1,15 @@
+{#- SQLAdmin's base page plus the panel's own style sheet and script (app/admin/static): one
+    style for SQLAdmin's views and ours. Blocks only: the original stays as is. -#}
+{% extends "sqladmin_original/base.html" %}
+{% block head_meta %}
+{{ super() }}
+<meta name="theme-color" content="#1f4e5f">
+{% endblock %}
+{% block head_css %}
+{{ super() }}
+<link rel="stylesheet" href="{{ url_for('admin:panel-static', path='panel.css') }}">
+{% endblock %}
+{% block tail_js %}
+{{ super() }}
+<script type="text/javascript" src="{{ url_for('admin:panel-static', path='panel.js') }}"></script>
+{% endblock %}

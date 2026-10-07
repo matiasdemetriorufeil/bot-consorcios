@@ -7,20 +7,20 @@
     {% if assigned_name %}<span class="small">La tiene <strong>{{ assigned_name }}</strong></span>
     {% else %}<span class="small">Respondida desde el celular</span>{% endif %}
   {% endif %}
-  {% if reason and status != 'bot' %}<span class="badge bg-orange-lt chat-reason">{{ reason[1] }}</span>{% endif %}
+  {% if reason and status != 'bot' %}<span class="badge bg-orange-lt chat-reason" title="{{ reason[1] }}">{{ reason[0] }}</span>{% endif %}
   {% if conversation.handoff_priority == 'urgent' and status == 'waiting_human' %}<span class="badge bg-red text-white">URGENTE</span>{% endif %}
   <div class="chat-actions">
     {# A resolved one only shows its history: replying reopens it (in "Mías"). #}
     {% if status != 'resolved' and not (status == 'human' and conversation.assigned_to == user) %}
-    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="take"><button type="submit" class="btn btn-sm btn-primary">Tomar control</button></form>
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="take"><button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-hand me-1"></i>Tomar control</button></form>
     {% endif %}
     {% if status not in ('bot', 'resolved') %}
-    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="return"><button type="submit" class="btn btn-sm">Devolver al bot</button></form>
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="return"><button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-robot me-1"></i>Devolver al bot</button></form>
     {% endif %}
     {% if status != 'resolved' %}
-    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="resolve"><button type="submit" class="btn btn-sm btn-success">Resolver</button></form>
+    <form method="POST" action="{{ action_url }}"><input type="hidden" name="action" value="resolve"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fa-solid fa-check me-1"></i>Resolver</button></form>
     {% endif %}
-    <button type="button" class="btn btn-sm btn-warning js-note">Nota interna</button>
+    <button type="button" class="btn btn-sm btn-outline-primary js-note"><i class="fa-solid fa-note-sticky me-1"></i>Nota interna</button>
   </div>
 </div>
 {% if conversation.handoff_summary and status in ('waiting_human', 'human') %}

@@ -1,0 +1,282 @@
+/* The panel's only style sheet, loaded by templates/sqladmin/base.html after Tabler (SQLAdmin's
+   theme): same structure, our colors, type and spacing, for SQLAdmin's views and ours alike.
+   No page has its own <style>: what each one needs is here, in its section. */
+
+/* --- Colors and type ------------------------------------------------------------------------ */
+:root,
+[data-bs-theme=light] {
+  --panel-primary: #1f5f7a;          /* sober petrol blue: the expected action */
+  --panel-primary-dark: #184b61;
+  --panel-primary-light: #e7f0f4;
+  --panel-danger: #c92a2a;           /* what cannot be undone */
+  --panel-neutral: #eef1f4;          /* going back, cancelling */
+  --panel-neutral-border: #d5dbe1;
+  --panel-text: #1f2933;
+  --panel-muted: #5f6b7a;
+  --panel-line: #e3e7eb;
+
+  --tblr-primary: var(--panel-primary);
+  --tblr-primary-rgb: 31, 95, 122;
+  --tblr-primary-darken: var(--panel-primary-dark);
+  --tblr-primary-lt: var(--panel-primary-light);
+  --tblr-primary-lt-rgb: 231, 240, 244;
+  --tblr-danger: var(--panel-danger);
+  --tblr-danger-rgb: 201, 42, 42;
+  --tblr-red: var(--panel-danger);
+  --tblr-body-font-size: 0.9375rem;  /* 15 px */
+  --tblr-body-line-height: 1.5;
+  --tblr-body-color: var(--panel-text);
+  --tblr-secondary: var(--panel-muted);
+}
+body { font-size: var(--tblr-body-font-size); }
+.page-title { font-size: 1.35rem; font-weight: 600; }
+.card-title { font-size: 1.05rem; }
+.form-label, .form-hint { font-size: .9rem; }
+.small, small { font-size: .85rem; }
+a { color: var(--panel-primary); }
+
+/* --- Bar: the studio's logo and name ----------------------------------------------------------- */
+.navbar-vertical { background: #17323d !important; }
+.navbar-brand h3 { display: flex; align-items: center; gap: .6rem; margin: 0; font-size: 1.05rem; }
+.navbar-brand h3::before {
+  content: ""; flex: 0 0 2.25rem; width: 2.25rem; height: 2.25rem;
+  background: url("logo.svg") center / contain no-repeat;
+}
+.navbar-vertical .nav-link { font-size: .95rem; }
+.menu-section .nav-link { font-size: .72rem; letter-spacing: .06em; }
+
+/* --- Tables: more air --------------------------------------------------------------------------- */
+.table > :not(caption) > * > * { padding: .7rem .9rem; }
+.card-table thead th { font-size: .78rem; letter-spacing: .02em; color: var(--panel-muted); }
+@media (min-width: 992px) { .table-nowrap-wide td, .table-nowrap-wide th { white-space: nowrap; } }
+
+/* --- Buttons by what they do --------------------------------------------------------------------
+   btn-primary: the expected action · btn-danger: cannot be undone · btn-secondary: go back or
+   cancel (a light gray, not Tabler's dark one) · btn-outline-primary: the other actions. */
+.btn-secondary {
+  --tblr-btn-color: var(--panel-text);
+  --tblr-btn-bg: var(--panel-neutral);
+  --tblr-btn-border-color: var(--panel-neutral-border);
+  --tblr-btn-hover-color: var(--panel-text);
+  --tblr-btn-hover-bg: #e2e7ec;
+  --tblr-btn-hover-border-color: #c6ced6;
+  --tblr-btn-active-color: var(--panel-text);
+  --tblr-btn-active-bg: #d9dfe5;
+  --tblr-btn-disabled-color: var(--panel-muted);
+  --tblr-btn-disabled-bg: var(--panel-neutral);
+}
+.btn-danger {
+  --tblr-btn-bg: var(--panel-danger);
+  --tblr-btn-hover-bg: #a61e1e;
+  --tblr-btn-active-bg: #a61e1e;
+}
+.btn i + span, .btn .fa-solid { line-height: 1; }
+.list-row-buttons { white-space: nowrap; text-align: right; }
+.list-row-buttons .btn + .btn { margin-left: .25rem; }
+
+/* --- SQLAdmin's lists: filters folded on phones, aside on wide screens --------------------- */
+.list-filters-card > summary { cursor: pointer; list-style: none; }
+.list-filters-card > summary::-webkit-details-marker { display: none; }
+.list-filters-card > summary .card-title::after { content: " ▾"; color: var(--panel-muted); }
+.list-filters-card[open] > summary .card-title::after { content: " ▴"; }
+.list-search { min-width: 16rem; max-width: 28rem; flex: 1; }
+.contact-card .badge { white-space: normal; text-align: left; line-height: 1.3; }
+
+/* --- Phones (390 px) ------------------------------------------------------------------------- */
+@media (max-width: 991.98px) {
+  /* The bar: brand, "Salir" and the menu button on one line; the menu, when open, below and
+     across (it used to leave "Salir" floating halfway down). */
+  .navbar-vertical > .container-fluid { flex-wrap: wrap; align-items: center; }
+  .navbar-vertical #navbar-menu { display: contents; }
+  .navbar-vertical .navbar-brand { order: 1; margin-right: auto; }
+  .navbar-vertical > .container-fluid > a.btn { order: 2; margin: 0 .5rem !important; }
+  .navbar-vertical .navbar-toggler { order: 3; }
+  .navbar-vertical #navbarSupportedContent { order: 4; flex-basis: 100%; }
+  .navbar-brand h3 { font-size: .95rem; }
+  .list-search { min-width: 0; max-width: none; flex-basis: 100%; }
+  .filter-sidebar-col { width: 100%; }
+  .card-header { flex-wrap: wrap; gap: .5rem; }
+  .card-header > .ms-auto { margin-left: 0 !important; }
+  .card-header .ms-3 { margin-left: 0 !important; }
+  /* SQLAdmin's lists: the row's buttons last, in their own line of the card. */
+  .rows-table.card-table tr td.list-row-buttons { order: 99; padding-top: .5rem; }
+  .rows-table tr { display: flex !important; flex-direction: column; }
+  .page-header { margin-top: .75rem; }
+}
+
+/* --- Conversaciones (conversations.html) -------------------------------------- */
+  .inbox { display: grid; grid-template-columns: 340px minmax(0, 1fr) 300px; gap: 12px;
+           height: calc(100vh - 175px); min-height: 480px; }
+  .inbox .card { margin: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .inbox-top { padding: 10px; border-bottom: 1px solid #e6e7e9; display: flex; gap: 6px; }
+  .inbox-top input[type=search] { flex: 1; }
+  #inbox-list { overflow-y: auto; flex: 1; min-height: 0; }
+  .inbox-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid #e6e7e9;
+                position: sticky; top: 0; background: #fff; z-index: 1; }
+  .inbox-tab { padding: 6px 8px; border-radius: 6px; color: inherit; text-decoration: none; font-size: .85rem; }
+  .inbox-tab.active { background: var(--tblr-primary); color: #fff; }
+  .inbox-tab.active .badge { background: #fff !important; color: var(--tblr-primary) !important; }
+  .inbox-searching { padding: 6px 10px; font-size: .8rem; color: #667382; }
+  .inbox-row { display: block; padding: 9px 12px; border-bottom: 1px solid #f0f1f3; color: inherit; text-decoration: none; }
+  .inbox-row:hover { background: #f6f8fb; text-decoration: none; }
+  .inbox-row.active { background: var(--panel-primary-light); }
+  .inbox-row.urgent { border-left: 4px solid var(--panel-danger); }
+  .inbox-line { display: flex; gap: 6px; align-items: center; }
+  .inbox-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .inbox-row.unread .inbox-name, .inbox-row.unread .inbox-preview { font-weight: 700; }
+  .inbox-ago { font-size: .75rem; color: #667382; white-space: nowrap; }
+  .inbox-sub { font-size: .78rem; color: #667382; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inbox-preview { font-size: .82rem; color: #49566c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .inbox-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+  .inbox-tags:empty { display: none; }
+  .inbox-empty-list, .inbox-empty { padding: 24px; color: #667382; text-align: center; align-items: center; justify-content: center; }
+  .chat-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px 0; }
+  .chat-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #chat-header { padding: 6px 12px 8px; border-bottom: 1px solid #e6e7e9; }
+  .chat-state { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chat-actions { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px; }
+  .chat-actions form { margin: 0; }
+  .chat-status-waiting_human { background: var(--panel-danger); color: #fff; }
+  .chat-status-human { background: #2fb344; color: #fff; }
+  .chat-status-bot { background: #4299e1; color: #fff; }
+  .chat-status-resolved { background: #9aa0ac; color: #fff; }
+  .chat-summary { margin-top: 6px; font-size: .82rem; background: #fff4e5; border-radius: 6px; padding: 4px 8px; white-space: pre-wrap; }
+  .chat-thread { flex: 1; overflow-y: auto; padding: 12px; background: #efeae2; display: flex; flex-direction: column; min-height: 0; }
+  .msg { max-width: 78%; margin: 4px 0; padding: 6px 10px 4px; border-radius: 8px;
+         box-shadow: 0 1px 1px rgba(0,0,0,.08); font-size: .9rem; }
+  .msg-in { background: #fff; align-self: flex-start; }
+  .msg-out { align-self: flex-end; }
+  .msg-out.msg-bot { background: #e1ebf7; }
+  .msg-out.msg-operator { background: #d9fdd3; }
+  .msg-out.msg-system { background: #eceff3; }
+  .msg-note { align-self: center; max-width: 92%; width: 92%; background: #fff6d1; border: 1px dashed #d4a72c; }
+  .msg-note.msg-handoff { background: #ffe8cc; border-color: #f08c00; }
+  .msg-who { font-size: .75rem; font-weight: 700; color: #1d6f42; margin-bottom: 2px; }
+  .msg-bot .msg-who { color: #2c5c97; }
+  .msg-note .msg-who { color: #8a6100; }
+  .msg-kind { font-size: .72rem; text-transform: uppercase; color: #667382; }
+  .msg-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg-img { max-width: 260px; max-height: 260px; border-radius: 6px; display: block; margin: 2px 0 4px; }
+  .msg-file { display: inline-block; margin: 2px 0 4px; overflow-wrap: anywhere; }
+  .msg-problem { font-size: .78rem; color: #b42318; overflow-wrap: anywhere; }
+  .msg-choices { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .msg-choice { border: 1px solid #b7c6da; border-radius: 12px; padding: 0 8px; font-size: .78rem; background: #fff; }
+  .msg-meta { font-size: .7rem; color: #667382; text-align: right; }
+  .msg-status[data-status=sent]::after { content: "✓"; }
+  .msg-status[data-status=delivered]::after { content: "✓✓"; }
+  .msg-status[data-status=read]::after { content: "✓✓"; color: #34b7f1; font-weight: 700; }
+  .msg-status[data-status=failed]::after { content: "⚠"; color: var(--panel-danger); }
+  .msg-day { align-self: center; margin: 8px 0; font-size: .72rem; }
+  .msg-day span { background: #e1f3fb; padding: 2px 10px; border-radius: 8px; color: #49566c; }
+  .chat-composer { border-top: 1px solid #e6e7e9; padding: 8px 12px; background: #fff; }
+  .chat-composer textarea { width: 100%; resize: vertical; }
+  .composer-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .composer-hint { font-size: .78rem; color: #667382; margin-bottom: 4px; }
+  .contact-card { padding: 12px; overflow-y: auto; }
+  .contact-name { font-weight: 700; font-size: 1.05rem; }
+  .contact-section { margin-top: 12px; font-size: .72rem; text-transform: uppercase; color: #667382; font-weight: 700; }
+  .contact-unit { margin-top: 6px; }
+  #inbox-banner { display: none; }
+  @media (max-width: 991.98px) {
+    .inbox { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 110px); }
+    .inbox.has-open .inbox-list { display: none; }
+    .inbox:not(.has-open) .inbox-chat { display: none; }
+    .msg { max-width: 90%; }
+    .chat-actions .btn { padding: 6px 10px; }
+    .chat-composer .btn { padding: 8px 14px; }
+  }
+
+/* --- Chat de prueba (dev_chat.html) ------------------------------------------- */
+  .devchat { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .phone { border: 10px solid #1f2937; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column;
+           height: calc(100vh - 200px); min-height: 460px; background: #efeae2; }
+  .phone-top { background: #075e54; color: #fff; padding: 10px 14px; }
+  .phone-top small { display: block; opacity: .85; }
+  .phone-thread { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; min-height: 0; }
+  .phone-msg { max-width: 82%; margin: 3px 0; padding: 6px 9px 4px; border-radius: 8px; font-size: .92rem;
+               box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+  .phone-mine { align-self: flex-end; background: #d9fdd3; }
+  .phone-theirs { align-self: flex-start; background: #fff; }
+  .phone-who { font-size: .72rem; font-weight: 700; color: #2c5c97; }
+  .phone-kind { font-size: .7rem; text-transform: uppercase; color: #667382; }
+  .phone-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .phone-choices { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .phone-choice { border: 0; border-top: 1px solid #e6e7e9; background: transparent; color: #027eb5; padding: 4px; font-weight: 600; }
+  .phone-choice:hover { background: #f2f7fb; }
+  .phone-meta { font-size: .68rem; color: #667382; text-align: right; }
+  .phone-empty { margin: auto; color: #667382; text-align: center; padding: 20px; }
+  .phone-input { display: flex; gap: 6px; padding: 8px; background: #f0f2f5; }
+  .phone-input textarea { flex: 1; resize: none; border-radius: 18px; padding: 6px 12px; }
+  #phone-typing { font-size: .75rem; color: #667382; padding: 0 12px 4px; min-height: 1.1em; background: #f0f2f5; }
+  @media (max-width: 991.98px) {
+    .devchat { grid-template-columns: minmax(0, 1fr); }
+    .phone { height: calc(100vh - 140px); border-width: 0; border-radius: 0; }
+  }
+
+/* --- Planilla del SUM (amenity_week.html) ------------------------------------- */
+  /* The whole range fits on the screen: each hour gets the height left under the header and
+     the legend (--agenda-offset, measured on load) divided by the hours, at least 22 px. Only
+     when that minimum does not fit, the grid scrolls inside (and starts at the first slot). */
+  .agenda-scroll { --agenda-offset: 15rem; --head: 2.75rem;
+    max-height: max(12rem, calc(100vh - var(--agenda-offset))); overflow-y: auto; }
+  .agenda { --hour: max(22px, calc((100vh - var(--agenda-offset) - var(--head)) / var(--hours)));
+    display: grid; grid-template-columns: 3.25rem repeat(7, minmax(0, 1fr)); }
+  .agenda-head { position: sticky; top: 0; z-index: 3; height: var(--head); background: var(--tblr-bg-surface, #fff);
+    border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); padding: .3rem .25rem; text-align: center;
+    font-weight: 600; line-height: 1.15; font-size: .85rem; }
+  .agenda-head.is-today { background: var(--tblr-primary-lt, var(--panel-primary-light)); color: var(--tblr-primary, var(--tblr-primary)); }
+  .agenda-head small { display: block; font-weight: 400; }
+  .agenda-hours { border-right: 1px solid var(--tblr-border-color, #e6e7e9); }
+  /* The label sits just under its hour line, inside its own row: never cut at the top. */
+  .agenda-hour { height: var(--hour); font-size: .7rem; line-height: 1; padding: 2px .35rem 0 0;
+    color: var(--tblr-secondary, #667382); text-align: right; white-space: nowrap; overflow: hidden; }
+  .agenda-hour.next-day { font-style: italic; }
+  .agenda-day { position: relative; height: calc(var(--hours) * var(--hour)); background-color: #f4f5f7;
+    background-image: repeating-linear-gradient(to bottom, #e3e5e8 0, #e3e5e8 1px, transparent 1px,
+      transparent var(--hour));
+    border-right: 1px solid #e3e5e8; }
+  .agenda-day.is-today { background-color: #eef3fb; }
+  .agenda-block { position: absolute; padding: 1px 2px; }
+  .agenda-block > a, .agenda-block > button { display: flex; flex-direction: column; justify-content: flex-start;
+    align-items: stretch; width: 100%; height: 100%; overflow: hidden;
+    border-radius: 4px; padding: 1px 4px; font-size: .72rem; line-height: 1.2; text-align: left;
+    text-decoration: none; border: 1px solid transparent; }
+  /* Always the times on one line; the state below, only if it fits (its color says it anyway). */
+  .block-time, .block-state { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .block-time { font-weight: 600; }
+  .slot-free > a { background: #d3f2dc; border-color: #2fb344; color: #1d6b2b; }
+  .slot-free > a:hover { background: #b9eac7; }
+  .slot-reserved > a { background: var(--tblr-primary); border-color: var(--panel-primary-dark); color: #fff; }
+  .slot-reserved > a:hover { background: var(--panel-primary-dark); color: #fff; }
+  .slot-blocked > button { background: #e9ecef; border-color: #d0d5db; color: #6c757d; cursor: help; }
+  .slot-blocked .reason { display: none; position: absolute; top: 100%; left: 2px; z-index: 4; width: max-content;
+    max-width: 16rem; padding: .3rem .5rem; border-radius: 4px; font-size: .75rem; background: #1e293b; color: #fff; }
+  .slot-blocked.show-reason .reason { display: block; }
+  .legend-swatch { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px;
+    margin-right: .3rem; border: 1px solid transparent; }
+  .phone-nav { display: none; }
+  @media (max-width: 767.98px) {
+    .agenda { grid-template-columns: 3.25rem minmax(0, 1fr); }
+    .agenda-head:not(.is-phone-day), .agenda-day:not(.is-phone-day) { display: none; }
+    .agenda-head.agenda-corner { display: block; }
+    .phone-nav { display: flex; }
+    .agenda-block > a, .agenda-block > button { font-size: .8rem; }
+  }
+
+/* --- Lists with buttons in each row (phones.html, verifications.html): one card per row on phones */
+  .rows-table td.row-actions { white-space: nowrap; text-align: right; }
+  .rows-table td.row-actions form { display: inline; margin: 0; }
+  .list-filters summary { cursor: pointer; }
+  @media (max-width: 767.98px) {
+    .rows-table thead { display: none; }
+    .rows-table, .rows-table tbody, .rows-table tr, .rows-table td { display: block; width: 100%; }
+    .rows-table tr { padding: .75rem 1rem; border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); }
+    .rows-table.card-table tr td, .rows-table.card-table tr td:first-child,
+    .rows-table.card-table tr td:last-child { display: flex; gap: .5rem;
+      padding: .15rem 0; border: 0; text-align: left; }
+    .rows-table td[data-label]::before { content: attr(data-label); flex: 0 0 6.5rem;
+      color: var(--tblr-secondary, #667382); font-size: .8rem; }
+    .rows-table.card-table tr td.row-actions { gap: .5rem; padding-top: .5rem; white-space: normal; }
+    .rows-table td.row-actions form, .rows-table td.row-actions > a { flex: 1; display: flex; }
+    .rows-table td.row-actions .btn { flex: 1; }
+  }

@@ -6,6 +6,7 @@ import re
 import pytest
 from sqlalchemy.orm import Session
 
+from app.admin.formatting import phone
 from app.admin.phones import PAGE_SIZE, UNLINK_CONFIRMATION
 from app.db.models import DataSource, PersonRole, Phone
 from tests.admin.conftest import ADMIN, OPERATOR, Panel
@@ -47,7 +48,8 @@ def _page(panel: Panel, **params: str) -> str:
 
 
 def _shown(page: str) -> set[str]:
-    return {n for n in ALL if n in page}
+    # As the panel shows them: "351 555-0401".
+    return {n for n in ALL if phone(n) in page}
 
 
 def _headers(page: str) -> list[str]:
@@ -74,7 +76,7 @@ def test_opens_on_all_when_nothing_to_review(logged_in: Panel, db_session: Sessi
     f.person(db_session, "Ana Inventada", phone=PLAIN)
     db_session.commit()
     page = _page(logged_in)
-    assert PLAIN in page
+    assert phone(PLAIN) in page
     assert re.search(r'nav-link active"[^>]*>\s*Todos', page)
     assert "Aprobar seleccionados" not in page
 
@@ -86,7 +88,8 @@ def test_all_tab_shows_every_phone_with_person_units_and_status(
     assert _shown(page) == set(ALL)
     assert "Ana Inventada" in page
     assert "1A (propietario)" in page and "2B (inquilino)" in page
-    assert "Bot (código por email)" in page and "ConsorPlus" in page
+    assert "Por WhatsApp" in page and "ConsorPlus" in page
+    assert "+549" not in page
     for status in ("Verificado", "A revisar", "En conflicto", "Sin verificar"):
         assert status in page
     assert "Aprobar seleccionados" not in page
@@ -245,7 +248,7 @@ def test_unlink_deletes_and_audits(logged_in: Panel, phones: dict[str, int]) -> 
     assert event["source"] == "bot_verified" and event["verified"] is True
     assert isinstance(event["person_id"], int)
     page = _page(logged_in, tab="all")
-    assert "Dario Verificado" not in page and PLAIN in page
+    assert "Dario Verificado" not in page and phone(PLAIN) in page
 
 
 def test_unlink_a_phone_to_review(logged_in: Panel, phones: dict[str, int]) -> None:

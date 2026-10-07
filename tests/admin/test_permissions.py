@@ -1,6 +1,11 @@
 """Who sees what, checked on the server: an operator against every admin page and action (403,
 a page of the panel with its menu, and nothing changes), what she can do, and the menu of each
-role. The panel runs with APP_ENV=development, so the test chat exists. Invented data only."""
+role. The panel runs with APP_ENV=development, so the test chat exists. Invented data only.
+
+One panel for the whole module (building it and hashing passwords took most of the time):
+each test binds its sessionmaker to that test's connection (rolled back afterwards, as
+everywhere), creates its user and logs in again.
+"""
 
 import re
 from collections.abc import Iterator
@@ -10,10 +15,14 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.admin import setup_admin
 from app.admin.amenities import AmenitiesView
+from app.admin.auth import AdminAuth, LoginLimiter, hash_password
 from app.db.models import (
     Amenity,
     AmenitySlot,
@@ -35,12 +44,14 @@ from tests.admin.conftest import (
     OPERATOR,
     TABLE_ADMIN,
     USER_PASSWORD,
+    FakeClock,
     Panel,
     admin_settings,
-    build_panel,
-    make_user,
 )
 from tests.bot import factories as f
+from tests.whatsapp.fakes import FakeWhatsApp
+
+USER_HASH = hash_password(USER_PASSWORD)  # once for the module
 
 CBA = ZoneInfo("America/Argentina/Cordoba")
 NOW = datetime(2026, 10, 5, 10, 0, tzinfo=CBA)  # Monday
@@ -98,7 +109,7 @@ def ids(db_session: Session) -> Ids:
     slot = AmenitySlot(weekday=4, start_time=time(14), end_time=time(18))
     amenity.slots = [slot]
     db_session.add_all([info, template, quick, run, amenity])
-    user = make_user(db_session, "lucia")
+    user = _user(db_session, "lucia", PanelRole.OPERATOR)
     db_session.commit()
     settings_id = db_session.scalar(select(BotSettings.id))
     assert settings_id is not None
@@ -108,27 +119,66 @@ def ids(db_session: Session) -> Ids:
     )  # fmt: skip
 
 
-def _panel(db_session: Session, username: str, role: PanelRole, app_env: str) -> Iterator[Panel]:
-    panel = build_panel(
-        db_session, admin_settings(app_env=app_env), bot_factory=lambda: pytest.fail("no bot")
+def _user(session: Session, username: str, role: PanelRole) -> PanelUser:
+    user = PanelUser(
+        username=username, display_name=username.title(), password_hash=USER_HASH, role=role
     )
-    make_user(panel.session, username, role)
-    panel.session.commit()
-    with panel.client:
-        assert panel.login(username, USER_PASSWORD).status_code == 302
-        yield panel
+    session.add(user)
+    session.flush()
+    return user
+
+
+@dataclass
+class Shared:
+    client: TestClient
+    maker: sessionmaker
+    clock: FakeClock
+
+
+@pytest.fixture(scope="module")
+def shared(db_engine: Engine) -> Iterator[Shared]:
+    """The panel (in development) for every test of the module; its sessionmaker gets each
+    test's connection in _login."""
+    maker = sessionmaker(join_transaction_mode="create_savepoint")
+    clock = FakeClock()
+    settings = admin_settings(app_env="development")
+    app = FastAPI()
+    setup_admin(
+        app,
+        maker,
+        settings,
+        auth=AdminAuth(settings, LoginLimiter(clock=clock), clock=clock),
+        sender_factory=FakeWhatsApp,
+        bot_factory=lambda: pytest.fail("no bot"),
+    )
+    with TestClient(app, base_url="https://testserver") as client:
+        yield Shared(client, maker, clock)
+
+
+def _login(shared: Shared, db_session: Session, username: str, role: PanelRole) -> Panel:
+    shared.maker.configure(bind=db_session.get_bind())
+    _user(db_session, username, role)
+    db_session.commit()
+    shared.client.cookies.clear()
+    response = shared.client.post(
+        "/admin/login",
+        data={"username": username, "password": USER_PASSWORD},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    return Panel(client=shared.client, session=db_session, clock=shared.clock)
 
 
 @pytest.fixture
-def op(db_session: Session) -> Iterator[Panel]:
+def op(shared: Shared, db_session: Session) -> Panel:
     """An operator, with the panel in development (the test chat exists)."""
-    yield from _panel(db_session, OPERATOR, PanelRole.OPERATOR, "development")
+    return _login(shared, db_session, OPERATOR, PanelRole.OPERATOR)
 
 
 @pytest.fixture
-def boss(db_session: Session) -> Iterator[Panel]:
+def boss(shared: Shared, db_session: Session) -> Panel:
     """A table admin, with the panel in development."""
-    yield from _panel(db_session, TABLE_ADMIN, PanelRole.ADMIN, "development")
+    return _login(shared, db_session, TABLE_ADMIN, PanelRole.ADMIN)
 
 
 def _menu(page: str) -> list[str]:

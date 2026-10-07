@@ -28,7 +28,7 @@
               <i class="fa-solid fa-table-cells me-2"></i>Planilla
             </a>
             {% if is_admin %}
-            <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=row.amenity.id) }}">
+            <a class="btn btn-secondary" href="{{ url_for('admin:view-amenity-config', amenity_id=row.amenity.id) }}">
               <i class="fa-solid fa-gear me-2"></i>Configuración
             </a>
             {% endif %}

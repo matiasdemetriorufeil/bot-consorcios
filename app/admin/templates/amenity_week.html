@@ -1,69 +1,17 @@
 {% extends "sqladmin/layout.html" %}
-{% block head_tail %}
-<style>
-  /* The whole range fits on the screen: each hour gets the height left under the header and
-     the legend (--agenda-offset, measured on load) divided by the hours, at least 22 px. Only
-     when that minimum does not fit, the grid scrolls inside (and starts at the first slot). */
-  .agenda-scroll { --agenda-offset: 15rem; --head: 2.75rem;
-    max-height: max(12rem, calc(100vh - var(--agenda-offset))); overflow-y: auto; }
-  .agenda { --hour: max(22px, calc((100vh - var(--agenda-offset) - var(--head)) / var(--hours)));
-    display: grid; grid-template-columns: 3.25rem repeat(7, minmax(0, 1fr)); }
-  .agenda-head { position: sticky; top: 0; z-index: 3; height: var(--head); background: var(--tblr-bg-surface, #fff);
-    border-bottom: 1px solid var(--tblr-border-color, #e6e7e9); padding: .3rem .25rem; text-align: center;
-    font-weight: 600; line-height: 1.15; font-size: .85rem; }
-  .agenda-head.is-today { background: var(--tblr-primary-lt, #e8f0fb); color: var(--tblr-primary, #206bc4); }
-  .agenda-head small { display: block; font-weight: 400; }
-  .agenda-hours { border-right: 1px solid var(--tblr-border-color, #e6e7e9); }
-  /* The label sits just under its hour line, inside its own row: never cut at the top. */
-  .agenda-hour { height: var(--hour); font-size: .7rem; line-height: 1; padding: 2px .35rem 0 0;
-    color: var(--tblr-secondary, #667382); text-align: right; white-space: nowrap; overflow: hidden; }
-  .agenda-hour.next-day { font-style: italic; }
-  .agenda-day { position: relative; height: calc(var(--hours) * var(--hour)); background-color: #f4f5f7;
-    background-image: repeating-linear-gradient(to bottom, #e3e5e8 0, #e3e5e8 1px, transparent 1px,
-      transparent var(--hour));
-    border-right: 1px solid #e3e5e8; }
-  .agenda-day.is-today { background-color: #eef3fb; }
-  .agenda-block { position: absolute; padding: 1px 2px; }
-  .agenda-block > a, .agenda-block > button { display: flex; flex-direction: column; justify-content: flex-start;
-    align-items: stretch; width: 100%; height: 100%; overflow: hidden;
-    border-radius: 4px; padding: 1px 4px; font-size: .72rem; line-height: 1.2; text-align: left;
-    text-decoration: none; border: 1px solid transparent; }
-  /* Always the times on one line; the state below, only if it fits (its color says it anyway). */
-  .block-time, .block-state { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .block-time { font-weight: 600; }
-  .slot-free > a { background: #d3f2dc; border-color: #2fb344; color: #1d6b2b; }
-  .slot-free > a:hover { background: #b9eac7; }
-  .slot-reserved > a { background: #206bc4; border-color: #1a569d; color: #fff; }
-  .slot-reserved > a:hover { background: #1a569d; color: #fff; }
-  .slot-blocked > button { background: #e9ecef; border-color: #d0d5db; color: #6c757d; cursor: help; }
-  .slot-blocked .reason { display: none; position: absolute; top: 100%; left: 2px; z-index: 4; width: max-content;
-    max-width: 16rem; padding: .3rem .5rem; border-radius: 4px; font-size: .75rem; background: #1e293b; color: #fff; }
-  .slot-blocked.show-reason .reason { display: block; }
-  .legend-swatch { display: inline-block; width: .9rem; height: .9rem; border-radius: 3px; vertical-align: -2px;
-    margin-right: .3rem; border: 1px solid transparent; }
-  .phone-nav { display: none; }
-  @media (max-width: 767.98px) {
-    .agenda { grid-template-columns: 3.25rem minmax(0, 1fr); }
-    .agenda-head:not(.is-phone-day), .agenda-day:not(.is-phone-day) { display: none; }
-    .agenda-head.agenda-corner { display: block; }
-    .phone-nav { display: flex; }
-    .agenda-block > a, .agenda-block > button { font-size: .8rem; }
-  }
-</style>
-{% endblock %}
 {% block content %}
 <div class="col-12">
   {# One wrapper: the row of the layout lays out the children of a column side by side. #}
   <div class="w-100" id="agenda-top">
   <div class="d-flex flex-wrap align-items-center gap-2">
-    <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
     {% if is_admin %}
-    <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
     {% endif %}
     <div class="ms-auto btn-group" role="group" aria-label="Semana">
-      <a class="btn" id="previous-week" href="{{ previous_week }}" aria-label="Semana anterior"><i class="fa-solid fa-chevron-left"></i></a>
-      <a class="btn" id="this-week" href="{{ this_week }}">Hoy</a>
-      <a class="btn" id="next-week" href="{{ next_week }}" aria-label="Semana siguiente"><i class="fa-solid fa-chevron-right"></i></a>
+      <a class="btn btn-secondary" id="previous-week" href="{{ previous_week }}"><i class="fa-solid fa-chevron-left me-1"></i><span class="d-none d-md-inline">Semana anterior</span><span class="d-md-none">Anterior</span></a>
+      <a class="btn btn-secondary" id="this-week" href="{{ this_week }}">Hoy</a>
+      <a class="btn btn-secondary" id="next-week" href="{{ next_week }}"><span class="d-none d-md-inline">Semana siguiente</span><span class="d-md-none">Siguiente</span><i class="fa-solid fa-chevron-right ms-1"></i></a>
     </div>
   </div>
   <div class="d-flex flex-wrap align-items-center gap-3 mt-2 small" id="legend">
@@ -94,9 +42,9 @@
   <div class="card">
     {% set phone = agenda.days[phone_day] %}
     <div class="card-header phone-nav align-items-center justify-content-between">
-      <a class="btn btn-icon" id="previous-day" href="{{ previous_day }}" aria-label="Día anterior"><i class="fa-solid fa-chevron-left"></i></a>
+      <a class="btn btn-secondary" id="previous-day" href="{{ previous_day }}"><i class="fa-solid fa-chevron-left me-1"></i>Día anterior</a>
       <strong>{{ phone.name }} {{ phone.day.strftime("%d/%m") }}</strong>
-      <a class="btn btn-icon" id="next-day" href="{{ next_day }}" aria-label="Día siguiente"><i class="fa-solid fa-chevron-right"></i></a>
+      <a class="btn btn-secondary" id="next-day" href="{{ next_day }}">Día siguiente<i class="fa-solid fa-chevron-right ms-1"></i></a>
     </div>
     <div class="agenda-scroll" id="agenda-scroll">
     <div class="agenda" id="agenda" style="--hours: {{ agenda.hours | length }}">

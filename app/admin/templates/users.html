@@ -14,7 +14,7 @@
             <td>{{ roles[user.role] }}</td>
             <td>{% if user.active %}<span class="badge bg-green-lt">Activo</span>{% else %}<span class="badge bg-secondary-lt">Desactivado</span>{% endif %}</td>
             <td>{{ last_login or '—' }}</td>
-            <td><a class="btn btn-sm" href="{{ url_for('admin:view-user-edit', user_id=user.id) }}">Editar</a></td>
+            <td><a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-user-edit', user_id=user.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Editar</a></td>
           </tr>
           {% else %}
           <tr><td colspan="6" class="text-secondary">Todavía no hay usuarios: creá uno por empleada.</td></tr>
@@ -24,7 +24,7 @@
     </div>
     {% if env_username %}
     <div class="card-footer small text-secondary">
-      Además está el admin de rescate <strong>{{ env_username }}</strong> (definido en .env): no se cambia desde acá.
+      Además está el admin de rescate <strong>{{ env_username }}</strong> (se configura en el servidor): no se cambia desde acá.
     </div>
     {% endif %}
   </div>

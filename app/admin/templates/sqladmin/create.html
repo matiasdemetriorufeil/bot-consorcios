@@ -1,0 +1,24 @@
+{#- SQLAdmin's create page, only its form changed: the buttons keep SQLAdmin's English value (it
+    compares it to decide where to go after saving) and show a Spanish label; colors by what
+    they do (app.admin.i18n has the rest of its texts). -#}
+{% extends "sqladmin_original/create.html" %}
+{% from 'sqladmin/_macros.html' import render_form_fields %}
+{% block create_form %}
+<form action="{{ url_for('admin:create', identity=model_view.identity) }}" method="POST"
+  enctype="multipart/form-data">
+  {% if error %}
+  <div class="alert alert-danger" role="alert">{{ error }}</div>
+  {% endif %}
+  <fieldset class="form-fieldset">
+    {{ render_form_fields(form, form_opts=form_opts, ajax_lookup_url=url_for('admin:ajax_lookup', identity=model_view.identity)) }}
+  </fieldset>
+  <div class="d-flex flex-wrap gap-2 form-buttons">
+    <button type="submit" name="save" value="Save" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>{{ _('Save') }}</button>
+    {% if model_view.can_edit and model_view.has_permission(request, "edit") %}
+    <button type="submit" name="save" value="Save and continue editing" class="btn btn-outline-primary">{{ _('Save and continue editing') }}</button>
+    {% endif %}
+    <button type="submit" name="save" value="Save and add another" class="btn btn-outline-primary">{{ _('Save and add another') }}</button>
+    <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn btn-secondary ms-sm-auto"><i class="fa-solid fa-arrow-left me-1"></i>{{ _("Cancel") }}</a>
+  </div>
+</form>
+{% endblock %}

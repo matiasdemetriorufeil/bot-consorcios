@@ -1,5 +1,43 @@
 # Inventario del panel `/admin`
 
+## Actualización 5d.4: castellano y un solo estilo (2026-10-07)
+
+Lo que sigue reemplaza lo que el relevamiento original decía de textos en inglés, valores
+técnicos y estilo.
+
+- **SQLAdmin en castellano.** La versión queda fija en `sqladmin==0.32.0`.
+  - Sus textos se traducen con un diccionario (`app/admin/i18n.py`), sin copiar plantillas.
+  - Solo hay copias de `list.html` y `details.html`.
+  - `edit`, `create`, `base` y `layout` sobrescriben bloques.
+  - En `_macros.html` están el menú y los campos de formulario.
+  - Los mensajes de validación salen del catálogo en castellano de WTForms.
+  - El login dice «Ingresar al panel del Estudio Diego Rufeil».
+  - `tests/admin/test_sqladmin_pin.py` avisa si una actualización de SQLAdmin cambia algo de
+    lo que adaptamos.
+- **Nada técnico a la vista:**
+  - Fechas: «hoy 11:32», «ayer 18:05», «07/10 11:32» o «07/10/2026».
+  - Teléfonos: «351 555-0101».
+  - Edificios sin código, salvo en su propia columna de la pantalla Edificios.
+  - Valores traducidos desde un solo diccionario (`app/admin/labels.py`).
+  - Sincronizaciones con errores y estadísticas legibles.
+  - Métricas con herramientas en castellano y «US$ 0,20».
+  - Motivos de derivación: etiqueta corta («Reclamo de deuda») y texto largo en el resumen.
+- **Un solo estilo** (`app/admin/static/panel.css`):
+  - colores propios sobre Tabler;
+  - letra de 15 px;
+  - logo «DR» y favicon.
+- **Botones por lo que hacen:**
+  - azul: la acción esperada;
+  - rojo: lo que no se deshace;
+  - gris: volver o cancelar.
+  - Siempre con texto.
+- **Celular:**
+  - «Salir» queda arriba;
+  - las listas son tarjetas;
+  - los filtros aparecen plegados.
+
+Capturas: `docs/panel-capturas/5d4/`, fuera de Git.
+
 ## Actualización: simplificación por rol (2026-10-07)
 
 Lo que sigue en esta sección reemplaza al inventario original donde lo contradiga. Lo demás,

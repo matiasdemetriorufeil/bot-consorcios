@@ -17,7 +17,7 @@
         <label class="form-label" for="display_name">Nombre</label>
         <div class="input-group">
           <input class="form-control" id="display_name" name="display_name" maxlength="100" required value="{{ user.display_name }}">
-          <button type="submit" class="btn">Guardar nombre</button>
+          <button type="submit" class="btn btn-primary">Guardar nombre</button>
         </div>
       </form>
 
@@ -30,7 +30,7 @@
             <option value="{{ value.value }}" {% if user.role == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <button type="submit" class="btn" {% if myself %}disabled{% endif %}>Cambiar rol</button>
+          <button type="submit" class="btn btn-primary" {% if myself %}disabled{% endif %}>Cambiar rol</button>
         </div>
         {% if myself %}<div class="form-hint">No podés cambiar tu propio rol.</div>{% endif %}
       </form>
@@ -55,11 +55,11 @@
       {% else %}
       <form method="POST">
         <input type="hidden" name="change" value="reactivate">
-        <button type="submit" class="btn btn-success">Reactivar</button>
+        <button type="submit" class="btn btn-primary">Reactivar</button>
       </form>
       {% endif %}
     </div>
-    <div class="card-footer"><a class="btn" href="{{ url_for('admin:view-users') }}">Volver a usuarios</a></div>
+    <div class="card-footer"><a class="btn btn-secondary" href="{{ url_for('admin:view-users') }}"><i class="fa-solid fa-arrow-left me-1"></i>Volver a usuarios</a></div>
   </div>
 </div>
 {% endblock %}

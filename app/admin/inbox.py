@@ -14,7 +14,7 @@ audited in bot_events (admin_action) with the panel user, never with message tex
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -22,12 +22,11 @@ from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session, selectinload
 
+from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.amenities.booking import describe_slot
 from app.bot.identity import to_e164
 from app.bot.tools import format_money
-from app.bot.unit_search import display_building_name
-from app.channels.handoff import REASONS
 from app.db.models import (
     Building,
     DebtSnapshot,
@@ -64,13 +63,8 @@ LIST_LIMIT = 100
 # WhatsApp's limit for a text message.
 MAX_TEXT = 4096
 MAX_NOTE = 4000
-STATUS_LABELS = {
-    WaConversationStatus.BOT: "Con el bot",
-    WaConversationStatus.WAITING_HUMAN: "Esperando persona",
-    WaConversationStatus.HUMAN: "Con una persona",
-    WaConversationStatus.RESOLVED: "Resuelta",
-}
-ROLE_LABELS = {PersonRole.OWNER: "propietario", PersonRole.TENANT: "inquilino"}
+STATUS_LABELS = labels.CONVERSATION_STATUS
+ROLE_LABELS = labels.PERSON_ROLE
 _KIND_LABELS = {
     "image": "Foto",
     "sticker": "Sticker",
@@ -160,7 +154,7 @@ def identify_many(session: Session, phones: list[str]) -> dict[str, Known]:
             by_person[person_id].units.append(
                 UnitLine(
                     unit_id=unit_id,
-                    building=display_building_name(building),
+                    building=formatting.building(building),
                     label=label,
                     role=ROLE_LABELS.get(PersonRole(role), str(role)),
                 )
@@ -187,10 +181,9 @@ def ago(when: datetime | None, now: datetime) -> str:
 
 
 def reason_label(reason: str | None) -> tuple[str, str] | None:
-    """(label, text) of a handoff reason: ("ventana-cerrada", "Ventana de 24 h cerrada...")."""
-    if not reason:
-        return None
-    return REASONS.get(reason, (reason, reason))
+    """(short label, long text) of a handoff reason: ("Ventana cerrada", "Ventana de 24 h
+    cerrada: el bot no pudo responder"), from app.admin.labels."""
+    return labels.reason(reason)
 
 
 @dataclass
@@ -419,6 +412,7 @@ def _local(value: datetime | None, timezone: str, fmt: str = "%d/%m/%Y %H:%M") -
 def contact_card(session: Session, contact: WaContact, timezone: str, today: date) -> ContactCard:
     who = identify_many(session, [contact.phone_e164]).get(contact.phone_e164)
     units = who.units if who else []
+    now = datetime.combine(today, time(12), tzinfo=ZoneInfo(timezone))  # "hoy"/"ayer" by today
     unit_ids = list(dict.fromkeys(u.unit_id for u in units))
     debts: dict[int, DebtSnapshot] = {}
     if unit_ids:
@@ -438,7 +432,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
                 debt=DebtLine(
                     total=format_money(snapshot.total_amount),
                     up_to_date=snapshot.is_up_to_date,
-                    fetched_at=_local(snapshot.fetched_at, timezone),
+                    fetched_at=formatting.when(snapshot.fetched_at, now, timezone),
                 )
                 if snapshot
                 else None,
@@ -462,7 +456,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
         )
         reservations = [
             CardReservation(
-                building=display_building_name(r.unit.building.name),
+                building=formatting.building(r.unit.building.name),
                 unit=r.unit.label,
                 day=r.date,
                 slot=describe_slot(r.slot),
@@ -746,7 +740,7 @@ def _send(
 ) -> SendResult:
     if sender is None:
         raise InboxError(
-            "WhatsApp no está configurado en este servidor (faltan sus claves en .env)."
+            "WhatsApp no está configurado en este servidor: avisale a quien administra el sistema."
         )
     conversation = _locked(session, conversation_id)
     contact = _contact(session, conversation)

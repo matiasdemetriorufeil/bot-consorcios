@@ -77,7 +77,8 @@ def _approve_url(request_id: int) -> str:
 
 def test_list_shows_unit_building_name_date_and_status(logged_in: Panel, pending: Pending) -> None:
     page = logged_in.client.get(LIST).text
-    for text in ("TORRE INVENTADA", "03-B", "Dueña Inventada", PHONE, "Nombre declarado", "Fecha"):
+    shown = ("TORRE INVENTADA", "03-B", "Dueña Inventada", "351 555-0401", "Nombre declarado")
+    for text in (*shown, "Fecha"):
         assert text in page
     assert "Pendiente" in page and "pending" not in page
     assert ">id<" not in page and ">ID<" not in page

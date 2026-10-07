@@ -1,5 +1,4 @@
 {% extends "sqladmin/layout.html" %}
-{% block head_tail %}{% include "_row_cards_css.html" %}{% endblock %}
 {% block content %}
 {% set approve_many_url = url_for('admin:view-phones-approve') %}
 <div class="col-12">
@@ -22,7 +21,7 @@
           <input class="form-control" type="search" name="q" value="{{ result.query }}"
                  placeholder="Número o nombre" aria-label="Buscar teléfonos">
         </div>
-        <div class="col-12 col-md-auto"><button class="btn w-100" type="submit">Buscar</button></div>
+        <div class="col-12 col-md-auto"><button class="btn btn-primary w-100" type="submit"><i class="fa-solid fa-magnifying-glass me-1"></i>Buscar</button></div>
         <div class="col-12">
           <details class="list-filters" {% if result.status or result.source %}open{% endif %}>
             <summary class="small text-secondary">Filtros{% if result.status or result.source %} (aplicados){% endif %}</summary>
@@ -47,7 +46,7 @@
               </div>
               <div class="col-12 col-lg-auto d-flex align-items-end gap-2">
                 <button class="btn btn-primary" type="submit">Aplicar</button>
-                {% if result.status or result.source %}<a class="btn" href="{{ link(status=None, source=None, page=None) }}">Quitar filtros</a>{% endif %}
+                {% if result.status or result.source %}<a class="btn btn-secondary" href="{{ link(status=None, source=None, page=None) }}">Quitar filtros</a>{% endif %}
               </div>
             </div>
           </details>
@@ -62,7 +61,7 @@
         <input class="form-check-input me-2" type="checkbox" id="select-all" aria-label="Elegir todos">
         <span class="form-check-label small">Todos</span>
       </label>
-      <button class="btn btn-sm btn-success" type="submit">Aprobar seleccionados</button>
+      <button class="btn btn-sm btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Aprobar seleccionados</button>
     </form>
     {% endif %}
 
@@ -91,12 +90,12 @@
               {% if row.status == 'review' %}
               <form method="POST" action="{{ url_for('admin:view-phone-approve', phone_id=row.id) }}">
                 <input type="hidden" name="back" value="{{ back }}">
-                <button class="btn btn-sm btn-success" type="submit">Aprobar</button>
+                <button class="btn btn-sm btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Aprobar</button>
               </form>
               {% endif %}
               <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" class="js-unlink">
                 <input type="hidden" name="back" value="{{ back }}">
-                <button class="btn btn-sm btn-outline-danger" type="submit">Desvincular</button>
+                <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-link-slash me-1"></i>Desvincular</button>
               </form>
             </td>
           </tr>
@@ -116,8 +115,8 @@
       <span class="small text-secondary">{{ result.total }} teléfono(s){% if result.pages > 1 %} · página {{ result.page }} de {{ result.pages }}{% endif %}</span>
       {% if result.pages > 1 %}
       <div class="ms-auto btn-group">
-        <a class="btn btn-sm {% if result.page <= 1 %}disabled{% endif %}" href="{{ link(page=result.page - 1) }}">Anterior</a>
-        <a class="btn btn-sm {% if result.page >= result.pages %}disabled{% endif %}" href="{{ link(page=result.page + 1) }}">Siguiente</a>
+        <a class="btn btn-sm btn-secondary {% if result.page <= 1 %}disabled{% endif %}" href="{{ link(page=result.page - 1) }}">Anterior</a>
+        <a class="btn btn-sm btn-secondary {% if result.page >= result.pages %}disabled{% endif %}" href="{{ link(page=result.page + 1) }}">Siguiente</a>
       </div>
       {% endif %}
     </div>

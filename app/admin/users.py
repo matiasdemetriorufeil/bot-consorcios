@@ -7,7 +7,6 @@ here and its name cannot be taken. Audited without passwords or hashes.
 """
 
 from typing import Any, ClassVar
-from zoneinfo import ZoneInfo
 
 from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
@@ -17,6 +16,7 @@ from starlette.datastructures import FormData
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
+from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.admin.auth import (
     MIN_PASSWORD_LENGTH,
@@ -29,7 +29,7 @@ from app.admin.auth import (
 from app.config import Settings
 from app.db.models import PanelRole, PanelUser
 
-ROLE_LABELS = {PanelRole.ADMIN: "Admin", PanelRole.OPERATOR: "Operadora"}
+ROLE_LABELS = labels.PANEL_ROLE
 USERNAME_CHARS = set("abcdefghijklmnopqrstuvwxyz0123456789._-")
 
 
@@ -63,7 +63,7 @@ def create_user(session: Session, form: FormData, actor: str, env_username: str)
     if not username or not set(username) <= USERNAME_CHARS or len(username) > 100:
         raise UserProblem("El usuario va en minúsculas, sin espacios (letras, números, . _ -).")
     if env_username and username == env_username.lower():
-        raise UserProblem("Ese usuario está reservado para el admin de rescate (.env).")
+        raise UserProblem("Ese usuario está reservado para el admin de rescate.")
     if find_user(session, username) is not None:
         raise UserProblem("Ya existe un usuario con ese nombre.")
     user = PanelUser(
@@ -148,7 +148,7 @@ class UsersView(AdminOnly, BaseView):
         )
 
     def _local(self, value: Any) -> str:
-        return value.astimezone(ZoneInfo(self.timezone)).strftime("%d/%m/%Y %H:%M") if value else ""
+        return formatting.when(value, timezone=self.timezone) if value else ""
 
     @expose("/users", methods=["GET", "POST"], identity="users")
     async def users_page(self, request: Request) -> Response:

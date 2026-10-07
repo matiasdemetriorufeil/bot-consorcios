@@ -137,7 +137,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "rapidfuzz", specifier = ">=3.9" },
     { name = "requests", specifier = ">=2.34.2" },
-    { name = "sqladmin", specifier = ">=0.32.0" },
+    { name = "sqladmin", specifier = "==0.32.0" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
