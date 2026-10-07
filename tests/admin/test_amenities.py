@@ -79,9 +79,9 @@ def test_pages_need_login(panel: Panel, sum_: Sum) -> None:
         assert response.status_code == 302 and "/admin/login" in response.headers["location"]
 
 
-def test_menu_has_reservations_and_then_claims(logged_in: Panel) -> None:
+def test_claims_is_out_of_the_menu_but_its_page_stays(logged_in: Panel) -> None:
     page = logged_in.client.get("/admin/").text
-    assert page.index("Reservas de SUM") < page.index("Reclamos")
+    assert "Reservas de SUM" in page and "Reclamos" not in page
 
     claims = logged_in.client.get("/admin/claims")
     assert claims.status_code == 200

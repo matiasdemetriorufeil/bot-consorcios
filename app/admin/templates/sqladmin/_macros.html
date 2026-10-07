@@ -1,0 +1,29 @@
+{# SQLAdmin's macros, with our menu: the admin-only views (menu_section "admin", from
+   app.admin.auth.AdminOnly) go under an "Administración" heading. Only admins see those
+   views, so operators never see the heading. Everything else is SQLAdmin's own. #}
+{% import "sqladmin_original/_macros.html" as original %}
+
+{# Jinja does not re-export imported macros: the ones other SQLAdmin templates import, wrapped. #}
+{% macro menu_category(menu, request) %}{{ original.menu_category(menu, request) }}{% endmacro %}
+{% macro menu_item(menu, request) %}{{ original.menu_item(menu, request) }}{% endmacro %}
+{% macro render_field(field, kwargs={}, ajax_lookup_url="") %}{{ original.render_field(field, kwargs, ajax_lookup_url) }}{% endmacro %}
+{% macro render_form_fields(form, form_opts=None, ajax_lookup_url="") %}{{ original.render_form_fields(form, form_opts, ajax_lookup_url) }}{% endmacro %}
+
+{% macro display_menu(menu, request) %}
+<div class="navbar-nav">
+  {% set section = namespace(shown=False) %}
+  {% for item in menu.items %}
+  {% if item.type_ == "View" %}
+  {% if not section.shown and item.view.menu_section == "admin" and item.is_visible(request) and item.is_accessible(request) %}
+  {% set section.shown = True %}
+  <li class="nav-item menu-section mt-3" id="menu-section-admin">
+    <span class="nav-link disabled text-uppercase small fw-bold opacity-75">Administración</span>
+  </li>
+  {% endif %}
+  {{ menu_item(item, request) }}
+  {% elif item.type_ == "Category" %}
+  {{ menu_category(item, request) }}
+  {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}

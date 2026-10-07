@@ -91,7 +91,9 @@ def test_list_shows_waiting_conversations(operator: Panel) -> None:
 
     assert "Esperando persona" in page and "Mías" in page and "Con el bot" in page
     assert "Contacto Inventado" in page and "necesito ayuda" in page
-    assert "ventana-cerrada" in page
+    # The reason in Spanish (the label used to be the tag, "ventana-cerrada").
+    assert "Ventana de 24 h cerrada: el bot no pudo responder" in page
+    assert "ventana-cerrada" not in page
     assert f"/admin/conversations/{conv.id}" in page
 
 
@@ -409,3 +411,54 @@ def test_the_page_has_the_alerts_and_double_click_guard(operator: Panel) -> None
     assert 'id="enable-alerts"' in page and "Notification" in page
     assert 'class="js-once"' in page and "Enviando…" in page
     assert "|safe" not in page
+
+
+# --- A resolved conversation --------------------------------------------------------------------
+
+
+def test_a_resolved_one_shows_no_take_nor_return(operator: Panel) -> None:
+    conv = conversation(
+        operator.session, status=WaConversationStatus.RESOLVED, handoff_reason="debt_claim"
+    )
+    message(operator.session, conv, "gracias")
+
+    page = _page(operator, conv)
+
+    assert "Tomar control" not in page and "Devolver al bot" not in page
+    assert 'value="resolve"' not in page
+    assert "Nota interna" in page and 'id="reply-text"' in page
+    assert "Si respondés, la conversación se vuelve a abrir y queda en Mías." in page
+
+
+def test_take_and_return_refuse_a_resolved_one(operator: Panel) -> None:
+    conv = conversation(operator.session, status=WaConversationStatus.RESOLVED)
+
+    for action in ("take", "return"):
+        response = _act(operator, conv, action)
+        assert "La conversación está resuelta: respondé para volver a abrirla." in response.text
+
+    assert _reload(operator, conv).status == WaConversationStatus.RESOLVED
+    assert operator.admin_events() == []
+
+
+def test_replying_reopens_a_resolved_one_as_mine(operator: Panel) -> None:
+    conv = conversation(operator.session, status=WaConversationStatus.RESOLVED)
+    page = _page(operator, conv)
+
+    _act(operator, conv, "reply", text="¿Pudiste resolverlo?", form_token=_token(page))
+
+    row = _reload(operator, conv)
+    assert (row.status, row.assigned_to) == (WaConversationStatus.HUMAN, OPERATOR)
+    mine = operator.client.get("/admin/conversations", params={"tab": "mine"}).text
+    assert f"/admin/conversations/{conv.id}" in mine
+
+
+def test_the_reason_label_is_in_spanish_in_the_conversation(operator: Panel) -> None:
+    conv = conversation(
+        operator.session, status=WaConversationStatus.WAITING_HUMAN, handoff_reason="debt_claim"
+    )
+
+    page = _page(operator, conv)
+
+    assert '<span class="badge bg-orange-lt chat-reason">Reclamo por la deuda</span>' in page
+    assert "reclamo-deuda" not in page

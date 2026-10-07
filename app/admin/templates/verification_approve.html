@@ -3,7 +3,12 @@
 <div class="col-12 col-lg-8">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Verificación #{{ verification.id }}</h3>
+      <h3 class="card-title">Verificación</h3>
+      {% if conversation_url %}
+      <div class="card-actions">
+        <a class="btn btn-sm" id="see-conversation" href="{{ conversation_url }}"><i class="fa-solid fa-comments me-2"></i>Ver conversación</a>
+      </div>
+      {% endif %}
     </div>
     <div class="card-body">
       <dl class="row">
@@ -17,14 +22,15 @@
       <div class="alert alert-danger" role="alert">{{ error }}</div>
       {% endif %}
       {% if not pending %}
-      <div class="alert alert-info" role="alert">Esta solicitud ya está resuelta ({{ verification.status.value }}).</div>
+      <div class="alert alert-info" role="alert">Esta solicitud ya está resuelta ({{ status_label }}).</div>
       {% elif not owners %}
       <div class="alert alert-warning" role="alert">
         La unidad no tiene propietarios cargados: no se puede asociar el teléfono. Podés rechazarla desde el listado.
       </div>
       {% else %}
       <form method="POST">
-        <p>Elegí el propietario al que se asocia el teléfono (queda verificado, origen "manual"):</p>
+        <p class="mb-1">Elegí el propietario:</p>
+        <p class="text-secondary small">Se va a vincular este teléfono con el propietario elegido.</p>
         {% for owner in owners %}
         <label class="form-check">
           <input class="form-check-input" type="radio" name="person_id" value="{{ owner.id }}"

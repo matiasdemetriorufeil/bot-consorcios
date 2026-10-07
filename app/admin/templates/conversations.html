@@ -124,6 +124,8 @@
           {% elif window_open %}
             {% if conversation.status.value == 'human' and conversation.assigned_to and conversation.assigned_to != user %}
             <div class="composer-hint">La tiene {{ assigned_name }}: si respondés, sigue asignada a esa persona.</div>
+            {% elif conversation.status.value == 'resolved' %}
+            <div class="composer-hint">Si respondés, la conversación se vuelve a abrir y queda en Mías.</div>
             {% elif conversation.status.value != 'human' %}
             <div class="composer-hint">Al responder tomás la conversación y el bot deja de contestar.</div>
             {% endif %}

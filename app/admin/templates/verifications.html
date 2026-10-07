@@ -1,0 +1,50 @@
+{% extends "sqladmin/layout.html" %}
+{% block head_tail %}{% include "_row_cards_css.html" %}{% endblock %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Pendientes <span class="badge {{ 'bg-orange text-white' if rows else 'bg-secondary-lt' }} ms-1">{{ rows | length }}</span></h3>
+    </div>
+    {% if rows %}
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table rows-table" id="verifications">
+        <thead>
+          <tr><th>Edificio</th><th>Unidad</th><th>Nombre declarado</th><th>Teléfono</th><th>Fecha</th><th>Estado</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr data-verification="{{ row.id }}">
+            <td data-label="Edificio">{{ row.building }}</td>
+            <td data-label="Unidad">{{ row.unit }}</td>
+            <td data-label="Nombre declarado">{{ row.claimed_name }}</td>
+            <td data-label="Teléfono" class="text-nowrap">{{ row.phone }}</td>
+            <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
+            <td data-label="Estado"><span class="badge bg-orange-lt">{{ row.status }}</span></td>
+            <td class="row-actions">
+              <a class="btn btn-sm btn-success" href="{{ url_for('admin:view-verification-approve', request_id=row.id) }}">Aprobar</a>
+              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" class="js-reject">
+                <button class="btn btn-sm btn-outline-danger" type="submit">Rechazar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body text-secondary">No hay verificaciones pendientes.</div>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function () {
+  var message = {{ reject_confirmation | tojson }};
+  document.querySelectorAll("form.js-reject").forEach(function (form) {
+    form.addEventListener("submit", function (event) {
+      if (!window.confirm(message)) event.preventDefault();
+    });
+  });
+})();
+</script>
+{% endblock %}

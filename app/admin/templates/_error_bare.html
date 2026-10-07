@@ -1,0 +1,7 @@
+{# The frame of sqladmin/error.html for someone not logged in: no menu. #}
+{% extends "sqladmin/base.html" %}
+{% block body %}
+<div class="page page-center">
+  <div class="container-tight py-4">{% block content %}{% endblock %}</div>
+</div>
+{% endblock %}

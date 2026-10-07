@@ -57,7 +57,9 @@
   <div class="w-100" id="agenda-top">
   <div class="d-flex flex-wrap align-items-center gap-2">
     <a class="btn" href="{{ url_for('admin:view-amenities') }}"><i class="fa-solid fa-arrow-left me-2"></i>Edificios</a>
+    {% if is_admin %}
     <a class="btn" href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}"><i class="fa-solid fa-gear me-2"></i>Configuración</a>
+    {% endif %}
     <div class="ms-auto btn-group" role="group" aria-label="Semana">
       <a class="btn" id="previous-week" href="{{ previous_week }}" aria-label="Semana anterior"><i class="fa-solid fa-chevron-left"></i></a>
       <a class="btn" id="this-week" href="{{ this_week }}">Hoy</a>
@@ -78,7 +80,11 @@
   {% endif %}
   {% if not amenity.slots | selectattr("active") | list %}
   <div class="alert alert-info mt-2 mb-0">
+    {% if is_admin %}
     No hay turnos cargados. Agregalos en <a href="{{ url_for('admin:view-amenity-config', amenity_id=amenity.id) }}">Configuración</a>.
+    {% else %}
+    No hay turnos cargados: los carga un admin.
+    {% endif %}
   </div>
   {% endif %}
   </div>

@@ -2,7 +2,6 @@
 (app.admin.audit). Never registered here: verification codes, people's DNI, .env values.
 Views with AdminOnly first are only for admins (operators get 403 and do not see them)."""
 
-import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import partial
@@ -11,42 +10,26 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import anyio
-from sqladmin import BaseView, ModelView, action, expose
+from sqladmin import BaseView, ModelView, expose
 from sqladmin.filters import BooleanFilter, ForeignKeyFilter, StaticValuesFilter
-from sqladmin.flash import Flash
-from sqlalchemy import Select, or_, select
-from sqlalchemy.orm import Session, object_session, selectinload
+from sqlalchemy.orm import object_session
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import Response
 from wtforms import ValidationError
 
 from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user
 from app.admin.metrics import compute_metrics
 from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
-from app.bot.identity import (
-    IdentityError,
-    approve_verification_request,
-    reject_verification_request,
-)
-from app.bot.unit_search import display_building_name
 from app.config import Settings
 from app.db.models import (
     BotSettings,
     Building,
     BuildingInfo,
     BuildingInfoCategory,
-    DataSource,
-    Person,
-    PersonRole,
-    Phone,
     QuickReply,
     SyncJob,
     SyncRun,
-    Unit,
-    UnitPerson,
-    VerificationRequest,
-    VerificationRequestStatus,
     WaTemplate,
 )
 
@@ -55,18 +38,6 @@ _DATE_FORMAT = "%d/%m/%Y %H:%M"
 
 def _local(value: datetime | None, timezone: str) -> str:
     return value.astimezone(ZoneInfo(timezone)).strftime(_DATE_FORMAT) if value else ""
-
-
-def _pks(request: Request) -> list[int]:
-    raw = request.query_params.get("pks", "")
-    try:
-        return [int(pk) for pk in raw.split(",") if pk]
-    except ValueError:
-        return []
-
-
-def _back_to_list(request: Request, identity: str) -> RedirectResponse:
-    return RedirectResponse(request.url_for("admin:list", identity=identity), status_code=302)
 
 
 async def _in_thread(func: Callable[..., Any], *args: Any) -> Any:
@@ -143,7 +114,15 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
         BooleanFilter(Building.pilot, title="Prueba piloto"),
     ]
     column_details_list = [*column_list, Building.created_at, Building.updated_at]
+    # The name is only shown: the roster sync overwrites it (app/sync/roster.py).
     form_columns = [Building.name, Building.address, Building.active, Building.pilot]
+    form_widget_args = {"name": {"readonly": True}}
+    form_args = {
+        "name": {
+            "description": "Viene de ConsorPlus: se actualiza con la sincronización y no "
+            "se edita acá."
+        }
+    }
     column_labels = {
         Building.consorplus_code: "Código ConsorPlus",
         Building.name: "Nombre",
@@ -154,6 +133,12 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
         Building.updated_at: "Actualizado",
     }
     page_size = 25
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        data.pop("name", None)  # readonly is only the browser's: a sent name is ignored
+        await super().on_model_change(data, model, is_created, request)
 
 
 class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
@@ -203,429 +188,6 @@ class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
             "building_id": model.building_id,
             "category": category,
         }
-
-
-# --- Phones to review -------------------------------------------------------------------
-
-
-def _set_phone_reviewed(session: Session, phone_id: int, user: str) -> bool:
-    phone = session.get(Phone, phone_id, with_for_update=True)
-    if phone is None or not phone.needs_review:
-        return False
-    phone.verified = True
-    phone.needs_review = False
-    log_admin_action(session, user, "phone_approved", phone_e164=phone.e164, phone_id=phone.id)
-    session.commit()
-    return True
-
-
-class PhoneReviewAdmin(ModelView, model=Phone):
-    """Phones whose area code was assumed when imported from ConsorPlus (needs_review)."""
-
-    name = "Teléfono a revisar"
-    name_plural = "Teléfonos a revisar"
-    icon = "fa-solid fa-phone"
-    can_create = False
-    can_edit = False
-    can_export = False
-    column_list = [
-        Phone.id,
-        Phone.e164,
-        Phone.raw,
-        "person.full_name",
-        Phone.source,
-        Phone.verified,
-        Phone.created_at,
-    ]
-    column_details_list = column_list
-    column_searchable_list = [Phone.e164, Phone.raw, "person.full_name"]
-    column_labels = {
-        Phone.e164: "Teléfono (normalizado)",
-        Phone.raw: "Como figura en ConsorPlus",
-        "person.full_name": "Persona",
-        Phone.source: "Origen",
-        Phone.verified: "Verificado",
-        Phone.created_at: "Cargado",
-    }
-    page_size = 25
-
-    def list_query(self, request: Request) -> Select:
-        return (
-            select(Phone)
-            .where(Phone.needs_review.is_(True))
-            .options(selectinload(Phone.person))
-            .order_by(Phone.id)
-        )
-
-    def details_query(self, request: Request) -> Select:
-        return super().details_query(request).options(selectinload(Phone.person))
-
-    async def on_model_delete(self, model: Phone, request: Request) -> None:
-        if not model.needs_review:
-            raise ValueError("Solo se pueden eliminar teléfonos marcados para revisar.")
-        session = object_session(model)
-        if session is not None:
-            log_admin_action(
-                session,
-                admin_user(request),
-                "phone_deleted",
-                phone_e164=model.e164,
-                phone_id=model.id,
-                person_id=model.person_id,
-            )
-
-    @action(
-        name="approve",
-        label="Aprobar",
-        confirmation_message="¿Aprobar los teléfonos elegidos? Quedan verificados.",
-    )
-    async def approve(self, request: Request) -> Response:
-        user = admin_user(request)
-        approved = 0
-        for pk in _pks(request):
-            with self.session_maker() as session:
-                approved += await _in_thread(_set_phone_reviewed, session, pk, user)
-        if approved:
-            Flash.success(request, f"Teléfonos aprobados: {approved}.")
-        else:
-            Flash.warning(request, "No se aprobó ningún teléfono (¿ya estaban revisados?).")
-        return _back_to_list(request, self.identity)
-
-
-# --- All phones ---------------------------------------------------------------------------
-
-_SOURCE_LABELS = {
-    DataSource.CONSORPLUS: "ConsorPlus",
-    DataSource.BOT_VERIFIED: "Bot (código por email)",
-    DataSource.MANUAL: "Operador",
-}
-_ROLE_LABELS = {PersonRole.OWNER: "propietario", PersonRole.TENANT: "inquilino"}
-
-
-def _person_units(phone: Phone) -> str:
-    links = sorted(
-        phone.person.units,
-        key=lambda link: (link.unit.building.name, link.unit.label, link.role),
-    )
-    return "; ".join(
-        f"{display_building_name(link.unit.building.name)} · {link.unit.label}"
-        f" ({_ROLE_LABELS.get(link.role, link.role)})"
-        for link in links
-    )
-
-
-def _unlink_phone(session: Session, phone_id: int, user: str) -> bool:
-    phone = session.get(Phone, phone_id, with_for_update=True)
-    if phone is None:
-        return False
-    log_admin_action(
-        session,
-        user,
-        "phone_unlinked",
-        phone_e164=phone.e164,
-        phone_id=phone.id,
-        person_id=phone.person_id,
-        source=str(phone.source),
-        verified=phone.verified,
-    )
-    session.delete(phone)
-    session.commit()
-    return True
-
-
-class PhoneAdmin(ModelView, model=Phone):
-    """Every phone, to look up who a number belongs to. Neither created nor edited here: only
-    unlinked (deleted) when the number changed hands or was linked to the wrong person."""
-
-    name = "Teléfono"
-    name_plural = "Teléfonos"
-    icon = "fa-solid fa-address-book"
-    can_create = False
-    can_edit = False
-    can_delete = False  # only through the audited "Desvincular" action
-    can_export = False
-    column_list = [
-        Phone.e164,
-        "person.full_name",
-        "person.units",
-        Phone.source,
-        Phone.verified,
-        Phone.created_at,
-    ]
-    column_details_list = [
-        Phone.id,
-        Phone.e164,
-        Phone.raw,
-        "person.full_name",
-        "person.units",
-        Phone.source,
-        Phone.verified,
-        Phone.needs_review,
-        Phone.conflict,
-        Phone.created_at,
-    ]
-    # Searched by search_query (number digits, raw text or person's name).
-    column_searchable_list = [Phone.e164, "person.full_name"]
-    column_sortable_list = [Phone.e164, Phone.source, Phone.verified, Phone.created_at]
-    column_default_sort = [(Phone.created_at, True)]
-    column_filters = [
-        BooleanFilter(Phone.verified, title="Verificado"),
-        BooleanFilter(Phone.needs_review, title="A revisar (característica supuesta)"),
-        BooleanFilter(Phone.conflict, title="En conflicto (figura para otra persona)"),
-        StaticValuesFilter(
-            Phone.source, [(s.value, label) for s, label in _SOURCE_LABELS.items()], title="Fuente"
-        ),
-    ]
-    column_labels = {
-        Phone.id: "ID",
-        Phone.e164: "Número",
-        Phone.raw: "Como figura en ConsorPlus",
-        "person.full_name": "Persona",
-        "person.units": "Unidades de la persona",
-        Phone.source: "Fuente",
-        Phone.verified: "Verificado",
-        Phone.needs_review: "A revisar",
-        Phone.conflict: "En conflicto",
-        Phone.created_at: "Fecha",
-    }
-    column_formatters = {
-        "person.units": lambda m, a: _person_units(m),
-        Phone.source: lambda m, a: _SOURCE_LABELS.get(m.source, m.source),
-    }
-    column_formatters_detail = column_formatters
-    page_size = 50
-
-    _timezone: ClassVar[str] = Settings.model_fields["timezone"].default
-
-    def search_placeholder(self) -> str:
-        return "número o nombre"
-
-    def _with_person(self, stmt: Select) -> Select:
-        return stmt.options(
-            selectinload(Phone.person)
-            .selectinload(Person.units)
-            .selectinload(UnitPerson.unit)
-            .selectinload(Unit.building)
-        )
-
-    def list_query(self, request: Request) -> Select:
-        # Joined here once so search_query can filter by the person's name.
-        return self._with_person(select(Phone).join(Phone.person))
-
-    def details_query(self, request: Request) -> Select:
-        return self._with_person(super().details_query(request))
-
-    def search_query(self, stmt: Select, term: str) -> Select:
-        term = term.strip()
-        conditions = [Person.full_name.ilike(f"%{term}%"), Phone.raw.ilike(f"%{term}%")]
-        # "351 555-0301", "0351 5550301", "+54 9 351…": compared by digits, without the
-        # leading 0 of the local format.
-        digits = re.sub(r"\D", "", term).lstrip("0")
-        if digits:
-            conditions.append(Phone.e164.contains(digits, autoescape=True))
-        return stmt.where(or_(*conditions))
-
-    async def get_list_value(self, obj: Any, prop: str, request: Request | None = None) -> Any:
-        if prop == "created_at":
-            return obj.created_at, _local(obj.created_at, self._timezone)
-        return await super().get_list_value(obj, prop, request)
-
-    async def get_detail_value(self, obj: Any, prop: str, request: Request | None = None) -> Any:
-        if prop == "created_at":
-            return obj.created_at, _local(obj.created_at, self._timezone)
-        return await super().get_detail_value(obj, prop, request)
-
-    @action(
-        name="unlink",
-        label="Desvincular",
-        confirmation_message=(
-            "¿Desvincular los teléfonos elegidos? Se borran y el bot deja de reconocer esos "
-            "números. Si el número sigue cargado en ConsorPlus, la sincronización nocturna lo "
-            "vuelve a crear: corregilo también allá."
-        ),
-    )
-    async def unlink(self, request: Request) -> Response:
-        user = admin_user(request)
-        unlinked = 0
-        for pk in _pks(request):
-            with self.session_maker() as session:
-                unlinked += await _in_thread(_unlink_phone, session, pk, user)
-        if unlinked:
-            Flash.success(request, f"Teléfonos desvinculados: {unlinked}.")
-        else:
-            Flash.warning(request, "No se desvinculó ningún teléfono (¿ya estaban borrados?).")
-        return _back_to_list(request, self.identity)
-
-
-# PhoneReviewAdmin already uses "phone" (the default for the model) in its URLs.
-PhoneAdmin.identity = "phones"
-
-
-# --- Operator verifications -------------------------------------------------------------
-
-
-def _unit_owners(session: Session, unit_id: int) -> list[Person]:
-    return list(
-        session.scalars(
-            select(Person)
-            .join(UnitPerson, UnitPerson.person_id == Person.id)
-            .where(UnitPerson.unit_id == unit_id, UnitPerson.role == PersonRole.OWNER)
-            .order_by(Person.full_name, Person.id)
-        )
-    )
-
-
-class VerificationRequestAdmin(ModelView, model=VerificationRequest):
-    """Pending requests left by request_operator_verification (units without owner email)."""
-
-    name = "Verificación pendiente"
-    name_plural = "Verificaciones pendientes"
-    icon = "fa-solid fa-user-check"
-    can_create = False
-    can_edit = False
-    can_delete = False
-    can_export = False
-    column_list = [
-        VerificationRequest.id,
-        "unit.building.name",
-        "unit.label",
-        VerificationRequest.claimed_name,
-        VerificationRequest.phone_e164,
-        VerificationRequest.created_at,
-    ]
-    column_details_list = [*column_list, VerificationRequest.status]
-    column_labels = {
-        "unit.building.name": "Edificio",
-        "unit.label": "Unidad",
-        VerificationRequest.claimed_name: "Nombre declarado",
-        VerificationRequest.phone_e164: "Teléfono",
-        VerificationRequest.created_at: "Fecha",
-        VerificationRequest.status: "Estado",
-    }
-    column_formatters = {
-        "unit.building.name": lambda m, a: display_building_name(m.unit.building.name),
-    }
-    column_formatters_detail = column_formatters
-    page_size = 25
-
-    def _with_unit(self, stmt: Select) -> Select:
-        return stmt.options(selectinload(VerificationRequest.unit).selectinload(Unit.building))
-
-    def list_query(self, request: Request) -> Select:
-        return self._with_unit(
-            select(VerificationRequest)
-            .where(VerificationRequest.status == VerificationRequestStatus.PENDING)
-            .order_by(VerificationRequest.created_at)
-        )
-
-    def details_query(self, request: Request) -> Select:
-        return self._with_unit(super().details_query(request))
-
-    @action(name="approve", label="Aprobar (elegir propietario)")
-    async def approve(self, request: Request) -> Response:
-        pks = _pks(request)
-        if len(pks) != 1:
-            Flash.warning(request, "Aprobá las verificaciones de a una.")
-            return _back_to_list(request, self.identity)
-        return RedirectResponse(
-            request.url_for(f"admin:view-{self.identity}-approve_page", pk=pks[0]),
-            status_code=302,
-        )
-
-    @action(
-        name="reject",
-        label="Rechazar",
-        confirmation_message="¿Rechazar las verificaciones elegidas? El número no se asocia.",
-    )
-    async def reject(self, request: Request) -> Response:
-        user = admin_user(request)
-        rejected, errors = 0, []
-        for pk in _pks(request):
-            with self.session_maker() as session:
-                try:
-                    await _in_thread(self._reject, session, pk, user)
-                    rejected += 1
-                except IdentityError as exc:
-                    session.rollback()
-                    errors.append(str(exc))
-        if rejected:
-            Flash.success(request, f"Verificaciones rechazadas: {rejected}.")
-        for error in errors:
-            Flash.error(request, error)
-        return _back_to_list(request, self.identity)
-
-    @staticmethod
-    def _reject(session: Session, request_id: int, user: str) -> None:
-        request = reject_verification_request(session, request_id, resolved_by=user)
-        log_admin_action(
-            session,
-            user,
-            "verification_rejected",
-            phone_e164=request.phone_e164,
-            request_id=request.id,
-            unit_id=request.unit_id,
-        )
-        session.commit()
-
-    @staticmethod
-    def _approve(session: Session, request_id: int, person_id: int, user: str) -> None:
-        request = approve_verification_request(session, request_id, person_id, resolved_by=user)
-        log_admin_action(
-            session,
-            user,
-            "verification_approved",
-            phone_e164=request.phone_e164,
-            request_id=request.id,
-            unit_id=request.unit_id,
-            person_id=person_id,
-        )
-        session.commit()
-
-    @expose("/approve/{pk:int}", methods=["GET", "POST"])
-    async def approve_page(self, request: Request) -> Response:
-        pk = request.path_params["pk"]
-        error = None
-        with self.session_maker() as session:
-            if request.method == "POST":
-                form = await request.form()
-                try:
-                    person_id = int(str(form.get("person_id", "")))
-                except ValueError:
-                    error = "Elegí el propietario al que se asocia el teléfono."
-                else:
-                    try:
-                        await _in_thread(self._approve, session, pk, person_id, admin_user(request))
-                    except IdentityError as exc:
-                        session.rollback()
-                        error = str(exc)
-                    else:
-                        Flash.success(request, "Verificación aprobada: el teléfono quedó asociado.")
-                        return _back_to_list(request, self.identity)
-
-            verification = session.scalar(
-                self._with_unit(select(VerificationRequest).where(VerificationRequest.id == pk))
-            )
-            if verification is None:
-                return Response("Solicitud inexistente", status_code=404)
-            owners = _unit_owners(session, verification.unit_id)
-            context = {
-                "title": "Aprobar verificación",
-                "verification": verification,
-                "building": display_building_name(verification.unit.building.name),
-                "created_at": _local(verification.created_at, self._timezone),
-                "owners": owners,
-                "pending": verification.status == VerificationRequestStatus.PENDING,
-                "error": error,
-                "list_url": request.url_for("admin:list", identity=self.identity),
-            }
-            return await self.templates.TemplateResponse(
-                request,
-                "verification_approve.html",
-                context,
-                status_code=400 if error else 200,
-            )
-
-    _timezone: ClassVar[str] = Settings.model_fields["timezone"].default
 
 
 # --- Sync runs (read only) --------------------------------------------------------------
@@ -690,15 +252,16 @@ def _valid_url(form: Any, field: Any) -> None:
             raise ValidationError("Tiene que ser una dirección web completa (https://...).")
 
 
-_FALLBACK = "Vacío: se usa el valor de .env (o el predeterminado)."
-_BUILT_IN = "Vacío: el bot usa su texto automático."
+# Never the .env value itself: only that there is a default.
+_DEFAULT_TEXT = "Si lo dejás vacío, el bot usa el texto por defecto."
+_DEFAULT_VALUE = "Si lo dejás vacío, el bot usa el valor por defecto."
 
 
 class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     """The single row of bot settings; values never shown here: the .env ones."""
 
-    name = "Configuración general"
-    name_plural = "Configuración general"
+    name = "Configuración del bot"
+    name_plural = "Configuración del bot"
     icon = "fa-solid fa-gear"
     audit_name = "bot_settings"
     can_create = False
@@ -730,28 +293,34 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     column_formatters = {BotSettings.id: lambda m, a: "Configuración del bot"}
     form_args = {
         "welcome_message": {
-            "description": "El bot saluda con este texto en el primer mensaje. " + _BUILT_IN
+            "description": "El bot saluda con este texto en el primer mensaje. " + _DEFAULT_TEXT
         },
-        "office_hours_start": {"description": "HH:MM. " + _FALLBACK, "validators": [_valid_hour]},
-        "office_hours_end": {"description": "HH:MM. " + _FALLBACK, "validators": [_valid_hour]},
+        "office_hours_start": {
+            "description": "HH:MM. " + _DEFAULT_VALUE,
+            "validators": [_valid_hour],
+        },
+        "office_hours_end": {
+            "description": "HH:MM. " + _DEFAULT_VALUE,
+            "validators": [_valid_hour],
+        },
         "office_weekdays": {
             "description": "0 = lunes … 6 = domingo, separados por coma (ej. 0,1,2,3,4). "
-            + _FALLBACK,
+            + _DEFAULT_VALUE,
             "validators": [_valid_weekdays],
         },
         "out_of_hours_text": {
             "description": "Al derivar fuera de horario, reemplaza el aviso de cuándo le van a "
-            "responder. " + _BUILT_IN
+            "responder. " + _DEFAULT_TEXT
         },
         "emergency_contact_text": {
-            "description": "Se suma al aviso de una urgencia fuera de horario. " + _FALLBACK
+            "description": "Se suma al aviso de una urgencia fuera de horario. " + _DEFAULT_TEXT
         },
         "autogestion_url": {
-            "description": "El bot la ofrece junto con la deuda. " + _FALLBACK,
+            "description": "El bot la ofrece junto con la deuda. " + _DEFAULT_VALUE,
             "validators": [_valid_url],
         },
         "payment_code_how_to": {
-            "description": "El bot lo copia tal cual al dar el código de pago. " + _FALLBACK
+            "description": "El bot lo copia tal cual al dar el código de pago. " + _DEFAULT_TEXT
         },
     }
 

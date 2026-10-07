@@ -1,0 +1,32 @@
+{# SQLAdmin's error page (every HTTPException of the panel, our own views included), inside
+   the panel: with the menu, so whoever got here can go on. A 403 for an operator is an
+   admin-only section; for an admin, an action that does not exist here (SQLAdmin's own). #}
+{% extends "sqladmin/layout.html" if request.session.get("admin_user") else "_error_bare.html" %}
+{% block content_header %}{% endblock %}
+{% block content %}
+<div class="col-12 col-lg-8">
+  <div class="card">
+    <div class="card-body">
+      <div class="empty" id="panel-error" data-status="{{ status_code }}">
+        {% if status_code == 403 and request.session.get('role') != 'admin' %}
+        <div class="empty-icon"><i class="fa-solid fa-lock fa-2x"></i></div>
+        <p class="empty-title">Esta sección es solo para administradores.</p>
+        <p class="empty-subtitle text-secondary">Si necesitás algo de acá, pedíselo a un admin.</p>
+        {% elif status_code == 403 %}
+        <div class="empty-header">403</div>
+        <p class="empty-title">Esto no se puede hacer desde el panel.</p>
+        {% elif status_code == 404 %}
+        <div class="empty-header">404</div>
+        <p class="empty-title">No se encontró esta página.</p>
+        {% else %}
+        <div class="empty-header">{{ status_code }}</div>
+        <p class="empty-title">{{ message }}</p>
+        {% endif %}
+        <div class="empty-action">
+          <a class="btn btn-primary" href="{{ url_for('admin:view-conversations') }}">Ir a Conversaciones</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

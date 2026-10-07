@@ -1,9 +1,12 @@
-"""Panel pages of the SUM ("Reservas de SUM") and the placeholder of "Reclamos".
+"""Panel pages of the SUM ("Reservas de SUM") and the placeholder of "Reclamos" (out of the
+menu until it exists, its page stays).
 
 SQLAdmin has no weekly grid, so these are BaseView pages with their own templates, inside the
-panel (same login, menu and style). Rules live in app.amenities.booking, never here: the
-panel only collects the operator's choice and shows the result. Every change is audited in
-bot_events (admin_action) with ids and field names, never texts.
+panel (same login, menu and style). Operators see the list and the weekly agenda, book and
+cancel; adding a SUM and its set-up (rules, limits, switches, slots) are for admins only
+(require_admin, checked by each of those pages). Rules live in app.amenities.booking, never
+here: the panel only collects the operator's choice and shows the result. Every change is
+audited in bot_events (admin_action) with ids and field names, never texts.
 
 SQLAdmin names each page "admin:view-<identity>" and links the menu to the first page of
 the class (amenities_list must stay first).
@@ -23,7 +26,7 @@ from starlette.responses import RedirectResponse, Response
 
 from app.admin.agenda import build_agenda
 from app.admin.audit import log_admin_action
-from app.admin.auth import admin_user
+from app.admin.auth import admin_user, is_admin, require_admin
 from app.amenities.booking import (
     POLICY_RULES,
     BookingError,
@@ -283,7 +286,13 @@ class AmenitiesView(BaseView):
         return await self.templates.TemplateResponse(
             request,
             template,
-            {"title": title, "weekdays": WEEKDAYS, "weekdays_short": WEEKDAYS_SHORT, **context},
+            {
+                "title": title,
+                "weekdays": WEEKDAYS,
+                "weekdays_short": WEEKDAYS_SHORT,
+                "is_admin": is_admin(request),
+                **context,
+            },
             status_code=status_code,
         )
 
@@ -335,6 +344,7 @@ class AmenitiesView(BaseView):
 
     @expose("/amenities/new", methods=["POST"], identity="amenity-new")
     async def amenity_new(self, request: Request) -> Response:
+        require_admin(request)  # the SUM's set-up: admins only
         form = await request.form()
         with self.session_maker() as session:
             try:
@@ -351,6 +361,7 @@ class AmenitiesView(BaseView):
         "/amenities/{amenity_id:int}/config", methods=["GET", "POST"], identity="amenity-config"
     )
     async def amenity_config(self, request: Request) -> Response:
+        require_admin(request)  # the SUM's set-up: admins only
         amenity_id = request.path_params["amenity_id"]
         error = None
         with self.session_maker() as session:
@@ -385,6 +396,7 @@ class AmenitiesView(BaseView):
 
     @expose("/amenities/{amenity_id:int}/slots", methods=["POST"], identity="amenity-slots")
     async def amenity_slots(self, request: Request) -> Response:
+        require_admin(request)  # the SUM's set-up: admins only
         amenity_id = request.path_params["amenity_id"]
         form = await request.form()
         with self.session_maker() as session:
@@ -427,6 +439,7 @@ class AmenitiesView(BaseView):
         identity="amenity-slot-remove",
     )
     async def amenity_slot_remove(self, request: Request) -> Response:
+        require_admin(request)  # the SUM's set-up: admins only
         amenity_id = request.path_params["amenity_id"]
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
@@ -681,6 +694,9 @@ class AmenitiesView(BaseView):
 class ClaimsView(BaseView):
     name = "Reclamos"
     icon = "fa-solid fa-triangle-exclamation"
+
+    def is_visible(self, request: Request) -> bool:
+        return False  # out of the menu until the claims exist (its page stays)
 
     @expose("/claims", methods=["GET"], identity="claims")
     async def claims_page(self, request: Request) -> Response:

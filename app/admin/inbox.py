@@ -645,9 +645,15 @@ def _audit(
     )
 
 
+RESOLVED_TEXT = "La conversación está resuelta: respondé para volver a abrirla."
+
+
 def take(session: Session, conversation_id: int, user: str) -> None:
-    """ "Tomar control": with a human, assigned to whoever took it (the bot stops)."""
+    """ "Tomar control": with a human, assigned to whoever took it (the bot stops). Not on a
+    resolved one: replying reopens it (assigned to whoever replies)."""
     conversation = _locked(session, conversation_id)
+    if conversation.status == WaConversationStatus.RESOLVED:
+        raise InboxError(RESOLVED_TEXT)
     previous_status = WaConversationStatus(conversation.status).value
     previous_assignee = conversation.assigned_to
     conversations.assign(conversation, user)
@@ -662,6 +668,8 @@ def return_to_bot(session: Session, conversation_id: int, user: str) -> None:
     conversation = _locked(session, conversation_id)
     if conversation.status == WaConversationStatus.BOT:
         raise InboxError("La conversación ya está con el bot.")
+    if conversation.status == WaConversationStatus.RESOLVED:
+        raise InboxError(RESOLVED_TEXT)
     previous_status = WaConversationStatus(conversation.status).value
     conversations.return_to_bot(conversation)
     _audit(

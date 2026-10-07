@@ -1,5 +1,5 @@
-"""Operator verifications (units without owner email): approve choosing the owner, or
-reject. Invented data only."""
+"""The "Verificaciones" page (units without owner email): per-row "Aprobar" (choosing the
+owner) and "Rechazar". Invented data only."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,7 +17,8 @@ from app.db.models import (
     VerificationRequest,
     VerificationRequestStatus,
 )
-from tests.admin.conftest import ADMIN, Panel
+from tests.admin.conftest import ADMIN, OPERATOR, Panel
+from tests.admin.wa_data import conversation
 from tests.bot import factories as f
 
 PHONE = "+5493515550401"
@@ -67,17 +68,31 @@ def _request(panel: Panel, request_id: int) -> VerificationRequest:
     return request
 
 
-def test_list_shows_unit_building_name_and_date(logged_in: Panel, pending: Pending) -> None:
-    page = logged_in.client.get("/admin/verification-request/list").text
+LIST = "/admin/verifications"
+
+
+def _approve_url(request_id: int) -> str:
+    return f"/admin/verifications/{request_id}/approve"
+
+
+def test_list_shows_unit_building_name_date_and_status(logged_in: Panel, pending: Pending) -> None:
+    page = logged_in.client.get(LIST).text
     for text in ("TORRE INVENTADA", "03-B", "Dueña Inventada", PHONE, "Nombre declarado", "Fecha"):
         assert text in page
+    assert "Pendiente" in page and "pending" not in page
+    assert ">id<" not in page and ">ID<" not in page
     assert CODE_HASH not in page and "sal0inventada" not in page
 
 
+def test_buttons_in_each_row(logged_in: Panel, pending: Pending) -> None:
+    page = logged_in.client.get(LIST).text
+    assert f'href="https://testserver{_approve_url(pending.request_id)}"' in page
+    assert f"/admin/verifications/{pending.request_id}/reject" in page
+    assert "Actions" not in page
+
+
 def test_approve_page_lists_the_owners(logged_in: Panel, pending: Pending) -> None:
-    response = logged_in.client.get(
-        f"/admin/verification-request/action/approve?pks={pending.request_id}"
-    )
+    response = logged_in.client.get(_approve_url(pending.request_id))
     assert response.status_code == 200
     assert "Codueño Inventado" in response.text and "Dueña Inventada" in response.text
     assert "Persona Ajena" not in response.text
@@ -86,7 +101,7 @@ def test_approve_page_lists_the_owners(logged_in: Panel, pending: Pending) -> No
 
 def test_approve_links_the_phone_as_manual(logged_in: Panel, pending: Pending) -> None:
     response = logged_in.client.post(
-        f"/admin/verification-request/approve/{pending.request_id}",
+        _approve_url(pending.request_id),
         data={"person_id": str(pending.other_owner_id)},
         follow_redirects=False,
     )
@@ -113,13 +128,12 @@ def test_approve_links_the_phone_as_manual(logged_in: Panel, pending: Pending) -
         select(BotEvent).where(BotEvent.event_type == "operator_verification_resolved")
     )
     assert resolved is not None and resolved.payload["resolved_by"] == ADMIN
-    assert "Dueña Inventada" not in logged_in.client.get("/admin/verification-request/list").text
+    assert "Dueña Inventada" not in logged_in.client.get(LIST).text
 
 
 def test_approve_with_a_non_owner_changes_nothing(logged_in: Panel, pending: Pending) -> None:
     response = logged_in.client.post(
-        f"/admin/verification-request/approve/{pending.request_id}",
-        data={"person_id": str(pending.stranger_id)},
+        _approve_url(pending.request_id), data={"person_id": str(pending.stranger_id)}
     )
     assert response.status_code == 400
     assert "no es propietaria" in response.text
@@ -129,17 +143,17 @@ def test_approve_with_a_non_owner_changes_nothing(logged_in: Panel, pending: Pen
 
 
 def test_approve_twice_fails(logged_in: Panel, pending: Pending) -> None:
-    url = f"/admin/verification-request/approve/{pending.request_id}"
+    url = _approve_url(pending.request_id)
     logged_in.client.post(url, data={"person_id": str(pending.owner_id)})
     response = logged_in.client.post(url, data={"person_id": str(pending.other_owner_id)})
     assert response.status_code == 400
+    assert "Esta solicitud ya estaba resuelta." in response.text
     assert _request(logged_in, pending.request_id).person_id == pending.owner_id
 
 
 def test_reject(logged_in: Panel, pending: Pending) -> None:
-    response = logged_in.client.get(
-        f"/admin/verification-request/action/reject?pks={pending.request_id}",
-        follow_redirects=False,
+    response = logged_in.client.post(
+        f"/admin/verifications/{pending.request_id}/reject", follow_redirects=False
     )
     assert response.status_code == 302
 
@@ -153,9 +167,68 @@ def test_reject(logged_in: Panel, pending: Pending) -> None:
 
 def test_approve_page_needs_login(panel: Panel, pending: Pending) -> None:
     response = panel.client.post(
-        f"/admin/verification-request/approve/{pending.request_id}",
+        _approve_url(pending.request_id),
         data={"person_id": str(pending.owner_id)},
         follow_redirects=False,
     )
     assert response.status_code == 302
     assert _request(panel, pending.request_id).status == VerificationRequestStatus.PENDING
+
+
+def test_reject_needs_login(panel: Panel, pending: Pending) -> None:
+    response = panel.client.post(
+        f"/admin/verifications/{pending.request_id}/reject", follow_redirects=False
+    )
+    assert response.status_code == 302
+    assert _request(panel, pending.request_id).status == VerificationRequestStatus.PENDING
+
+
+def test_reject_twice_shows_the_error(logged_in: Panel, pending: Pending) -> None:
+    url = f"/admin/verifications/{pending.request_id}/reject"
+    logged_in.client.post(url)
+    page = logged_in.client.post(url).text
+    assert len(logged_in.admin_events("verification_rejected")) == 1
+    assert "Esta solicitud ya estaba resuelta." in page
+    assert "rejected" not in page
+
+
+def test_approve_page_explains_the_link(logged_in: Panel, pending: Pending) -> None:
+    page = logged_in.client.get(_approve_url(pending.request_id)).text
+    assert "Se va a vincular este teléfono con el propietario elegido." in page
+    assert "manual" not in page
+
+
+def test_approve_page_links_the_conversation_if_there_is_one(
+    logged_in: Panel, pending: Pending
+) -> None:
+    assert "Ver conversación" not in logged_in.client.get(_approve_url(pending.request_id)).text
+
+    chat = conversation(logged_in.session, PHONE.lstrip("+"))
+    logged_in.session.commit()
+    page = logged_in.client.get(_approve_url(pending.request_id)).text
+    assert "Ver conversación" in page
+    assert f"/admin/conversations/{chat.id}" in page
+
+
+def test_a_resolved_request_shows_its_status_in_spanish(logged_in: Panel, pending: Pending) -> None:
+    logged_in.client.post(f"/admin/verifications/{pending.request_id}/reject")
+    page = logged_in.client.get(_approve_url(pending.request_id)).text
+    assert "Esta solicitud ya está resuelta (Rechazada)." in page
+    assert "rejected" not in page
+
+
+def test_an_operator_approves_and_rejects(operator: Panel, pending: Pending) -> None:
+    assert operator.client.get(LIST).status_code == 200
+    operator.client.post(
+        _approve_url(pending.request_id), data={"person_id": str(pending.owner_id)}
+    )
+    assert _request(operator, pending.request_id).resolved_by == OPERATOR
+    [event] = operator.admin_events("verification_approved")
+    assert event["admin_user"] == OPERATOR
+
+
+@pytest.mark.parametrize(
+    "url", ["/admin/verification-request/list", "/admin/verification-request/action/reject?pks=1"]
+)
+def test_the_old_sqladmin_pages_are_gone(logged_in: Panel, url: str) -> None:
+    assert logged_in.client.get(url).status_code == 404

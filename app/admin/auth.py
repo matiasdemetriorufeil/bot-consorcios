@@ -23,6 +23,7 @@ from typing import Any
 from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -305,8 +306,17 @@ def display_names(session: Session) -> dict[str, str]:
     return {username: name for username, name in rows}
 
 
+def require_admin(request: Request) -> None:
+    """For the admin-only pages of a view operators also use (403, rendered in the panel)."""
+    if not is_admin(request):
+        raise HTTPException(status_code=403)
+
+
 class AdminOnly:
-    """Mixin (first base) for panel views only admins see and open: 403 for operators."""
+    """Mixin (first base) for panel views only admins see and open: 403 for operators. The
+    menu lists them under "Administración" (templates/sqladmin/_macros.html)."""
+
+    menu_section = "admin"
 
     def is_visible(self, request: Request) -> bool:
         return is_admin(request)

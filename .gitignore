@@ -239,3 +239,6 @@ data/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Capturas del panel (docs/inventario-panel.md): solo locales, nunca se suben.
+docs/panel-capturas/

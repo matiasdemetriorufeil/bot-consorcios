@@ -1,5 +1,6 @@
 """Every change made in the panel is audited in bot_events, without values. Invented data."""
 
+import re
 from typing import Any
 
 import pytest
@@ -140,3 +141,48 @@ def test_buildings_cannot_be_created_or_deleted(logged_in: Panel, building: Buil
     logged_in.client.delete(f"/admin/building/delete?pks={building.id}")
     logged_in.session.expire_all()
     assert logged_in.session.get(Building, building.id) is not None
+
+
+def test_building_name_is_read_only(logged_in: Panel, building: Building) -> None:
+    page = logged_in.client.get(f"/admin/building/edit/{building.id}").text
+    assert re.search(r'<input[^>]*id="name"[^>]*readonly', page)
+    assert "Viene de ConsorPlus" in page
+
+    # A form sent with another name (the browser's readonly is not enough): ignored.
+    form = {"name": "OTRO NOMBRE", "address": "Calle Inventada 1", "active": "y", "save": "Save"}
+    assert _post(logged_in, f"/admin/building/edit/{building.id}", form).status_code == 302
+
+    logged_in.session.expire_all()
+    saved = logged_in.session.get(Building, building.id)
+    assert saved is not None
+    assert saved.name == "088 EDIFICIO AUDITADO" and saved.address == "Calle Inventada 1"
+    [event] = logged_in.admin_events("building_updated")
+    assert event["fields"] == ["address"]
+
+
+# --- Bot settings: straight to the form --------------------------------------------------------
+
+
+def test_bot_settings_open_the_form(logged_in: Panel) -> None:
+    settings_id = logged_in.session.scalar(select(BotSettings.id))
+    response = logged_in.client.get("/admin/bot-settings/list", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"].endswith(f"/admin/bot-settings/edit/{settings_id}")
+
+    # SQLAdmin's "Save" goes back to the list: that is the form again.
+    saved = _post(logged_in, f"/admin/bot-settings/edit/{settings_id}", SETTINGS_FORM)
+    assert saved.headers["location"].endswith("/admin/bot-settings/list")
+    page = logged_in.client.get(saved.headers["location"]).text
+    assert 'name="welcome_message"' in page
+
+
+def test_bot_settings_help_never_mentions_the_env(logged_in: Panel) -> None:
+    page = logged_in.client.get("/admin/bot-settings/list").text
+    assert "Si lo dejás vacío, el bot usa el texto por defecto." in page
+    assert ".env" not in page
+
+
+def test_the_menu_opens_the_bot_settings_form(logged_in: Panel) -> None:
+    page = logged_in.client.get("/admin/conversations").text
+    assert re.search(r'href="[^"]*/admin/bot-settings/list"[^>]*>', page)
+    assert "Configuración del bot" in page

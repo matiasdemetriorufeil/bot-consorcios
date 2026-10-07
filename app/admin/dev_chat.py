@@ -1,5 +1,6 @@
 """Panel page "Chat de prueba": write to the bot as if from a phone. DEVELOPMENT ONLY: the
-view is added only with APP_ENV=development and every endpoint answers 404 otherwise.
+view is added only with APP_ENV=development and every endpoint answers 404 otherwise. Admins
+only (AdminOnly: operators get 403 on every endpoint, the people search included).
 
 - GET  /admin/dev-chat                  pick a phone (invented, or a known person's: search)
 - GET  /admin/dev-chat?phone=+549...    the chat as the contact sees it
@@ -27,7 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app.admin import inbox
-from app.admin.auth import display_names
+from app.admin.auth import AdminOnly, display_names, is_admin
 from app.admin.conversations import _int
 from app.bot.identity import to_e164
 from app.bot.unit_search import display_building_name
@@ -82,7 +83,7 @@ def _phone(value: object) -> str | None:
     return to_e164(str(value or "").strip())
 
 
-class DevChatView(BaseView):
+class DevChatView(AdminOnly, BaseView):
     name = "Chat de prueba"
     icon = "fa-solid fa-mobile-screen"
     # Set by setup_admin (only in development).
@@ -93,7 +94,7 @@ class DevChatView(BaseView):
     clock: ClassVar[Callable[[], datetime]] = staticmethod(lambda: datetime.now(UTC))
 
     def is_visible(self, request: Request) -> bool:
-        return self.enabled
+        return self.enabled and is_admin(request)
 
     def _check(self) -> None:
         if not self.enabled:
