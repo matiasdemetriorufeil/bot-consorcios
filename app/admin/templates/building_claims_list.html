@@ -1,0 +1,31 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-xl-9">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Edificios</h3></div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table" id="building-claims">
+        <thead><tr><th>Edificio</th><th>Problemas habilitados</th><th>Sin proveedor</th><th>Reclamos por el bot</th><th></th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.enabled }}</td>
+            <td>{% if row.studio %}<span class="badge bg-yellow-lt">{{ row.studio }}</span>{% else %}0{% endif %}</td>
+            <td>{% if row.building.claims_bot_enabled %}<span class="badge bg-green-lt">Sí</span>{% else %}No{% endif %}</td>
+            <td class="list-row-buttons">
+              <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-building-claims-table', building_id=row.building.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Configurar</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr class="list-empty"><td colspan="5" class="empty-help">{{ empty_texts['building-claims'] }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer small text-secondary">
+      «Reclamos por el bot» se prende o se apaga en Edificios.
+    </div>
+  </div>
+</div>
+{% endblock %}

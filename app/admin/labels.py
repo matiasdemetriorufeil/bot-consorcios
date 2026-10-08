@@ -6,6 +6,11 @@ from typing import Any
 from app.channels.handoff import REASONS
 from app.db.models import (
     BuildingInfoCategory,
+    ClaimActor,
+    ClaimEventKind,
+    ClaimScope,
+    ClaimSource,
+    ClaimStatus,
     DataSource,
     PanelRole,
     PersonRole,
@@ -64,6 +69,44 @@ RESERVATION_SOURCE = {
 }
 PERSON_ROLE = {PersonRole.OWNER: "propietario", PersonRole.TENANT: "inquilino"}
 PANEL_ROLE = {PanelRole.ADMIN: "Admin", PanelRole.OPERATOR: "Operadora"}
+CLAIM_SCOPE = {ClaimScope.BUILDING: "Todo el edificio", ClaimScope.UNIT: "Una unidad"}
+# "¿Quién lo atiende?" without a provider.
+STUDIO = "Lo atiende el estudio"
+STUDIO_SHORT = "El estudio"
+CLAIM_STATUS = {
+    ClaimStatus.PENDING_SEND: "Falta avisar al proveedor",
+    ClaimStatus.SENT: "Avisado al proveedor",
+    ClaimStatus.ACKNOWLEDGED: "El proveedor lo confirmó",
+    ClaimStatus.STUDIO: "Lo atiende el estudio",
+    ClaimStatus.SOLVED: "Solucionado",
+    ClaimStatus.CANCELLED: "Cancelado",
+}
+# The status' color in the panel: open (nobody is on it yet), in progress, closed.
+CLAIM_STATUS_GROUP = {
+    ClaimStatus.PENDING_SEND: "open",
+    ClaimStatus.STUDIO: "open",
+    ClaimStatus.SENT: "progress",
+    ClaimStatus.ACKNOWLEDGED: "progress",
+    ClaimStatus.SOLVED: "closed",
+    ClaimStatus.CANCELLED: "closed",
+}
+CLAIM_SOURCE = {ClaimSource.BOT: "Por WhatsApp", ClaimSource.PANEL: "Cargado en el panel"}
+CLAIM_ACTOR = {
+    ClaimActor.BOT: "El bot",
+    ClaimActor.PROVIDER: "El proveedor",
+    ClaimActor.PANEL: "El estudio",
+    ClaimActor.SYSTEM: "Automático",
+}
+CLAIM_EVENT = {
+    ClaimEventKind.CREATED: "Reclamo creado",
+    ClaimEventKind.JOINED: "Se sumó",
+    ClaimEventKind.PROVIDER_CHANGED: "Ahora lo atiende",
+    ClaimEventKind.SENT: "Se le avisó al proveedor",
+    ClaimEventKind.ACKNOWLEDGED: "El proveedor confirmó que lo recibió",
+    ClaimEventKind.SOLVED: "Cerrado como solucionado",
+    ClaimEventKind.CANCELLED: "Reclamo cancelado",
+    ClaimEventKind.NOTE: "Nota interna",
+}
 
 # Handoff reasons: a short label (the inbox's tags) and the long text of
 # app.channels.handoff.REASONS (the handoff summary).
@@ -176,6 +219,17 @@ def reason(code: str | None) -> tuple[str, str] | None:
     return REASON_SHORT.get(code, REASON_SHORT["other"]), long
 
 
+def claim_event(kind: ClaimEventKind | str, text: str | None) -> str:
+    """A line of a claim's history: "Se sumó Ana Ejemplo: …", "Ahora lo atiende el estudio",
+    "Cerrado como solucionado: cambiaron el motor"."""
+    title = label(CLAIM_EVENT, kind)
+    if str(kind) == ClaimEventKind.JOINED:
+        return f"{title} {text}" if text else title
+    if str(kind) == ClaimEventKind.PROVIDER_CHANGED:
+        return f"{title} {text}" if text else f"{title} el estudio"
+    return f"{title}: {text}" if text else title
+
+
 def tool(name: str) -> str:
     return TOOLS.get(name, UNKNOWN_TOOL)
 
@@ -192,6 +246,11 @@ ENUM_TABLES: dict[type, dict[Any, str]] = {
     ReservationSource: RESERVATION_SOURCE,
     PersonRole: PERSON_ROLE,
     PanelRole: PANEL_ROLE,
+    ClaimScope: CLAIM_SCOPE,
+    ClaimStatus: CLAIM_STATUS,
+    ClaimSource: CLAIM_SOURCE,
+    ClaimActor: CLAIM_ACTOR,
+    ClaimEventKind: CLAIM_EVENT,
 }
 LANGUAGES = {"es_AR": "Español (Argentina)", "es": "Español", "en": "Inglés"}
 

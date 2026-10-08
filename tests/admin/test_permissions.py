@@ -28,10 +28,14 @@ from app.db.models import (
     AmenitySlot,
     BotSettings,
     Building,
+    BuildingClaimCategory,
     BuildingInfo,
     BuildingInfoCategory,
+    ClaimCategory,
+    ClaimScope,
     PanelRole,
     PanelUser,
+    Provider,
     QuickReply,
     Reservation,
     ReservationStatus,
@@ -60,6 +64,7 @@ ONLY_ADMINS = "Esta sección es solo para administradores."
 
 OPERATOR_MENU = [
     "Conversaciones",
+    "Reclamos",
     "Teléfonos",
     "Verificaciones",
     "Reservas de SUM",
@@ -68,6 +73,9 @@ OPERATOR_MENU = [
 ADMIN_SECTION = [
     "Edificios",
     "Información de edificios",
+    "Proveedores",
+    "Tipos de problema",
+    "Reclamos por edificio",
     "Configuración del bot",
     "Plantillas de WhatsApp",
     "Respuestas rápidas",
@@ -90,6 +98,8 @@ class Ids:
     slot: int
     unit: int
     building_without_sum: int
+    provider: int
+    category: int
 
 
 @pytest.fixture(autouse=True)
@@ -114,14 +124,18 @@ def ids(db_session: Session) -> Ids:
     amenity = Amenity(building_id=building.id, max_advance_days=30)
     slot = AmenitySlot(weekday=4, start_time=time(14), end_time=time(18))
     amenity.slots = [slot]
-    db_session.add_all([info, template, quick, run, amenity])
+    provider = Provider(name="Ascensores Inventados SRL", whatsapp_e164="+5493515550111")
+    category = ClaimCategory(
+        name="Problema inventado", list_title="Inventado", scope=ClaimScope.BUILDING
+    )
+    db_session.add_all([info, template, quick, run, amenity, provider, category])
     user = _user(db_session, "lucia", PanelRole.OPERATOR)
     db_session.commit()
     settings_id = db_session.scalar(select(BotSettings.id))
     assert settings_id is not None
     return Ids(
         building.id, info.id, template.id, quick.id, run.id, user.id, settings_id,
-        amenity.id, slot.id, unit.id, other.id,
+        amenity.id, slot.id, unit.id, other.id, provider.id, category.id,
     )  # fmt: skip
 
 
@@ -199,7 +213,15 @@ def _menu(page: str) -> list[str]:
 # --- An operator against every admin page and action -------------------------------------------
 
 SETTINGS_FORM = {"welcome_message": "Cambio de la operadora", "save": "Save"}
-BUILDING_FORM = {"name": "X", "address": "Cambio de la operadora", "save": "Save"}
+BUILDING_FORM = {
+    "name": "X", "address": "Cambio de la operadora", "claims_bot_enabled": "y", "save": "Save"
+}  # fmt: skip
+PROVIDER_FORM = {"name": "Proveedor de la operadora", "whatsapp_e164": "351 555-0112",
+                 "active": "y", "save": "Save"}  # fmt: skip
+CATEGORY_FORM = {"name": "Cambio", "list_title": "Cambio", "scope": "unit", "sort_order": "1",
+                 "active": "y", "save": "Save"}  # fmt: skip
+CLAIMS_TABLE_FORM = {"enabled_{category}": "on", "provider_{category}": "{provider}",
+                     "order_{category}": "5"}  # fmt: skip
 INFO_FORM = {"building": "{building}", "category": "otros", "title": "T", "content": "C"}
 TEMPLATE_FORM = {"label": "L", "name": "n", "language": "es", "body": "B", "save": "Save"}
 QUICK_FORM = {"title": "T", "content": "C", "sort_order": "1", "save": "Save"}
@@ -219,6 +241,25 @@ ADMIN_ACTIONS: list[tuple[str, str, dict[str, str] | None]] = [
     ("get", "/admin/building-info/edit/{info}", None),
     ("post", "/admin/building-info/edit/{info}", INFO_FORM),
     ("delete", "/admin/building-info/delete?pks={info}", None),
+    # The claims' set-up: providers, kinds of problem, each building's table
+    ("get", "/admin/provider/list", None),
+    ("get", "/admin/provider/details/{provider}", None),
+    ("get", "/admin/provider/create", None),
+    ("post", "/admin/provider/create", PROVIDER_FORM),
+    ("get", "/admin/provider/edit/{provider}", None),
+    ("post", "/admin/provider/edit/{provider}", PROVIDER_FORM),
+    ("delete", "/admin/provider/delete?pks={provider}", None),
+    ("get", "/admin/claim-category/list", None),
+    ("get", "/admin/claim-category/details/{category}", None),
+    ("get", "/admin/claim-category/create", None),
+    ("post", "/admin/claim-category/create", CATEGORY_FORM),
+    ("get", "/admin/claim-category/edit/{category}", None),
+    ("post", "/admin/claim-category/edit/{category}", CATEGORY_FORM),
+    ("delete", "/admin/claim-category/delete?pks={category}", None),
+    ("get", "/admin/building-claims", None),
+    ("get", "/admin/building-claims/{building}", None),
+    ("post", "/admin/building-claims/{building}", CLAIMS_TABLE_FORM),
+    ("post", "/admin/building-claims/{building}/copy", {"source_id": "{building_without_sum}"}),
     # Bot settings (the list goes to the form: followed)
     ("get", "/admin/bot-settings/list", None),
     ("get", "/admin/bot-settings/details/{settings}", None),
@@ -286,7 +327,19 @@ def _snapshot(session: Session) -> dict[str, Any]:
         ],
         "amenity": (amenity.name, amenity.min_advance_hours) if amenity else None,
         "welcome": settings.welcome_message if settings else None,
-        "buildings": [(b.name, b.address) for b in session.scalars(select(Building))],
+        "buildings": [
+            (b.name, b.address, b.claims_bot_enabled) for b in session.scalars(select(Building))
+        ],
+        "providers": [
+            (p.name, p.whatsapp_e164, p.active) for p in session.scalars(select(Provider))
+        ],
+        "categories": [
+            (c.name, c.list_title, c.scope) for c in session.scalars(select(ClaimCategory))
+        ],
+        "claims_tables": [
+            (r.building_id, r.category_id, r.enabled, r.provider_id, r.sort_order)
+            for r in session.scalars(select(BuildingClaimCategory))
+        ],
     }
 
 
@@ -297,7 +350,7 @@ def test_an_operator_gets_403_inside_the_panel(
     before = _snapshot(op.session)
     kwargs: dict[str, Any] = {}
     if data is not None:
-        kwargs["data"] = {k: _fill(v, ids) for k, v in data.items()}
+        kwargs["data"] = {_fill(k, ids): _fill(v, ids) for k, v in data.items()}
     response = getattr(op.client, method)(_fill(url, ids), **kwargs)
 
     assert response.status_code == 403
@@ -381,7 +434,7 @@ def test_the_operator_menu(op: Panel) -> None:
     page = op.client.get("/admin/conversations").text
     assert _menu(page) == OPERATOR_MENU
     assert "Administración" not in page
-    assert "Reclamos" not in page and "Chat de prueba" not in page
+    assert "Reclamos por edificio" not in page and "Chat de prueba" not in page
 
 
 def test_the_admin_menu_in_development(boss: Panel) -> None:
@@ -390,7 +443,6 @@ def test_the_admin_menu_in_development(boss: Panel) -> None:
     # The "Administración" heading, between the operators' part and the admins'.
     nav = page.split('id="navbarSupportedContent"', 1)[1]
     assert nav.index("Reservas de SUM") < nav.index("Administración") < nav.index("Edificios")
-    assert "Reclamos" not in nav
 
 
 def test_the_admin_menu_in_production(logged_in: Panel) -> None:

@@ -163,6 +163,7 @@ ADMIN_PAGES = [
     "/admin/verifications",
     "/admin/amenities",
     "/admin/claims",
+    "/admin/claims/new",
     "/admin/no-existe",
 ]
 
@@ -263,7 +264,8 @@ def test_buildings_without_their_code_except_in_its_own_column(
     logged_in: Panel, data: dict[str, int]
 ) -> None:
     buildings = visible(logged_in.client.get("/admin/building/list").text)
-    assert "TORRE IDIOMA" in buildings and "095 TORRE IDIOMA" not in buildings
+    # (?<!\d): the code column ("9095", the factories' counter) may come right before the name.
+    assert "TORRE IDIOMA" in buildings and not re.search(r"(?<!\d)095 TORRE IDIOMA", buildings)
     assert "Código ConsorPlus" in buildings
     for url in ("/admin/building-info/list", f"/admin/building-info/edit/{data['info']}"):
         page = visible(logged_in.client.get(url).text)

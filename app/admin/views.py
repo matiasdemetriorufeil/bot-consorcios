@@ -111,6 +111,7 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
         Building.address,
         Building.active,
         Building.pilot,
+        Building.claims_bot_enabled,
     ]
     column_searchable_list = [Building.name, Building.address]
     column_sortable_list = [Building.consorplus_code, Building.name, Building.active]
@@ -118,19 +119,31 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
     column_filters = [
         YesNoFilter(Building.active, title="Activo"),
         YesNoFilter(Building.pilot, title="Prueba piloto"),
+        YesNoFilter(Building.claims_bot_enabled, title="Reclamos por el bot"),
     ]
     # The ConsorPlus code only here, in its own column: the name, as everywhere, without it.
     column_formatters = {Building.name: lambda m, a: formatting.building(m.name)}
     column_formatters_detail = column_formatters
     column_details_list = [*column_list, Building.created_at, Building.updated_at]
     # The name is only shown: the roster sync overwrites it (app/sync/roster.py).
-    form_columns = [Building.name, Building.address, Building.active, Building.pilot]
+    form_columns = [
+        Building.name,
+        Building.address,
+        Building.active,
+        Building.pilot,
+        Building.claims_bot_enabled,
+    ]
     form_widget_args = {"name": {"readonly": True}}
     form_args = {
         "name": {
             "description": "Viene de ConsorPlus: se actualiza con la sincronización y no "
             "se edita acá."
-        }
+        },
+        "claims_bot_enabled": {
+            "description": "Todavía no hace nada: cuando esté listo, el bot va a tomar reclamos "
+            "en este edificio. Qué problemas y quién los atiende se elige en «Reclamos por "
+            "edificio»."
+        },
     }
     column_labels = {
         Building.consorplus_code: "Código ConsorPlus",
@@ -138,6 +151,7 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
         Building.address: "Dirección",
         Building.active: "Activo",
         Building.pilot: "Prueba piloto",
+        Building.claims_bot_enabled: "Reclamos por el bot",
         Building.created_at: "Creado",
         Building.updated_at: "Actualizado",
     }

@@ -38,6 +38,21 @@ def when(
     return f"{local:%d/%m/%Y}"
 
 
+def ago(value: datetime | None, now: datetime) -> str:
+    """How long ago: "recién", "hace 5 min", "hace 3 h", "hace 2 días"."""
+    if value is None:
+        return ""
+    seconds = max(0, (now - value).total_seconds())
+    if seconds < 60:
+        return "recién"
+    if seconds < 3600:
+        return f"hace {int(seconds // 60)} min"
+    if seconds < 86400:
+        return f"hace {int(seconds // 3600)} h"
+    days = int(seconds // 86400)
+    return "hace 1 día" if days == 1 else f"hace {days} días"
+
+
 def full(value: datetime | None, timezone: str = DEFAULT_TIMEZONE) -> str:
     """For a record's page: "07/10/2026 11:32"."""
     if value is None:

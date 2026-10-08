@@ -49,7 +49,18 @@ PAGE_HELP: dict[str, str] = {
         "Las reglas del SUM de este edificio y sus turnos. Lo que cambies acá vale para todos "
         "los que reservan, también por WhatsApp."
     ),
-    "view-claims": "Pronto vas a poder ver acá los reclamos de los propietarios.",
+    "view-claims": (
+        "Los problemas que reportaron los vecinos y quién los atiende. En «Abiertos» están los "
+        "que todavía hay que resolver; los urgentes van primero."
+    ),
+    "view-claim": (
+        "Todo lo de este reclamo y lo que pasó con él. Cuando esté resuelto, cerralo como "
+        "solucionado."
+    ),
+    "view-claim-new": (
+        "Para un reclamo que llegó por teléfono o en persona. Si ya había uno abierto del mismo "
+        "problema en el edificio, la persona se suma a ese."
+    ),
     "view-guide": "Cómo hacer las tareas de todos los días, paso a paso.",
     # Admins
     "list:building": (
@@ -85,6 +96,38 @@ PAGE_HELP: dict[str, str] = {
     "list:sync-run": (
         "Cada vez que el sistema leyó los datos de ConsorPlus (propietarios, unidades y "
         "deudas), y si salió bien."
+    ),
+    "list:provider": (
+        "Las empresas que arreglan los problemas de los edificios (ascensores, plomería...). En "
+        "«Reclamos por edificio» elegís cuál atiende cada problema."
+    ),
+    "edit:provider": (
+        "Cargá el WhatsApp como lo tengas, con el código de área: el panel lo acomoda. Si deja "
+        "de trabajar con el estudio, desactivalo en lugar de borrarlo."
+    ),
+    "create:provider": (
+        "Cargá el WhatsApp como lo tengas, con el código de área: el panel lo acomoda. Después "
+        "elegí qué problemas atiende en «Reclamos por edificio»."
+    ),
+    "list:claim-category": (
+        "Los problemas que un propietario va a poder elegir al hacer un reclamo por WhatsApp, "
+        "en este orden."
+    ),
+    "edit:claim-category": (
+        "El título y la descripción son lo que la persona ve en la lista de WhatsApp: tienen "
+        "un largo máximo."
+    ),
+    "create:claim-category": (
+        "El título y la descripción son lo que la persona ve en la lista de WhatsApp: tienen "
+        "un largo máximo."
+    ),
+    "view-building-claims": (
+        "Qué problemas se pueden reclamar en cada edificio y quién los atiende. Entrá a un "
+        "edificio para cambiarlo."
+    ),
+    "view-building-claims-table": (
+        "Marcá los problemas que se pueden reclamar en este edificio y elegí quién atiende cada "
+        "uno. Guardá al terminar: se guarda toda la tabla junta."
     ),
     "view-users": "Las personas que entran al panel. Cada una tiene su usuario.",
     "view-user-edit": (
@@ -150,6 +193,31 @@ EMPTY: dict[str, str] = {
         "al responder en Conversaciones."
     ),
     "list:sync-run": "Todavía no se leyeron datos de ConsorPlus.",
+    "list:provider": (
+        "Todavía no hay proveedores. Agregá uno con el botón de arriba para poder elegirlo en "
+        "«Reclamos por edificio»."
+    ),
+    "list:claim-category": "Todavía no hay problemas cargados. Agregá uno con el botón de arriba.",
+    "building-claims": "No hay edificios activos.",
+    "claims:open": (
+        "No hay reclamos abiertos. Cuando un vecino reporte un problema, va a aparecer acá."
+    ),
+    "claims:closed": "Todavía no hay reclamos cerrados.",
+    "claims:all": (
+        "Todavía no hay reclamos. Si te avisan de un problema por teléfono, cargalo con "
+        "«Nuevo reclamo»."
+    ),
+    "claims:search": (
+        "No se encontró ningún reclamo. Probá con otra parte del nombre, del número o de la "
+        "unidad, y fijate que los filtros no estén limitando la búsqueda."
+    ),
+    "claim-new:categories": (
+        "En este edificio no hay problemas habilitados. Pedile a un admin que los habilite en "
+        "«Reclamos por edificio»."
+    ),
+    "building-claims:categories": (
+        "Todavía no hay problemas cargados. Agregalos en «Tipos de problema» y volvé acá."
+    ),
 }
 EMPTY_DEFAULT = "Todavía no hay nada acá."
 
@@ -212,6 +280,25 @@ CONFIRM: dict[str, dict[str, str]] = {
         "button": "Desactivar",
         "kind": "danger",
     },
+    "cancel_claim": {
+        "title": "¿Cancelar este reclamo?",
+        "text": (
+            "El reclamo se cierra como cancelado y no se puede volver a abrir. Al vecino "
+            "todavía no se le avisa nada desde el panel: si querés que sepa, escribile desde "
+            "Conversaciones."
+        ),
+        "button": "Cancelar reclamo",
+        "kind": "danger",
+    },
+    "copy_claims": {
+        "title": "¿Copiar de otro edificio?",
+        "text": (
+            "Se reemplazan los problemas habilitados, quién los atiende y el orden de este "
+            "edificio por los del otro. A nadie le llega ningún aviso."
+        ),
+        "button": "Copiar",
+        "kind": "danger",
+    },
     "restart_test_chat": {
         "title": "¿Empezar de nuevo?",
         "text": "Se borran los mensajes de esta conversación de prueba.",
@@ -232,6 +319,14 @@ def confirm_attrs(key: str, detail: str = "") -> dict[str, str]:
         "data-confirm-kind": item["kind"],
     }
 
+
+# --- What "Alcance" of a kind of problem changes (its form and the table of each building) -------
+
+SCOPE_HELP = (
+    "Todo el edificio: los reclamos repetidos se juntan en uno y al proveedor no le llega "
+    "ningún dato del vecino. Una unidad: cada reclamo va aparte y el proveedor recibe nombre, "
+    "unidad y teléfono del vecino."
+)
 
 # --- The tour of "Conversaciones" ----------------------------------------------------------------
 # Each step points at the element with data-tour="<target>" (centered when it is not on the page,
@@ -301,4 +396,5 @@ def globals_for_templates() -> dict[str, Any]:
         "empty_for": empty_for,
         "confirm_attrs": confirm_attrs,
         "empty_texts": EMPTY,
+        "scope_help": SCOPE_HELP,
     }

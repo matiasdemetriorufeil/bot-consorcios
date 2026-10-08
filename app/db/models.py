@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Sequence,
     SmallInteger,
     String,
     Text,
@@ -80,6 +81,8 @@ class Building(Base):
     address: Mapped[str | None] = mapped_column(String(300))
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     pilot: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # "Reclamos por el bot": the bot takes claims in this building (used from step 8.3 on).
+    claims_bot_enabled: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -654,3 +657,287 @@ class QuickReply(Base):
     active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+# --- Claims: providers, kinds of problem and who attends each one in each building ----------
+
+
+class ClaimScope(StrEnum):
+    BUILDING = "building"  # the whole building: repeated claims are merged into one
+    UNIT = "unit"  # one unit: each claim on its own, the provider gets the neighbor's data
+
+
+class Provider(Base):
+    """A company that attends problems (lifts, plumbing...). Global: one provider may attend
+    several buildings. Deactivated instead of deleted."""
+
+    __tablename__ = "providers"
+    __table_args__ = (
+        # One active provider per WhatsApp number (its messages will go to the providers' flow).
+        Index(
+            "uq_providers_whatsapp_e164_active",
+            "whatsapp_e164",
+            unique=True,
+            postgresql_where=text("active AND whatsapp_e164 IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))  # the company
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    # Normalized like the roster's phones (app.bot.identity.to_e164): "+549...".
+    whatsapp_e164: Mapped[str | None] = mapped_column(String(20))
+    other_phone: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(254))
+    notes: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    assignments: Mapped[list["BuildingClaimCategory"]] = relationship(back_populates="provider")
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class ClaimCategory(Base):
+    """A kind of problem people report (global). list_title and list_description are what
+    WhatsApp shows in a list row (24 and 72 characters at most)."""
+
+    __tablename__ = "claim_categories"
+    __table_args__ = (
+        CheckConstraint("char_length(list_title) BETWEEN 1 AND 24", name="list_title_length"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    list_title: Mapped[str] = mapped_column(String(24))
+    list_description: Mapped[str | None] = mapped_column(String(72))
+    scope: Mapped[ClaimScope] = mapped_column(_str_enum(ClaimScope, "scope_valid"))
+    urgent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Asked by the bot right after the problem is chosen ("¿Hay alguien encerrado?").
+    follow_up_question: Mapped[str | None] = mapped_column(String(300))
+    # Said by the bot before anything else (gas).
+    safety_text: Mapped[str | None] = mapped_column(Text)
+    emergency_phone: Mapped[str | None] = mapped_column(String(100))
+    active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class BuildingClaimCategory(Base):
+    """A kind of problem in one building: whether people can report it and who attends it
+    (no provider: the studio)."""
+
+    __tablename__ = "building_claim_categories"
+    __table_args__ = (UniqueConstraint("building_id", "category_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    building_id: Mapped[int] = mapped_column(ForeignKey("buildings.id", ondelete="CASCADE"))
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("claim_categories.id", ondelete="CASCADE"), index=True
+    )
+    enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    provider_id: Mapped[int | None] = mapped_column(
+        ForeignKey("providers.id", ondelete="RESTRICT"), index=True
+    )
+    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    building: Mapped[Building] = relationship()
+    category: Mapped[ClaimCategory] = relationship()
+    provider: Mapped[Provider | None] = relationship(back_populates="assignments")
+
+
+# --- Claims ---------------------------------------------------------------------------------
+
+
+class ClaimStatus(StrEnum):
+    PENDING_SEND = "pending_send"  # has a provider, still to be notified (step 8.5)
+    SENT = "sent"  # the provider was notified
+    ACKNOWLEDGED = "acknowledged"  # the provider confirmed
+    STUDIO = "studio"  # the studio attends it (no provider)
+    SOLVED = "solved"  # closed: solved
+    CANCELLED = "cancelled"  # closed: cancelled
+
+
+OPEN_CLAIM_STATUSES = (
+    ClaimStatus.PENDING_SEND,
+    ClaimStatus.SENT,
+    ClaimStatus.ACKNOWLEDGED,
+    ClaimStatus.STUDIO,
+)
+CLOSED_CLAIM_STATUSES = (ClaimStatus.SOLVED, ClaimStatus.CANCELLED)
+
+
+class ClaimSource(StrEnum):
+    BOT = "bot"
+    PANEL = "panel"
+
+
+class ClaimActor(StrEnum):
+    BOT = "bot"
+    PROVIDER = "provider"
+    PANEL = "panel"
+    SYSTEM = "system"
+
+
+class ClaimEventKind(StrEnum):
+    CREATED = "created"
+    JOINED = "joined"  # a neighbor joined a repeated claim
+    PROVIDER_CHANGED = "provider_changed"
+    SENT = "sent"
+    ACKNOWLEDGED = "acknowledged"
+    SOLVED = "solved"
+    CANCELLED = "cancelled"
+    NOTE = "note"
+
+
+CLAIM_NUMBER = Sequence("claims_number_seq", start=1001)
+
+
+class Claim(Base):
+    """A problem a neighbor reported. Created and changed only through app.claims.service.
+    scope, urgent, the reporter and the provider are copied when it is created: later changes
+    of the kind of problem, the person or the building's table do not change it."""
+
+    __tablename__ = "claims"
+    __table_args__ = (
+        Index("ix_claims_building_id_category_id_status", "building_id", "category_id", "status"),
+    )
+    # number and created_at come back with the INSERT (no extra query to show #1001).
+    __mapper_args__ = {"eager_defaults": True}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # The number people see (#1001...): taken only when a claim is inserted.
+    number: Mapped[int] = mapped_column(
+        CLAIM_NUMBER, server_default=CLAIM_NUMBER.next_value(), unique=True
+    )
+    building_id: Mapped[int] = mapped_column(ForeignKey("buildings.id", ondelete="RESTRICT"))
+    # Only for a kind of problem of one unit ("Todo el edificio" otherwise).
+    unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("units.id", ondelete="SET NULL"), index=True
+    )
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("claim_categories.id", ondelete="RESTRICT"), index=True
+    )
+    scope: Mapped[ClaimScope] = mapped_column(_str_enum(ClaimScope, "scope_valid"))
+    urgent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    description: Mapped[str] = mapped_column(Text)
+    follow_up_answer: Mapped[str | None] = mapped_column(Text)
+    reporter_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("people.id", ondelete="SET NULL")
+    )
+    reporter_name: Mapped[str | None] = mapped_column(String(200))
+    reporter_phone_e164: Mapped[str | None] = mapped_column(String(20), index=True)
+    # Whoever reported first: their unit, in any scope (to contact them).
+    reporter_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("units.id", ondelete="SET NULL")
+    )
+    # None: the studio attends it.
+    provider_id: Mapped[int | None] = mapped_column(
+        ForeignKey("providers.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[ClaimStatus] = mapped_column(_str_enum(ClaimStatus, "status_valid"), index=True)
+    status_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    source: Mapped[ClaimSource] = mapped_column(_str_enum(ClaimSource, "source_valid"))
+    created_by_user: Mapped[str | None] = mapped_column(String(100))  # panel user
+    wa_conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("wa_conversations.id", ondelete="SET NULL")
+    )
+    # The same neighbor's (or unit's) claim of the same kind closed in the last 30 days.
+    previous_claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("claims.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    sent_at: Mapped[datetime | None]
+    acknowledged_at: Mapped[datetime | None]
+    closed_at: Mapped[datetime | None]
+    close_reason: Mapped[str | None] = mapped_column(Text)
+
+    building: Mapped[Building] = relationship()
+    unit: Mapped[Unit | None] = relationship(foreign_keys=[unit_id])
+    reporter_unit: Mapped[Unit | None] = relationship(foreign_keys=[reporter_unit_id])
+    category: Mapped[ClaimCategory] = relationship()
+    provider: Mapped[Provider | None] = relationship()
+    previous: Mapped["Claim | None"] = relationship(remote_side=[id])
+    reporters: Mapped[list["ClaimReporter"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", order_by="ClaimReporter.id"
+    )
+    attachments: Mapped[list["ClaimAttachment"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", order_by="ClaimAttachment.id"
+    )
+    events: Mapped[list["ClaimEvent"]] = relationship(
+        back_populates="claim", cascade="all, delete-orphan", order_by="ClaimEvent.id"
+    )
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in OPEN_CLAIM_STATUSES
+
+
+class ClaimReporter(Base):
+    """A neighbor who joined a repeated claim (the first one is in Claim.reporter_*)."""
+
+    __tablename__ = "claim_reporters"
+    __table_args__ = (
+        Index(
+            "uq_claim_reporters_claim_id_phone_e164",
+            "claim_id",
+            "phone_e164",
+            unique=True,
+            postgresql_where=text("phone_e164 IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"), index=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(200))
+    phone_e164: Mapped[str | None] = mapped_column(String(20), index=True)
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="reporters")
+    unit: Mapped[Unit | None] = relationship()
+
+
+class ClaimAttachment(Base):
+    """A photo or file of a claim: the attachment Conversaciones already stored (never copied;
+    served by /admin/wa/media/{wa_message_id}). Added from step 8.3."""
+
+    __tablename__ = "claim_attachments"
+    __table_args__ = (UniqueConstraint("claim_id", "wa_message_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"))
+    wa_message_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("wa_messages.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="attachments")
+    message: Mapped[WaMessage] = relationship()
+
+
+class ClaimEvent(Base):
+    """The history of a claim. text: the detail (a name, a reason, a note, a provider); what
+    happened is said in Spanish by app.admin.labels."""
+
+    __tablename__ = "claim_events"
+    __table_args__ = (Index("ix_claim_events_claim_id_id", "claim_id", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey("claims.id", ondelete="CASCADE"))
+    kind: Mapped[ClaimEventKind] = mapped_column(_str_enum(ClaimEventKind, "kind_valid"))
+    actor: Mapped[ClaimActor] = mapped_column(_str_enum(ClaimActor, "actor_valid"))
+    panel_user: Mapped[str | None] = mapped_column(String(100))
+    text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    claim: Mapped[Claim] = relationship(back_populates="events")

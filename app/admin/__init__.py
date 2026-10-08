@@ -1,13 +1,14 @@
 """Admin panel (SQLAdmin) at /admin, for the studio's employees.
 
 The menu, for everyone: "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
-"Teléfonos" (app.admin.phones), "Verificaciones" (app.admin.verifications), "Reservas de
-SUM" (app.admin.amenities) and "Guía" (app.admin.guide). Then, under
-"Administración" and only for admins: buildings and
-their information, the bot settings, the WhatsApp templates and quick replies of the inbox,
-the panel users (app.admin.users), metrics, sync runs (read only) and, in development only,
-the test chat (app.admin.dev_chat). Out of the menu: "Reclamos" (an empty page for now) and
-the attachments of WhatsApp messages (app.admin.wa_media). /admin/ goes to "Conversaciones".
+"Reclamos" (app.admin.claims), "Teléfonos" (app.admin.phones), "Verificaciones"
+(app.admin.verifications), "Reservas de SUM" (app.admin.amenities) and "Guía"
+(app.admin.guide). Then, under "Administración" and only for admins: buildings and their
+information, the claims' set-up (providers, kinds of problem and who attends each one in each
+building: app.admin.claims_setup), the bot settings, the WhatsApp templates and quick replies of
+the inbox, the panel users (app.admin.users), metrics, sync runs (read only) and, in development
+only, the test chat (app.admin.dev_chat). Out of the menu: the attachments of WhatsApp messages
+(app.admin.wa_media). /admin/ goes to "Conversaciones".
 
 Everything in Spanish and in one style: SQLAdmin's texts through app.admin.i18n, values
 through app.admin.labels and app.admin.formatting (also Jinja filters: phone, building, when,
@@ -35,8 +36,10 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from app.admin import formatting, help, i18n, labels
-from app.admin.amenities import AmenitiesView, ClaimsView
+from app.admin.amenities import AmenitiesView
 from app.admin.auth import AdminAuth, LoginLimiter
+from app.admin.claims import ClaimsView
+from app.admin.claims_setup import BuildingClaimsView, ClaimCategoryAdmin, ProviderAdmin
 from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
 from app.admin.guide import GUIDE_FILES_DIR, GuideView
@@ -70,19 +73,22 @@ BOT_SETTINGS_IDENTITY = "bot-settings"
 # under "Administración"; the test chat goes last, in development). The rest is not in the menu.
 VIEWS = (
     ConversationsView,
+    ClaimsView,
     PhonesView,
     VerificationsView,
     AmenitiesView,
     GuideView,
     BuildingAdmin,
     BuildingInfoAdmin,
+    ProviderAdmin,
+    ClaimCategoryAdmin,
+    BuildingClaimsView,
     BotSettingsAdmin,
     WaTemplateAdmin,
     QuickReplyAdmin,
     UsersView,
     MetricsView,
     SyncRunAdmin,
-    ClaimsView,
     WaMediaView,
 )
 
@@ -193,11 +199,13 @@ def setup_admin(
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
+        ClaimsView: {"timezone": settings.timezone, "session_maker": session_maker},
         UsersView: {
             "timezone": settings.timezone,
             "session_maker": session_maker,
             "env_username": settings.admin_username,
         },
+        BuildingClaimsView: {"session_maker": session_maker},
         WaMediaView: {"media_dir": settings.whatsapp_media_dir, "session_maker": session_maker},
     }
     views: list[type] = list(VIEWS)

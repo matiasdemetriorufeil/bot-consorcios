@@ -1,5 +1,42 @@
 # Inventario del panel `/admin`
 
+## Actualización 8.2: reclamos (2026-10-08)
+
+**Menú de la operadora:** Conversaciones, Reclamos, Teléfonos, Verificaciones, Reservas de SUM,
+Guía. El admin ve lo mismo y, abajo, «Administración». La página «Próximamente» de Reclamos
+(5b.4) se borró. Todavía el bot no crea reclamos ni se le manda nada a nadie.
+
+| Pantalla | URL | Tipo | Quién | Qué tiene |
+|---|---|---|---|---|
+| Reclamos | `/admin/claims` | Propia | admin y operadora | Pestañas Abiertos (por defecto), Cerrados y Todos, con la cantidad. Búsqueda por número («1003» o «#1003»), unidad, nombre o parte del teléfono (también de los vecinos que se sumaron). Filtros plegables: edificio, problema, quién lo atiende (proveedor o «El estudio»), estado, urgente. Columnas: N.º (+ «Urgente»), Fecha, Edificio, Unidad o «Todo el edificio», Problema, Quién reclamó (+N), Lo atiende, Estado (naranja: abierto; azul: en curso; gris: cerrado) y hace cuánto está así. Urgentes abiertos primero, después los más nuevos. En el celular, tarjetas. Botón «Nuevo reclamo». |
+| Reclamo | `/admin/claims/{id}` | Propia | admin y operadora | Datos, descripción y respuesta a la pregunta extra, quién reclamó y los vecinos sumados (con su unidad y «Ver conversación» si escribieron por WhatsApp), fotos, reclamo anterior y la historia. Si está abierto: «Cambiar quién lo atiende», «Cerrar como solucionado» (con motivo), «Cancelar reclamo» (con motivo y confirmación). Siempre: «Nota interna». |
+| Nuevo reclamo | `/admin/claims/new` | Propia | admin y operadora | Primero el edificio; después el problema (solo los habilitados ahí), la unidad (obligatoria si el problema es de una unidad), qué pasa y quién reclamó (del padrón, filtrado por la unidad, u otra persona con nombre y teléfono opcional). Si ya había uno abierto del mismo problema en el edificio, la persona se suma a ese y se abre ese. |
+
+- **Conversaciones:** la ficha del contacto tiene un bloque «Reclamos» con sus últimos 5
+  (número, problema, estado y link).
+- **Reglas:** todas en `app/claims/service.py`; cada cambio queda en la historia del reclamo y
+  en el registro de acciones del panel.
+- Capturas: `docs/panel-capturas/8-2/`, fuera de Git.
+
+## Actualización 8.1: configuración de reclamos (2026-10-07)
+
+Tres pantallas nuevas en «Administración», solo admin (la operadora no las ve en el menú y, si
+escribe la URL, recibe la página de 403 del panel; los POST también lo chequean en el
+servidor). Todavía no hay reclamos ni el bot los toma: es solo la configuración.
+
+| Nombre visible | URL | Tipo | Notas |
+|---|---|---|---|
+| Proveedores | `/admin/provider/list` | SQLAdmin | Empresa, contacto, WhatsApp (formato «351 555-0101»), edificios y problemas que atiende, activo. Búsqueda por empresa, contacto, email o parte del número. Sin borrar: se desactiva. El WhatsApp se carga en cualquier formato (se guarda normalizado) y no puede repetirse entre proveedores activos. Si el número es de un propietario o inquilino, o de un contacto de Conversaciones, avisa sin bloquear. Si se desactiva uno asignado, avisa en cuántos edificios estaba. |
+| Tipos de problema | `/admin/claim-category/list` | SQLAdmin | Orden, problema, título en la lista, alcance, urgente, activo. Contador de caracteres en el título (24) y la descripción (72) de la lista de WhatsApp; el límite también se valida en el servidor y en la base. La ayuda de «Alcance» explica qué cambia. Sin borrar: se desactiva. |
+| Reclamos por edificio | `/admin/building-claims` y `/admin/building-claims/{id}` | Propia | Lista de edificios activos con habilitados y sin proveedor; en cada uno, la tabla «Problemas y proveedores» (habilitado, «¿Quién lo atiende?» con los proveedores activos + «Lo atiende el estudio», orden), que se guarda entera. «Copiar de otro edificio» con confirmación. Avisos: problemas que atiende el estudio, proveedores sin WhatsApp o desactivados. Con más de 10 habilitados marca desde cuál van a una segunda lista («Más opciones»). |
+
+- **Edificios:** nuevo interruptor «Reclamos por el bot» (columna, filtro y formulario).
+  Todavía no hace nada; lo usa el paso 8.3.
+- **Por qué una entrada propia y no dentro de Edificios:** el formulario de Edificios es el de
+  SQLAdmin y una tabla editable con copiar y avisos no entra bien ahí.
+- **Datos iniciales:** `scripts/seed_claim_categories.py` (12 tipos de problema; con
+  `--building <código>` los habilita en ese edificio, sin proveedor).
+
 ## Actualización 5d.5: ayudas para aprender solas (2026-10-07)
 
 - **Línea de ayuda:** debajo del título de cada pantalla, una línea dice para qué sirve

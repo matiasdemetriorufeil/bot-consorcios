@@ -12,6 +12,7 @@ TASKS = [
     "Aprobar un teléfono",
     "Aprobar o rechazar una verificación",
     "Reservar y cancelar el SUM",
+    "Reclamos",
     "Si algo sale raro",
 ]
 

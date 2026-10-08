@@ -27,8 +27,10 @@ from app.admin.audit import log_admin_action
 from app.amenities.booking import describe_slot
 from app.bot.identity import to_e164
 from app.bot.tools import format_money
+from app.claims.service import claims_for_phone
 from app.db.models import (
     Building,
+    ClaimStatus,
     DebtSnapshot,
     Person,
     PersonRole,
@@ -166,19 +168,7 @@ def identify_many(session: Session, phones: list[str]) -> dict[str, Known]:
 # --- The list ---------------------------------------------------------------------------------
 
 
-def ago(when: datetime | None, now: datetime) -> str:
-    """ "recién", "hace 5 min", "hace 3 h", "hace 2 días"."""
-    if when is None:
-        return ""
-    seconds = max(0, (now - when).total_seconds())
-    if seconds < 60:
-        return "recién"
-    if seconds < 3600:
-        return f"hace {int(seconds // 60)} min"
-    if seconds < 86400:
-        return f"hace {int(seconds // 3600)} h"
-    days = int(seconds // 86400)
-    return "hace 1 día" if days == 1 else f"hace {days} días"
+ago = formatting.ago  # also used by app.admin.example
 
 
 def reason_label(reason: str | None) -> tuple[str, str] | None:
@@ -395,6 +385,15 @@ class CardReservation:
     slot: str
 
 
+@dataclass(frozen=True)
+class CardClaim:
+    id: int
+    number: int
+    problem: str
+    status: str
+    group: str
+
+
 @dataclass
 class ContactCard:
     name: str
@@ -404,6 +403,7 @@ class ContactCard:
     verified: bool
     units: list[CardUnit]
     reservations: list[CardReservation]
+    claims: list[CardClaim] = field(default_factory=list)  # its latest claims
 
 
 def _local(value: datetime | None, timezone: str, fmt: str = "%d/%m/%Y %H:%M") -> str:
@@ -464,6 +464,16 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
             )
             for r in rows
         ]
+    claims = [
+        CardClaim(
+            id=c.id,
+            number=c.number,
+            problem=c.category.list_title,
+            status=labels.label(labels.CLAIM_STATUS, c.status),
+            group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
+        )
+        for c in claims_for_phone(session, contact.phone_e164)
+    ]
     return ContactCard(
         name=contact_name(contact, who),
         profile_name=contact.profile_name,
@@ -472,6 +482,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
         verified=bool(who and who.verified),
         units=card_units,
         reservations=reservations,
+        claims=claims,
     )
 
 

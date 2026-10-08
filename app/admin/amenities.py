@@ -1,5 +1,4 @@
-"""Panel pages of the SUM ("Reservas de SUM") and the placeholder of "Reclamos" (out of the
-menu until it exists, its page stays).
+"""Panel pages of the SUM ("Reservas de SUM").
 
 SQLAdmin has no weekly grid, so these are BaseView pages with their own templates, inside the
 panel (same login, menu and style). Operators see the list and the weekly agenda, book and
@@ -689,15 +688,3 @@ class AmenitiesView(BaseView):
                 source_label=labels.label(labels.RESERVATION_SOURCE, reservation.source),
                 error=error,
             )
-
-
-class ClaimsView(BaseView):
-    name = "Reclamos"
-    icon = "fa-solid fa-triangle-exclamation"
-
-    def is_visible(self, request: Request) -> bool:
-        return False  # out of the menu until the claims exist (its page stays)
-
-    @expose("/claims", methods=["GET"], identity="claims")
-    async def claims_page(self, request: Request) -> Response:
-        return await self.templates.TemplateResponse(request, "claims.html", {"title": "Reclamos"})

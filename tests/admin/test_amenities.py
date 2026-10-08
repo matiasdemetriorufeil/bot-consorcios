@@ -1,5 +1,5 @@
-"""Panel pages of the SUM ("Reservas de SUM") and the "Reclamos" placeholder, against the
-Postgres test database. Invented data only."""
+"""Panel pages of the SUM ("Reservas de SUM"), against the Postgres test database. Invented
+data only."""
 
 import re
 from dataclasses import dataclass
@@ -70,22 +70,13 @@ def _post(panel: Panel, url: str, data: dict[str, Any]) -> Any:
     return panel.client.post(url, data=data, follow_redirects=False)
 
 
-# --- Menu, login and the claims page -----------------------------------------------------
+# --- Login ----------------------------------------------------------------------------------
 
 
 def test_pages_need_login(panel: Panel, sum_: Sum) -> None:
-    for url in ("/admin/amenities", f"/admin/amenities/{sum_.amenity_id}/week", "/admin/claims"):
+    for url in ("/admin/amenities", f"/admin/amenities/{sum_.amenity_id}/week"):
         response = panel.client.get(url, follow_redirects=False)
         assert response.status_code == 302 and "/admin/login" in response.headers["location"]
-
-
-def test_claims_is_out_of_the_menu_but_its_page_stays(logged_in: Panel) -> None:
-    page = logged_in.client.get("/admin/").text
-    assert "Reservas de SUM" in page and "Reclamos" not in page
-
-    claims = logged_in.client.get("/admin/claims")
-    assert claims.status_code == 200
-    assert "Próximamente: acá vas a ver y seguir los reclamos de los propietarios." in claims.text
 
 
 # --- List and creation ---------------------------------------------------------------------

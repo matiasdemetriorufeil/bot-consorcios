@@ -18,6 +18,22 @@
     update();
   });
 
+  // The same under a one-line field with data-count="<max>" (the WhatsApp list's limits of
+  // "Tipos de problema"); red when it goes over (the server refuses it anyway).
+  document.querySelectorAll("input[data-count]").forEach(function (input) {
+    var max = parseInt(input.dataset.count, 10) || 0;
+    var label = document.createElement("div");
+    label.className = "form-hint char-count";
+    input.insertAdjacentElement("afterend", label);
+    function update() {
+      var n = input.value.length;
+      label.textContent = n + " de " + max + " caracteres";
+      label.classList.toggle("char-count-over", max > 0 && n > max);
+    }
+    input.addEventListener("input", update);
+    update();
+  });
+
   // The delete confirmation ("This will permanently delete ..."), after SQLAdmin fills it.
   if (window.jQuery) {
     window.jQuery(document).on("shown.bs.modal", "#modal-delete", function () {
@@ -31,6 +47,39 @@
     document.querySelectorAll("details[data-open-wide]").forEach(function (box) {
       box.open = true;
     });
+  }
+
+  // --- "Nuevo reclamo" (claim_new.html) ---------------------------------------------------------
+  // Only the fields of the chosen way of saying who reported, and only the people of the chosen
+  // unit. A help: the server checks both again.
+  var claimForm = document.getElementById("claim-form");
+  if (claimForm) {
+    var unitSelect = claimForm.querySelector("#unit_id");
+    var personSelect = claimForm.querySelector("#person");
+    var showReporter = function () {
+      var checked = claimForm.querySelector("input[name=reporter]:checked");
+      var mode = checked ? checked.value : "roster";
+      claimForm.querySelectorAll("[data-reporter]").forEach(function (block) {
+        block.hidden = block.dataset.reporter !== mode;
+      });
+    };
+    var filterPeople = function () {
+      if (!personSelect || !unitSelect) return;
+      var unit = unitSelect.value;
+      personSelect.querySelectorAll("optgroup").forEach(function (group) {
+        var shown = !unit || group.dataset.unit === unit;
+        group.hidden = !shown;
+        group.disabled = !shown;
+      });
+      var chosen = personSelect.selectedOptions[0];
+      if (chosen && chosen.parentElement.disabled) personSelect.value = "";
+    };
+    claimForm.querySelectorAll("input[name=reporter]").forEach(function (radio) {
+      radio.addEventListener("change", showReporter);
+    });
+    if (unitSelect) unitSelect.addEventListener("change", filterPeople);
+    showReporter();
+    filterPeople();
   }
 
   // --- Confirmations (app.admin.help.CONFIRM) ----------------------------------------------

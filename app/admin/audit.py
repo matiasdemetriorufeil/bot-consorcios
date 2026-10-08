@@ -1,37 +1,17 @@
 """Audit trail of the admin panel in bot_events: who did what (event_type "admin_action").
 
 Payloads carry ids and the names of the changed fields, never their values (settings texts,
-building information, codes).
+building information, codes). log_admin_action lives in app.audit (also used outside the panel,
+e.g. app.claims.service); it is re-exported here.
 """
 
 from typing import Any
 
 from sqlalchemy import inspect
-from sqlalchemy.orm import Session
 
-from app.db.models import BotEvent
+from app.audit import EVENT_TYPE, log_admin_action
 
-EVENT_TYPE = "admin_action"
-
-
-def log_admin_action(
-    session: Session,
-    admin_user: str,
-    action: str,
-    *,
-    phone_e164: str | None = None,
-    conversation_id: int | None = None,
-    **payload: Any,
-) -> None:
-    """Add the event to the session: it is committed together with the change."""
-    session.add(
-        BotEvent(
-            conversation_id=conversation_id,
-            phone_e164=phone_e164,
-            event_type=EVENT_TYPE,
-            payload={"admin_user": admin_user, "action": action, **payload},
-        )
-    )
+__all__ = ["EVENT_TYPE", "changed_fields", "log_admin_action"]
 
 
 def _comparable(value: Any) -> Any:

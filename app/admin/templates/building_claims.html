@@ -1,0 +1,117 @@
+{#- "Problemas y proveedores" of one building (app.admin.claims_setup): the whole table is
+    saved at once. second_list_from: the first problem that goes to WhatsApp's second list
+    ("Más opciones", app.claims.setup.split_for_whatsapp). -#}
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <div class="d-flex flex-wrap gap-2">
+    <a class="btn btn-secondary" href="{{ url_for('admin:view-building-claims') }}"><i class="fa-solid fa-arrow-left me-2"></i>Reclamos por edificio</a>
+    <a class="btn btn-secondary" href="{{ url_for('admin:edit', identity='building', pk=building.id) }}"><i class="fa-solid fa-building me-2"></i>Datos del edificio</a>
+  </div>
+</div>
+
+{% if warnings %}
+<div class="col-12">
+  <div class="alert alert-warning mb-0" role="alert" id="claims-warnings">
+    {% for text in warnings %}<div>{{ text }}</div>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="col-12">
+  <form class="card" method="POST" id="claims-table">
+    <div class="card-header">
+      <h3 class="card-title">Problemas y proveedores</h3>
+      <div class="ms-auto small text-secondary">
+        Reclamos por el bot: {% if building.claims_bot_enabled %}<strong>sí</strong>{% else %}no (se prende en Edificios){% endif %}
+      </div>
+    </div>
+    {% if error %}<div class="card-body pb-0"><div class="alert alert-danger mb-0" role="alert">{{ error }}</div></div>{% endif %}
+    {% if enabled_count > 10 %}
+    <div class="card-body pb-0">
+      <p class="text-secondary mb-0">
+        Hay {{ enabled_count }} problemas habilitados. WhatsApp muestra hasta 10 por lista: el bot muestra los primeros 9 y una opción «Más opciones» con el resto.
+      </p>
+    </div>
+    {% endif %}
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead><tr><th>Problema</th><th>Habilitado</th><th>¿Quién lo atiende?</th><th>Orden</th></tr></thead>
+        <tbody>
+          {% for row in rows %}
+          {% set cid = row.category.id %}
+          {% if cid == second_list_from %}
+          <tr class="claims-second-list"><td colspan="4">Estos aparecen en una segunda lista («Más opciones»)</td></tr>
+          {% endif %}
+          <tr class="{{ '' if row.enabled else 'text-secondary' }}">
+            <td>
+              <div class="fw-bold">{{ row.category.list_title }}</div>
+              <div class="small text-secondary">{{ row.category.name }}</div>
+              <div class="mt-1">
+                <span class="badge bg-secondary-lt">{{ scope_labels[row.category.scope] }}</span>
+                {% if row.category.urgent %}<span class="badge bg-red-lt">Urgente</span>{% endif %}
+              </div>
+            </td>
+            <td>
+              <label class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" name="enabled_{{ cid }}" {% if row.enabled %}checked{% endif %} aria-label="Habilitado: {{ row.category.list_title }}">
+              </label>
+            </td>
+            <td>
+              <select class="form-select" name="provider_{{ cid }}" aria-label="Quién atiende: {{ row.category.list_title }}">
+                <option value="">{{ studio_label }}</option>
+                {% for provider in providers %}
+                <option value="{{ provider.id }}" {% if provider.id == row.provider_id %}selected{% endif %}>{{ provider.name }}{% if not provider.whatsapp_e164 %} (sin WhatsApp){% endif %}</option>
+                {% endfor %}
+                {% if row.provider and not row.provider.active %}
+                <option value="{{ row.provider.id }}" selected>{{ row.provider.name }} (desactivado)</option>
+                {% endif %}
+              </select>
+            </td>
+            <td class="claims-order">
+              <input class="form-control" type="number" inputmode="numeric" min="0" step="1" name="order_{{ cid }}" value="{{ row.sort_order }}" required aria-label="Orden: {{ row.category.list_title }}">
+            </td>
+          </tr>
+          {% else %}
+          <tr class="list-empty"><td colspan="4" class="empty-help">{{ empty_texts['building-claims:categories'] }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer">
+      <p class="form-hint mb-2"><strong>Alcance.</strong> {{ scope_help }}</p>
+      <p class="form-hint mb-3">Los de número más chico aparecen primero en la lista de WhatsApp.</p>
+      {% if rows %}
+      <div class="text-end">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>Guardar</button>
+      </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if others %}
+<div class="col-12 col-lg-6">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Copiar de otro edificio</h3></div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('admin:view-building-claims-copy', building_id=building.id) }}" class="row g-2"
+        {{ confirm_attrs('copy_claims') | xmlattr }}>
+        <div class="col-12 col-sm">
+          <select name="source_id" class="form-select" required aria-label="Edificio de origen">
+            <option value="">Elegí el edificio…</option>
+            {% for id, name in others %}
+            <option value="{{ id }}">{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-auto">
+          <button type="submit" class="btn btn-danger w-100"><i class="fa-solid fa-copy me-2"></i>Copiar de otro edificio</button>
+        </div>
+      </form>
+      <p class="form-hint mt-2 mb-0">Copia los habilitados, quién atiende cada uno y el orden.</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

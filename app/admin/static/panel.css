@@ -340,3 +340,38 @@ a { color: var(--panel-primary); }
   background: #1f2933; color: #fff; border-radius: .5rem; font-size: .88rem; line-height: 1.4;
   box-shadow: 0 .5rem 1.5rem rgba(15, 23, 42, .3); }
 .tour-done { max-width: 26rem; width: calc(100% - 2rem); }
+
+/* --- Claims' set-up (app.admin.claims_setup) ----------------------------------------------------- */
+.char-count-over { color: var(--panel-danger); font-weight: 600; }
+.claims-order { width: 7rem; }
+.claims-second-list td { background: var(--panel-primary-light); color: var(--panel-primary); font-weight: 600;
+  font-size: .85rem; padding: .45rem .9rem !important; }
+@media (max-width: 991.98px) {
+  .claims-order { width: auto; }
+}
+
+/* --- Reclamos (app.admin.claims) ------------------------------------------------------------------ */
+/* The status by how far it went: open (nobody on it yet), in progress, closed. */
+.claim-status { font-weight: 600; white-space: normal; text-align: left; }
+.claim-open { background: #fff1e6; color: #a34a00; }
+.claim-progress { background: var(--panel-primary-light); color: var(--panel-primary); }
+.claim-closed { background: #eef0f2; color: #4b5563; }
+.claim-row-urgent td:first-child { box-shadow: inset 4px 0 0 var(--panel-danger); }
+@media (max-width: 767.98px) {
+  /* On a phone the row is a card: the red line along the whole card. */
+  .claim-row-urgent td:first-child { box-shadow: none; }
+  .rows-table tr.claim-row-urgent { box-shadow: inset 4px 0 0 var(--panel-danger); }
+}
+/* Several cards one under the other inside one column (the layout's row-deck lays a column's
+   children side by side). */
+.panel-stack { display: flex; flex-direction: column; gap: 1rem; width: 100%; min-width: 0; }
+.claim-section { margin: 1rem 0 .3rem; font-size: .78rem; font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--panel-muted); }
+.claim-data dt { font-weight: 400; color: var(--panel-muted); }
+.claim-data dd { margin-bottom: .35rem; }
+.claim-photos { display: flex; flex-wrap: wrap; gap: .5rem; }
+.claim-photos img { width: 9rem; height: 9rem; object-fit: cover; border-radius: .4rem; border: 1px solid #e6e7e9; }
+.claim-history { max-height: 32rem; overflow-y: auto; }
+.claim-event-note { background: #fffbea; }
+.claim-event-solved, .claim-event-cancelled { background: #f6f7f9; }
+.contact-claim { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-bottom: .25rem; }

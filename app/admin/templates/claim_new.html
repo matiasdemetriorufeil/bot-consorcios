@@ -1,0 +1,111 @@
+{#- "Nuevo reclamo" (app.admin.claims.claim_new): first the building, then the form. panel.js
+    shows only the people of the chosen unit and the fields of the chosen way of saying who
+    reported; the server checks everything again. -#}
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+{% macro value(name) %}{{ form.get(name, '') if form else '' }}{% endmacro %}
+<div class="col-12">
+  <a class="btn btn-secondary" href="{{ url_for('admin:view-claims') }}"><i class="fa-solid fa-arrow-left me-2"></i>Reclamos</a>
+</div>
+
+<div class="col-12 col-lg-8">
+  <div class="panel-stack">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">1. Edificio</h3></div>
+    <div class="card-body">
+      <form method="GET" class="row g-2" id="claim-building">
+        <div class="col-12 col-sm">
+          <select class="form-select" name="building_id" required aria-label="Edificio">
+            <option value="">Elegí el edificio…</option>
+            {% for id, name in buildings %}
+            <option value="{{ id }}" {% if building and building.id == id %}selected{% endif %}>{{ name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-sm-auto">
+          <button class="btn {{ 'btn-secondary' if building else 'btn-primary' }} w-100" type="submit">{{ 'Cambiar' if building else 'Seguir' }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if building %}
+  <form class="card" method="POST" id="claim-form">
+    <input type="hidden" name="building_id" value="{{ building.id }}">
+    <div class="card-header"><h3 class="card-title">2. El reclamo en {{ building_name }}</h3></div>
+    <div class="card-body">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      {% if not categories %}
+      <p class="empty-help mb-0">{{ empty_texts['claim-new:categories'] }}</p>
+      {% else %}
+      <div class="mb-3">
+        <label class="form-label" for="category_id">Problema</label>
+        <select class="form-select" id="category_id" name="category_id" required>
+          <option value="">Elegí el problema…</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}" data-scope="{{ cat.scope }}" {% if value('category_id') == cat.id | string %}selected{% endif %}>{{ cat.list_title }} ({{ scope_labels[cat.scope] | lower }}){% if cat.urgent %} · urgente{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="unit_id">Unidad</label>
+        <select class="form-select" id="unit_id" name="unit_id">
+          <option value="">Ninguna en particular</option>
+          {% for unit, people in roster %}
+          <option value="{{ unit.id }}" {% if value('unit_id') == unit.id | string %}selected{% endif %}>{{ unit.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-hint">Obligatoria si el problema es de una unidad.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="description">Qué pasa</label>
+        <textarea class="form-control" id="description" name="description" rows="4" required placeholder="Lo que contó la persona">{{ value('description') }}</textarea>
+      </div>
+
+      <fieldset class="mb-1">
+        <legend class="form-label">Quién reclamó</legend>
+        {% set mode = value('reporter') or 'roster' %}
+        <label class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="reporter" value="roster" {% if mode == 'roster' %}checked{% endif %}>
+          <span class="form-check-label">Del padrón</span>
+        </label>
+        <label class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="reporter" value="other" {% if mode == 'other' %}checked{% endif %}>
+          <span class="form-check-label">Otra persona</span>
+        </label>
+        <div class="mt-2" data-reporter="roster">
+          <select class="form-select" id="person" name="person" aria-label="Persona del padrón">
+            <option value="">Elegí la persona…</option>
+            {% for unit, people in roster if people %}
+            <optgroup label="Unidad {{ unit.label }}" data-unit="{{ unit.id }}">
+              {% for p in people %}
+              <option value="{{ p.value }}" {% if value('person') == p.value %}selected{% endif %}>{{ p.name }} ({{ p.role }})</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+          <div class="form-hint">Si elegiste una unidad, solo aparecen sus personas.</div>
+        </div>
+        <div class="row g-2 mt-2" data-reporter="other">
+          <div class="col-12 col-sm-6">
+            <label class="form-label small" for="name">Nombre</label>
+            <input class="form-control" id="name" name="name" maxlength="200" value="{{ value('name') }}">
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label small" for="phone">Teléfono (opcional)</label>
+            <input class="form-control" id="phone" name="phone" inputmode="tel" value="{{ value('phone') }}" placeholder="351 555-0101">
+          </div>
+        </div>
+      </fieldset>
+      {% endif %}
+    </div>
+    {% if categories %}
+    <div class="card-footer text-end">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Cargar reclamo</button>
+    </div>
+    {% endif %}
+  </form>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}

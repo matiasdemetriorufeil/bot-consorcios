@@ -1,0 +1,134 @@
+{#- One claim (app.admin.claims.claim_page): data, who reported, photos, history and, while it
+    is open, its actions. A closed one only takes internal notes. -#}
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+{% set c = page.claim %}
+<div class="col-12">
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <a class="btn btn-secondary" href="{{ url_for('admin:view-claims') }}"><i class="fa-solid fa-arrow-left me-2"></i>Reclamos</a>
+    <span class="badge claim-status claim-{{ page.group }} fs-5" id="claim-status">{{ page.status_label }}</span>
+    {% if c.urgent %}<span class="badge bg-red text-white">Urgente</span>{% endif %}
+  </div>
+</div>
+
+<div class="col-12 col-xl-7">
+  <div class="panel-stack">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">{{ c.category.list_title }}</h3></div>
+    <div class="card-body">
+      <dl class="row mb-0 claim-data">
+        <dt class="col-5 col-sm-4">Edificio</dt><dd class="col-7 col-sm-8">{{ page.building }}</dd>
+        <dt class="col-5 col-sm-4">Unidad</dt><dd class="col-7 col-sm-8">{{ page.unit }}</dd>
+        <dt class="col-5 col-sm-4">Problema</dt><dd class="col-7 col-sm-8">{{ c.category.name }}</dd>
+        <dt class="col-5 col-sm-4">Alcance</dt><dd class="col-7 col-sm-8">{{ scope_labels[c.scope] }}</dd>
+        <dt class="col-5 col-sm-4">Lo atiende</dt><dd class="col-7 col-sm-8">{{ page.attends }}</dd>
+        <dt class="col-5 col-sm-4">Fecha</dt><dd class="col-7 col-sm-8">{{ c.created_at | full }}</dd>
+        <dt class="col-5 col-sm-4">Llegó</dt><dd class="col-7 col-sm-8">{{ source_label }}{% if c.created_by_user %} ({{ c.created_by_user }}){% endif %}</dd>
+        {% if c.closed_at %}
+        <dt class="col-5 col-sm-4">Cerrado</dt><dd class="col-7 col-sm-8">{{ c.closed_at | full }}: {{ c.close_reason }}</dd>
+        {% endif %}
+        {% if c.previous %}
+        <dt class="col-5 col-sm-4">Reclamo anterior</dt>
+        <dd class="col-7 col-sm-8"><a href="{{ url_for('admin:view-claim', claim_id=c.previous.id) }}">#{{ c.previous.number }}</a> ({{ previous_status }}{% if c.previous.closed_at %}, {{ c.previous.closed_at | day }}{% endif %})</dd>
+        {% endif %}
+      </dl>
+      <div class="claim-section">Descripción</div>
+      <p class="text-pre-line mb-0" id="claim-description">{{ c.description }}</p>
+      {% if c.follow_up_answer %}
+      <div class="claim-section">{{ c.category.follow_up_question or 'Respuesta a la pregunta' }}</div>
+      <p class="text-pre-line mb-0">{{ c.follow_up_answer }}</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Quién reclamó</h3></div>
+    <div class="list-group list-group-flush" id="claim-reporters">
+      {% for p in [page.reporter] + page.joined %}
+      <div class="list-group-item">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <strong>{{ p.name }}</strong>
+          {% if p.unit %}<span class="text-secondary">· Unidad {{ p.unit }}</span>{% endif %}
+          {% if p.phone %}<span class="text-secondary">· {{ p.phone }}</span>{% endif %}
+          {% if loop.first %}<span class="badge bg-secondary-lt">Reclamó primero</span>{% else %}<span class="badge bg-secondary-lt">Se sumó {{ p.joined_at }}</span>{% endif %}
+          {% if p.conversation_id %}
+          <a class="btn btn-sm btn-secondary ms-auto" href="{{ url_for('admin:view-conversation', conversation_id=p.conversation_id) }}"><i class="fa-solid fa-comments me-1"></i>Ver conversación</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if page.photos %}
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Fotos</h3></div>
+    <div class="card-body claim-photos">
+      {% for photo in page.photos %}
+      {% set src = url_for('admin:view-wa-media', message_id=photo.message_id) %}
+      {% if photo.image %}
+      <a href="{{ src }}" target="_blank" rel="noopener"><img src="{{ src }}" alt="Foto del reclamo" loading="lazy"></a>
+      {% else %}
+      <a class="btn btn-secondary" href="{{ src }}"><i class="fa-solid fa-paperclip me-1"></i>{{ photo.name }}</a>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  </div>
+</div>
+
+<div class="col-12 col-xl-5">
+  <div class="panel-stack">
+  {% if c.is_open %}
+  <div class="card mb-3" id="claim-actions">
+    <div class="card-header"><h3 class="card-title">Qué hacer</h3></div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('admin:view-claim-provider', claim_id=c.id) }}" class="mb-3">
+        <label class="form-label" for="provider_id">Cambiar quién lo atiende</label>
+        <div class="d-flex gap-2">
+          <select class="form-select" id="provider_id" name="provider_id">
+            <option value="">{{ studio_label }}</option>
+            {% for p in providers %}
+            <option value="{{ p.id }}" {% if p.id == c.provider_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary text-nowrap" type="submit">Cambiar</button>
+        </div>
+        <div class="form-hint">Todavía no se le avisa a nadie desde el panel.</div>
+      </form>
+      <form method="POST" action="{{ url_for('admin:view-claim-close', claim_id=c.id) }}" class="mb-3">
+        <label class="form-label" for="close-reason">Cerrar como solucionado</label>
+        <textarea class="form-control mb-2" id="close-reason" name="reason" rows="2" required placeholder="Qué se hizo (por ejemplo: cambiaron el motor del ascensor)"></textarea>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Cerrar como solucionado</button>
+      </form>
+      <form method="POST" action="{{ url_for('admin:view-claim-cancel', claim_id=c.id) }}" {{ confirm_attrs('cancel_claim', 'Reclamo #' ~ c.number ~ '.') | xmlattr }}>
+        <label class="form-label" for="cancel-reason">Cancelar reclamo</label>
+        <textarea class="form-control mb-2" id="cancel-reason" name="reason" rows="2" required placeholder="Por qué se cancela (por ejemplo: estaba repetido)"></textarea>
+        <button class="btn btn-danger" type="submit"><i class="fa-solid fa-xmark me-1"></i>Cancelar reclamo</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Historia</h3></div>
+    <ol class="list-group list-group-flush claim-history" id="claim-history">
+      {% for e in page.events %}
+      <li class="list-group-item claim-event-{{ e.kind }}">
+        <div class="small text-secondary">{{ e.when }} · {{ e.who }}</div>
+        <div class="text-pre-line">{{ e.text }}</div>
+      </li>
+      {% endfor %}
+    </ol>
+    <div class="card-footer">
+      <form method="POST" action="{{ url_for('admin:view-claim-note', claim_id=c.id) }}">
+        <label class="form-label" for="note-text">Nota interna</label>
+        <textarea class="form-control mb-2" id="note-text" name="text" rows="2" required placeholder="Solo la ve el estudio"></textarea>
+        <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-note-sticky me-1"></i>Guardar nota</button>
+      </form>
+    </div>
+  </div>
+  </div>
+</div>
+{% endblock %}

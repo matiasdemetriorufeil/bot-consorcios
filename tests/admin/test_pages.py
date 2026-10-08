@@ -41,6 +41,16 @@ def test_every_page_renders(logged_in: Panel, data: dict[str, int]) -> None:
         "/admin/bot-settings/details/1",
         "/admin/bot-settings/edit/1",
         "/admin/metrics",
+        "/admin/claims",
+        "/admin/claims?tab=all",
+        "/admin/claims/new",
+        f"/admin/claims/new?building_id={data['building']}",
+        "/admin/provider/list",
+        "/admin/provider/create",
+        "/admin/claim-category/list",
+        "/admin/claim-category/create",
+        "/admin/building-claims",
+        f"/admin/building-claims/{data['building']}",
     ]
     for url in pages:
         response = logged_in.client.get(url)

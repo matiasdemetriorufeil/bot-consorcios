@@ -1,4 +1,4 @@
-{# Who writes: units, role, verified phone, last debt and SUM reservations. #}
+{# Who writes: units, role, verified phone, last debt, SUM reservations and latest claims. #}
 <div class="contact-card">
   <div class="contact-name">{{ card.name }}</div>
   <div class="text-secondary small">
@@ -36,5 +36,14 @@
   <div class="alert alert-secondary mt-2 mb-0 small">
     Número no identificado: no figura en ConsorPlus ni lo verificó el bot.
   </div>
+  {% endif %}
+  {% if card.claims %}
+  <div class="contact-section">Reclamos</div>
+  {% for c in card.claims %}
+  <div class="small contact-claim">
+    <a href="{{ url_for('admin:view-claim', claim_id=c.id) }}">#{{ c.number }} · {{ c.problem }}</a>
+    <span class="badge claim-status claim-{{ c.group }}">{{ c.status }}</span>
+  </div>
+  {% endfor %}
   {% endif %}
 </div>

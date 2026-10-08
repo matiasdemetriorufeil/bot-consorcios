@@ -100,7 +100,41 @@ cargado, el bot no puede confirmarlo solo y te lo deja en **Verificaciones**.
 
 ![Antes de cancelar, el panel pide confirmación](guia-empleadas/08-cancelar-reserva.png)
 
-## 6. Si algo sale raro
+## 6. Reclamos
+
+Los problemas que reportan los vecinos (el ascensor, el agua, una filtración…) están en
+**Reclamos**. Todavía el bot no los toma ni le avisa a nadie: por ahora se cargan y se siguen
+desde el panel.
+
+**Ver un reclamo**
+
+1. Entrá a **Reclamos**. En **Abiertos** están los que hay que resolver; los urgentes van
+   primero, con una raya roja.
+2. Tocá el número (por ejemplo **#1003**). Vas a ver qué pasa, quién reclamó y de qué unidad,
+   los vecinos que se sumaron, quién lo atiende y la historia de todo lo que pasó.
+3. Para buscar uno, escribí el número, la unidad, el nombre o parte del teléfono.
+
+**Cargar uno que llegó por teléfono o en persona**
+
+1. En **Reclamos**, tocá **Nuevo reclamo** y elegí el edificio.
+2. Elegí el problema. Si es de una unidad (por ejemplo, humedad), elegí la unidad.
+3. Contá qué pasa y elegí quién reclamó: una persona del padrón o, si no está, escribí su
+   nombre y su teléfono.
+4. Tocá **Cargar reclamo**. Si ya había un reclamo abierto del mismo problema en el edificio,
+   no se carga otro: la persona se suma a ese y el panel te lo abre.
+
+**Cerrarlo o cancelarlo**
+
+- Cuando el problema está resuelto, escribí qué se hizo y tocá **Cerrar como solucionado**.
+- Si no corresponde (por ejemplo, estaba repetido), escribí el motivo y tocá **Cancelar
+  reclamo**. El panel pide confirmación.
+- Un reclamo cerrado no se vuelve a abrir. Si el problema vuelve, cargá uno nuevo: el panel lo
+  une con el anterior.
+- Al vecino no le llega ningún aviso desde el panel: si querés que sepa, escribile desde
+  **Conversaciones**.
+- Con **Nota interna** dejás algo anotado que solo ve el estudio.
+
+## 7. Si algo sale raro
 
 - **Un mensaje dice «No se entregó».** WhatsApp no lo pudo mandar (por ejemplo, el número ya
   no existe). Probá de nuevo más tarde o comunicate por otro medio.
