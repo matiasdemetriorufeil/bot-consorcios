@@ -22,7 +22,7 @@ from typing import Any
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.bot.choices import Choice, problems
+from app.bot.choices import MIN_SENT_OPTIONS, Choice, problems
 from app.config import Settings
 from app.db.models import WaContact, WaConversation, WaConversationStatus, WaMessage
 from app.whatsapp import conversations, store
@@ -48,7 +48,7 @@ class SimulatedSender:
         return simulated_wamid()
 
     def send_choices(self, to: str, text: str, choices: Sequence[Choice]) -> str:
-        if found := problems(text, [c.title for c in choices]):
+        if found := problems(text, [c.title for c in choices], MIN_SENT_OPTIONS):
             raise ValueError("; ".join(found))
         return simulated_wamid()
 
@@ -60,6 +60,12 @@ class SimulatedSender:
         components: list[dict[str, Any]] | None = None,
     ) -> str:
         return simulated_wamid()
+
+    def send_image(self, to: str, media_id: str, caption: str = "") -> str:
+        return simulated_wamid()
+
+    def upload_media(self, content: bytes, mime_type: str, filename: str = "foto") -> str:
+        return "sim-media"
 
 
 class DevClient:
@@ -104,6 +110,21 @@ class DevClient:
     ) -> str:
         return self._for(to).send_template(to, name, language, components)
 
+    def send_image(self, to: str, media_id: str, caption: str = "") -> str:
+        return self._for(to).send_image(to, media_id, caption)
+
+    def upload_media(self, content: bytes, mime_type: str, filename: str = "foto") -> str:
+        """Only uploaded for real when the photo goes to a real contact: the caller passes
+        who it is for (see app.claims.notify)."""
+        if self.real is None:
+            return self.simulator.upload_media(content, mime_type, filename)
+        return self.real.upload_media(content, mime_type, filename)
+
+    def upload_media_for(
+        self, to: str, content: bytes, mime_type: str, filename: str = "foto"
+    ) -> str:
+        return self._for(to).upload_media(content, mime_type, filename)
+
     def get_media(self, media_id: str) -> dict[str, Any]:
         if self.real is None:
             raise WhatsAppError(NOT_CONFIGURED)
@@ -142,6 +163,7 @@ def receive(
     *,
     tapped: bool = False,
     profile_name: str | None = None,
+    payload: str = "",
 ) -> int:
     """Stores a message of the test chat as a delivery of Meta would (the caller commits and
     then has the bot process it). tapped: an option tapped (sent as its title, like Meta's
@@ -159,11 +181,29 @@ def receive(
         text=text,
         timestamp=now,
         profile_name=profile_name,
+        payload=payload[:200] if tapped else "",
     )
     message_id = store.record_incoming(session, message, now)
     if message_id is None:  # pragma: no cover - the wamid is random
         raise LookupError("mensaje simulado duplicado")
     return message_id
+
+
+def simulate_contact(
+    session: Session, phone_e164: str, *, provider: bool = False
+) -> WaConversation:
+    """Marks a contact as simulated BEFORE anything is sent to it (a provider the test chat
+    speaks as: the claims sent to it never reach Meta). The caller commits."""
+    conversation = store.contact_conversation(session, phone_e164.lstrip("+"))
+    session.execute(
+        update(WaContact).where(WaContact.id == conversation.contact_id).values(simulated=True)
+    )
+    if provider and conversation.status in (
+        WaConversationStatus.BOT,
+        WaConversationStatus.RESOLVED,
+    ):
+        conversation.status = WaConversationStatus.PROVIDER
+    return conversation
 
 
 def simulated_conversation(

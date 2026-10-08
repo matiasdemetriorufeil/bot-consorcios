@@ -29,12 +29,15 @@ from app.bot.identity import to_e164
 from app.bot.tools import format_money
 from app.claims.service import claims_for_phone
 from app.db.models import (
+    OPEN_CLAIM_STATUSES,
     Building,
+    Claim,
     ClaimStatus,
     DebtSnapshot,
     Person,
     PersonRole,
     Phone,
+    Provider,
     Reservation,
     ReservationStatus,
     Unit,
@@ -59,6 +62,7 @@ TABS = {
     "mine": "Mías",
     "bot": "Con el bot",
     "resolved": "Resueltas",
+    "providers": "Proveedores",
 }
 DEFAULT_TAB = "waiting"
 LIST_LIMIT = 100
@@ -193,6 +197,7 @@ class InboxRow:
     reason: tuple[str, str] | None
     assigned_to: str | None  # display name
     from_phone_app: bool  # with a human, nobody of the panel assigned
+    provider: str | None = None  # the company, when it is a provider's WhatsApp
 
 
 def _last_message() -> Select:
@@ -259,6 +264,10 @@ def list_conversations(
         stmt = stmt.where(WaConversation.status == WaConversationStatus.BOT).order_by(
             last_at.desc()
         )
+    elif tab == "providers":
+        stmt = stmt.where(WaConversation.status == WaConversationStatus.PROVIDER).order_by(
+            last_at.desc()
+        )
     elif tab == "resolved":
         stmt = stmt.where(WaConversation.status == WaConversationStatus.RESOLVED).order_by(
             WaConversation.resolved_at.desc().nulls_last(), last_at.desc()
@@ -271,15 +280,18 @@ def list_conversations(
         )
     rows = session.execute(stmt.limit(LIST_LIMIT)).all()
     known = identify_many(session, [contact.phone_e164 for _, contact, _ in rows])
+    companies = providers_by_phone(session, [contact.phone_e164 for _, contact, _ in rows])
     names = names or {}
     result = []
     for conversation, contact, message in rows:
         who = known.get(contact.phone_e164)
         when = message.created_at if message is not None else None
+        company = companies.get(contact.phone_e164)
         result.append(
             InboxRow(
                 id=conversation.id,
-                name=contact_name(contact, who),
+                name=company or contact_name(contact, who),
+                provider=company,
                 phone=contact.phone_e164,
                 status=WaConversationStatus(conversation.status),
                 status_label=STATUS_LABELS[WaConversationStatus(conversation.status)],
@@ -299,6 +311,18 @@ def list_conversations(
             )
         )
     return result
+
+
+def providers_by_phone(session: Session, phones: list[str]) -> dict[str, str]:
+    """WhatsApp -> company, for the active providers among these phones."""
+    if not phones:
+        return {}
+    rows = session.execute(
+        select(Provider.whatsapp_e164, Provider.name).where(
+            Provider.whatsapp_e164.in_(phones), Provider.active.is_(True)
+        )
+    )
+    return {phone: name for phone, name in rows}
 
 
 def tab_counts(session: Session, user: str) -> dict[str, int]:
@@ -404,6 +428,7 @@ class ContactCard:
     units: list[CardUnit]
     reservations: list[CardReservation]
     claims: list[CardClaim] = field(default_factory=list)  # its latest claims
+    provider: str | None = None  # the company, when it is a provider's WhatsApp
 
 
 def _local(value: datetime | None, timezone: str, fmt: str = "%d/%m/%Y %H:%M") -> str:
@@ -464,6 +489,20 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
             )
             for r in rows
         ]
+    company = providers_by_phone(session, [contact.phone_e164]).get(contact.phone_e164)
+    if company is not None:  # a provider: its open claims
+        found = session.scalars(
+            select(Claim)
+            .join(Provider, Provider.id == Claim.provider_id)
+            .where(
+                Provider.whatsapp_e164 == contact.phone_e164,
+                Claim.status.in_(OPEN_CLAIM_STATUSES),
+            )
+            .order_by(Claim.created_at.desc())
+            .limit(10)
+        ).all()
+    else:
+        found = claims_for_phone(session, contact.phone_e164)
     claims = [
         CardClaim(
             id=c.id,
@@ -472,7 +511,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
             status=labels.label(labels.CLAIM_STATUS, c.status),
             group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
         )
-        for c in claims_for_phone(session, contact.phone_e164)
+        for c in found
     ]
     return ContactCard(
         name=contact_name(contact, who),
@@ -483,6 +522,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
         units=card_units,
         reservations=reservations,
         claims=claims,
+        provider=company,
     )
 
 
@@ -506,6 +546,8 @@ class MessageView:
     error_text: str
     time: str
     day: str
+    # The payload of each button (claims: app.claims.notify), aligned with choices.
+    payloads: list[str] = field(default_factory=list)
 
 
 def _message_view(message: WaMessage, names: dict[str, str], timezone: str) -> MessageView:
@@ -543,6 +585,7 @@ def _message_view(message: WaMessage, names: dict[str, str], timezone: str) -> M
         kind_label=kind_label,
         body=message.body or "",
         choices=list(message.choices or []),
+        payloads=list(message.button_payloads or []),
         is_handoff_note=message.is_internal_note and author == WaAuthor.SYSTEM,
         media_url_ok=stored,
         media_inline=stored and base_mime(message.media_mime) in INLINE_TYPES,

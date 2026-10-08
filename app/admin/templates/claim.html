@@ -85,7 +85,33 @@
   <div class="card mb-3" id="claim-actions">
     <div class="card-header"><h3 class="card-title">Qué hacer</h3></div>
     <div class="card-body">
-      <form method="POST" action="{{ url_for('admin:view-claim-provider', claim_id=c.id) }}" class="mb-3">
+      {% if c.attention %}
+      <div class="alert alert-warning" id="claim-attention">{{ attention_label }}.</div>
+      {% endif %}
+      {% if c.status == 'pending_send' and c.provider %}
+      <div class="mb-3 pb-3 border-bottom" id="claim-pending-send">
+        {% if c.provider.whatsapp_e164 %}
+        <p class="mb-2">Todavía no se le avisó a {{ c.provider.name }}.</p>
+        <div class="d-flex flex-wrap gap-2">
+          {% set resend = confirm_attrs('resend_claim') %}
+          <form method="POST" action="{{ url_for('admin:view-claim-resend', claim_id=c.id) }}"
+            {{ dict(resend, **{'data-confirm-text': 'Se le va a mandar el reclamo por WhatsApp a ' ~ c.provider.name ~ '.'}) | xmlattr }}>
+            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane me-1"></i>Reenviar al proveedor</button>
+          </form>
+          <form method="POST" action="{{ url_for('admin:view-claim-mark-sent', claim_id=c.id) }}">
+            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-phone me-1"></i>Marcar como avisado</button>
+          </form>
+        </div>
+        {% else %}
+        <div class="alert alert-warning mb-2" id="claim-no-whatsapp">Este proveedor no tiene WhatsApp cargado: avisale por teléfono y marcalo como avisado.</div>
+        <form method="POST" action="{{ url_for('admin:view-claim-mark-sent', claim_id=c.id) }}">
+          <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-phone me-1"></i>Marcar como avisado</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+      <form method="POST" action="{{ url_for('admin:view-claim-provider', claim_id=c.id) }}" class="mb-3"
+        {{ confirm_attrs('change_claim_provider') | xmlattr }}>
         <label class="form-label" for="provider_id">Cambiar quién lo atiende</label>
         <div class="d-flex gap-2">
           <select class="form-select" id="provider_id" name="provider_id">
@@ -96,12 +122,13 @@
           </select>
           <button class="btn btn-primary text-nowrap" type="submit">Cambiar</button>
         </div>
-        <div class="form-hint">Todavía no se le avisa a nadie desde el panel.</div>
+        <div class="form-hint">Si tiene WhatsApp, al nuevo proveedor se le manda el reclamo en el momento.</div>
       </form>
       <form method="POST" action="{{ url_for('admin:view-claim-close', claim_id=c.id) }}" class="mb-3">
         <label class="form-label" for="close-reason">Cerrar como solucionado</label>
         <textarea class="form-control mb-2" id="close-reason" name="reason" rows="2" required placeholder="Qué se hizo (por ejemplo: cambiaron el motor del ascensor)"></textarea>
         <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Cerrar como solucionado</button>
+        <div class="form-hint">A los vecinos se les avisa por WhatsApp que está solucionado.</div>
       </form>
       <form method="POST" action="{{ url_for('admin:view-claim-cancel', claim_id=c.id) }}" {{ confirm_attrs('cancel_claim', 'Reclamo #' ~ c.number ~ '.') | xmlattr }}>
         <label class="form-label" for="cancel-reason">Cancelar reclamo</label>
@@ -117,7 +144,7 @@
     <ol class="list-group list-group-flush claim-history" id="claim-history">
       {% for e in page.events %}
       <li class="list-group-item claim-event-{{ e.kind }}">
-        <div class="small text-secondary">{{ e.when }} · {{ e.who }}</div>
+        <div class="small text-secondary">{{ e.when }} · {{ e.who }}{% if e.delivery %} · <span class="claim-delivery">{{ e.delivery }}</span>{% endif %}</div>
         <div class="text-pre-line">{{ e.text }}</div>
       </li>
       {% endfor %}

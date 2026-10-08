@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.agent import Agent
 from app.channels.processor import BotProcessor
+from app.claims.notify import Notifier
 from app.config import Settings, get_settings
 from app.db.models import BotEvent, WaContact, WaConversation, WaMessage
 from app.db.session import get_session
@@ -50,6 +51,7 @@ def wa_settings(media_dir: Path, **overrides: Any) -> Settings:
         "whatsapp_phone_number_id": PHONE_NUMBER_ID,
         "whatsapp_media_dir": str(media_dir),
         "whatsapp_media_max_bytes": 1000,
+        "claims_payload_secret": "secreto-inventado-de-prueba",
         **overrides,
     }
     return Settings(_env_file=None, **values)
@@ -141,7 +143,11 @@ def make_wa(db_session: Session, people: None, tmp_path: Path) -> Iterator[MakeW
         def now() -> datetime:
             return clock[0]
 
-        agent = Agent(llm, settings=settings, refresh_debt=refresh_debt or no_debt, now=now)
+        notifier = Notifier(fake, settings, now=now)
+        agent = Agent(
+            llm, settings=settings, refresh_debt=refresh_debt or no_debt, now=now,
+            notifier=notifier,
+        )  # fmt: skip
         sessions = lambda: nullcontext(db_session)  # noqa: E731
         channel = WhatsAppChannel(fake, sessions, now=now)  # type: ignore[arg-type]
         warm_ups: list[bool] = []
@@ -152,6 +158,7 @@ def make_wa(db_session: Session, people: None, tmp_path: Path) -> Iterator[MakeW
             settings,
             now=now,
             warm_up=lambda: warm_ups.append(True),
+            notifier=notifier,
         )
         media = MediaStore(fake, settings.whatsapp_media_dir, settings.whatsapp_media_max_bytes)  # type: ignore[arg-type]
         bot = WhatsAppBot(processor, sessions, media, now=now)

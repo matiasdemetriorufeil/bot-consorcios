@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.bot.agent import Agent
 from app.channels.locks import advisory_lock
 from app.channels.processor import BotProcessor
+from app.claims.notify import Notifier
 from app.config import Settings, get_settings
 from app.db.session import SessionLocal, engine, get_session
 from app.llm import get_prices, get_provider
@@ -54,13 +55,20 @@ def build_whatsapp_bot(settings: Settings) -> WhatsAppBot:
     """The bot of the webhook, the recovery and the panel's test chat (in development its
     client simulates what goes to the test chat's contacts: app.whatsapp.simulator)."""
     client = build_client(settings, SessionLocal)
+    notifier = Notifier(client, settings)
     processor = BotProcessor(
         WhatsAppChannel(client, SessionLocal),
         SessionLocal,
-        lambda: Agent(get_provider(settings), prices=get_prices(settings), settings=settings),
+        lambda: Agent(
+            get_provider(settings),
+            prices=get_prices(settings),
+            settings=settings,
+            notifier=notifier,
+        ),
         settings,
         warm_up=live.warm_up,
         lock=advisory_lock(engine),
+        notifier=notifier,
     )
     media = MediaStore(client, settings.whatsapp_media_dir, settings.whatsapp_media_max_bytes)
     return WhatsAppBot(processor, SessionLocal, media)

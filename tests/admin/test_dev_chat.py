@@ -176,3 +176,89 @@ def test_the_home_page_goes_to_conversations(panel: Panel) -> None:
     page = panel.client.get("/admin/")
     assert page.status_code == 200
     assert str(page.url).endswith("/admin/conversations")
+
+
+# --- The whole claims circuit, without a phone ---------------------------------------------------
+
+PROVIDER_PHONE = "+5493515550150"  # invented
+
+
+@pytest.fixture
+def circuit(db_session: Session) -> Iterator[DevPanel]:
+    from app.claims.notify import Notifier
+    from tests.claims import factories as cf
+
+    building = f.building(db_session, "031 RODAS II")
+    building.pilot = True
+    building.claims_bot_enabled = True
+    unit = f.unit(db_session, building, "04-C")
+    f.link(db_session, unit, f.person(db_session, "Ana Prueba", phone=OWNER_PHONE))
+    damp = cf.category(db_session, "Humedad inventada", list_title="Humedad o filtración")
+    plumber = cf.provider(db_session, "Plomería Ficticia", PROVIDER_PHONE)
+    cf.assign(db_session, building.id, damp, plumber)
+    settings = admin_settings(app_env="development", claims_payload_secret="secreto-inventado")
+    llm, script = scripted_provider("anthropic", [])
+    sessions = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint")
+    real = FakeWhatsApp()  # what would reach Meta
+    client = DevClient(real, sessions)  # type: ignore[arg-type]
+    notifier = Notifier(client, settings, now=lambda: NOW)
+    agent = Agent(llm, settings=settings, now=lambda: NOW, notifier=notifier)
+    channel = WhatsAppChannel(client, sessions, now=lambda: NOW)  # type: ignore[arg-type]
+    processor = BotProcessor(
+        channel, sessions, lambda: agent, settings, now=lambda: NOW, notifier=notifier
+    )
+    bot = WhatsAppBot(processor, sessions, None, now=lambda: NOW)
+    built = build_panel(db_session, settings, sender=client, bot_factory=lambda: bot)
+    panel = DevPanel(**vars(built))
+    panel.script, panel.real = script, real
+    with panel.client:
+        assert panel.login().status_code == 302
+        yield panel
+
+
+def _buttons(html: str) -> dict[str, str]:
+    import html as html_lib
+    import re
+
+    found = re.findall(r'data-title="([^"]*)" data-payload="([^"]*)"', html)
+    return {html_lib.unescape(t): html_lib.unescape(p) for t, p in found}
+
+
+def test_speak_as_a_provider_and_close_the_circuit(circuit: DevPanel) -> None:
+    from app.db.models import Claim, ClaimStatus, Provider
+
+    plumber = circuit.session.scalar(select(Provider))
+    page = circuit.client.get("/admin/dev-chat").text
+    assert "Hablar como proveedor" in page and "Plomería Ficticia" in page
+    response = circuit.client.post(
+        "/admin/dev-chat/provider", data={"provider_id": str(plumber.id)}, follow_redirects=False
+    )
+    assert response.status_code == 302 and "5550150" in response.headers["location"]
+
+    for text, tapped in [
+        ("Registrar reclamo", True), ("Humedad o filtración", True),
+        ("Mancha en el techo", False), ("Sin fotos", True), ("Sí, registrar", True),
+    ]:  # fmt: skip
+        circuit.send(text, tapped=tapped)
+    provider_side = circuit.poll(PROVIDER_PHONE)["html"]
+    assert "Nuevo reclamo #" in provider_side and "Humedad o filtración" in provider_side
+    buttons = _buttons(provider_side)
+    assert set(buttons) == {"Recibido", "No puedo atenderlo"}
+
+    circuit.client.post(
+        "/admin/dev-chat/send",
+        data={"phone": PROVIDER_PHONE, "text": "Recibido", "tapped": "1",
+              "payload": buttons["Recibido"]},
+    )  # fmt: skip
+    assert "La empresa ya confirmó" in circuit.poll()["html"]
+    solved = _buttons(circuit.poll(PROVIDER_PHONE)["html"])["Ya está solucionado"]
+    circuit.client.post(
+        "/admin/dev-chat/send",
+        data={"phone": PROVIDER_PHONE, "text": "Ya está solucionado", "tapped": "1",
+              "payload": solved},
+    )  # fmt: skip
+    assert "ya está solucionado, así que lo cerramos" in circuit.poll()["html"]
+    circuit.session.expire_all()
+    assert circuit.session.scalar(select(Claim)).status == ClaimStatus.SOLVED
+    assert circuit.real.sent == []  # nothing reached Meta
+    assert circuit.script.requests == []

@@ -24,6 +24,7 @@
       {% if r.unread %}<span class="badge bg-green text-white inbox-unread" title="Mensajes sin leer">{{ r.unread }}</span>{% endif %}
     </div>
     <div class="inbox-tags">
+      {% if r.provider %}<span class="badge bg-teal-lt inbox-provider">Proveedor · {{ r.provider }}</span>{% endif %}
       {% if r.urgent %}<span class="badge bg-red text-white">URGENTE</span>{% endif %}
       {% if r.reason %}<span class="badge bg-orange-lt inbox-reason" title="{{ r.reason[1] }}">{{ r.reason[0] }}</span>{% endif %}
       {% if query %}<span class="badge bg-secondary-lt">{{ r.status_label }}</span>{% endif %}

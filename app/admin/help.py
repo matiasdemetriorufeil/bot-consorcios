@@ -160,6 +160,9 @@ EMPTY: dict[str, str] = {
     ),
     "conversations:bot": "Ninguna conversación está con el bot en este momento.",
     "conversations:resolved": "Todavía no hay conversaciones resueltas.",
+    "conversations:providers": (
+        "Todavía no hay conversaciones con proveedores. Aparecen cuando se les manda un reclamo."
+    ),
     "conversations:search": "No se encontró nada. Probá con otra parte del nombre o del número.",
     "phones:review": (
         "No hay teléfonos para revisar. Cuando aparezca un número que hay que confirmar, va a "
@@ -289,6 +292,21 @@ CONFIRM: dict[str, dict[str, str]] = {
         ),
         "button": "Cancelar reclamo",
         "kind": "danger",
+    },
+    "resend_claim": {
+        "title": "¿Reenviar al proveedor?",
+        "text": "Se le va a mandar el reclamo por WhatsApp.",
+        "button": "Reenviar",
+        "kind": "primary",
+    },
+    "change_claim_provider": {
+        "title": "¿Cambiar quién lo atiende?",
+        "text": (
+            "Si el nuevo proveedor tiene WhatsApp, se le manda el reclamo por WhatsApp en el "
+            "momento. Al vecino no le llega nada."
+        ),
+        "button": "Cambiar",
+        "kind": "primary",
     },
     "copy_claims": {
         "title": "¿Copiar de otro edificio?",

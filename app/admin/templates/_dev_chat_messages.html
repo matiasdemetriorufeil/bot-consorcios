@@ -7,7 +7,7 @@
   {% if m.body %}<div class="phone-body">{{ m.body }}</div>{% endif %}
   {% if m.choices %}
   <div class="phone-choices">
-    {% for c in m.choices %}<button type="button" class="phone-choice" data-title="{{ c }}">{{ c }}</button>{% endfor %}
+    {% for c in m.choices %}<button type="button" class="phone-choice" data-title="{{ c }}" data-payload="{{ m.payloads[loop.index0] if m.payloads|length > loop.index0 else '' }}">{{ c }}</button>{% endfor %}
   </div>
   {% endif %}
   <div class="phone-meta">{{ m.time }}{% if m.status == 'failed' %} · no se envió{% endif %}</div>

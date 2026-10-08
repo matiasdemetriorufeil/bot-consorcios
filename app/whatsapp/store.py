@@ -102,6 +102,7 @@ def record_incoming(session: Session, message: WaIncoming, now: datetime) -> int
         wa_message_id=message.wamid,
         status=WaMessageStatus.RECEIVED,
         status_at=message.timestamp or now,
+        reply_payload=message.payload or None,
         **_media_values(message),
     )
     if message_id is None:

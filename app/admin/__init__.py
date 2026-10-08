@@ -58,6 +58,7 @@ from app.admin.views import (
     type_formatters,
 )
 from app.admin.wa_media import WaMediaView
+from app.claims.notify import Notifier
 from app.config import Settings
 from app.db.models import BotSettings
 from app.db.session import SessionLocal
@@ -106,6 +107,19 @@ def whatsapp_sender(settings: Settings) -> Callable[[], Sender | None]:
             except WhatsAppError:
                 return None
         return built[0]
+
+    return get
+
+
+def claims_notifier(
+    sender: Callable[[], Sender | None], settings: Settings
+) -> Callable[[], Notifier | None]:
+    """The claims' WhatsApp messages from the panel, with the inbox's client (None without
+    WhatsApp)."""
+
+    def get() -> Notifier | None:
+        client = sender()
+        return Notifier(client, settings) if client is not None else None
 
     return get
 
@@ -200,10 +214,11 @@ def setup_admin(
     _install_texts(admin.templates.env, settings.timezone)
     admin.templates.env.globals["urgent_claims_count"] = _urgent_claims_counter(session_maker)
     auth.templates = admin.templates
+    sender = sender_factory or whatsapp_sender(settings)
     conversations: dict[str, object] = {
         "timezone": settings.timezone,
         "session_maker": session_maker,
-        "sender_factory": staticmethod(sender_factory or whatsapp_sender(settings)),
+        "sender_factory": staticmethod(sender),
     }
     if clock is not None:
         conversations["clock"] = staticmethod(clock)
@@ -213,7 +228,11 @@ def setup_admin(
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
-        ClaimsView: {"timezone": settings.timezone, "session_maker": session_maker},
+        ClaimsView: {
+            "timezone": settings.timezone,
+            "session_maker": session_maker,
+            "notifier_factory": staticmethod(claims_notifier(sender, settings)),
+        },
         UsersView: {
             "timezone": settings.timezone,
             "session_maker": session_maker,

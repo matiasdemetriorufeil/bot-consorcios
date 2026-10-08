@@ -10,7 +10,8 @@ change has a "field" and a "value":
 
 Options tapped: an "interactive" message with button_reply / list_reply ({id, title}), or a
 "button" message (template quick reply) with button.text. The bot takes the TITLE as what the
-person wrote (app.bot.choices).
+person wrote (app.bot.choices); the option's own id (ours: a signed payload of a claim's
+button, app.claims.notify) or the template button's payload is kept apart (WaIncoming.payload).
 """
 
 from dataclasses import dataclass, field
@@ -57,6 +58,8 @@ class WaIncoming:
     timestamp: datetime | None = None
     profile_name: str | None = None
     media: WaMedia | None = None
+    # The id of the option tapped or the template button's payload ("" if none).
+    payload: str = ""
 
     @property
     def attachment_types(self) -> tuple[str, ...]:
@@ -116,6 +119,18 @@ def message_text(message: dict[str, Any]) -> str:
     return ""
 
 
+def reply_payload(message: dict[str, Any]) -> str:
+    """The payload of a template's quick reply, or the id of an interactive option."""
+    kind = message.get("type")
+    if kind == "button":
+        return str(_dict(message.get("button")).get("payload") or "")[:200]
+    if kind == "interactive":
+        interactive = _dict(message.get("interactive"))
+        reply = _dict(interactive.get("button_reply")) or _dict(interactive.get("list_reply"))
+        return str(reply.get("id") or "")[:200]
+    return ""
+
+
 def _media(message: dict[str, Any]) -> WaMedia | None:
     kind = message.get("type")
     if kind not in MEDIA_TYPES:
@@ -142,6 +157,7 @@ def _incoming(message: dict[str, Any], wa_id: str, profile_name: str | None) -> 
         timestamp=_timestamp(message.get("timestamp")),
         profile_name=profile_name,
         media=_media(message),
+        payload=reply_payload(message),
     )
 
 

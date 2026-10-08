@@ -1,6 +1,9 @@
 """Answers one incoming message, whatever the channel (runs in the background, after the
 webhook's 200). The channel (app.channels.base.Channel) does what depends on it.
 
+0. A provider's WhatsApp (app.claims.provider_flow) is answered by the code, before
+   anything else: its buttons and texts never reach the agent, whatever the conversation's
+   state.
 1. The conversation must still be with the bot (Channel.still_with_bot). Once a human has it
    (handed off or taken by an operator) the bot neither answers nor hands off again.
 2. Who writes: the channel gives the phone and whether it set it itself (trusted).
@@ -53,9 +56,12 @@ from app.channels.base import (
 )
 from app.channels.locks import ConversationLock, no_lock
 from app.channels.outgoing import pack, with_buttons
+from app.claims import provider_flow
 from app.claims.flow import accepts_photos
+from app.claims.notify import Notifier
+from app.claims.provider_flow import provider_for_phone
 from app.config import Settings
-from app.db.models import BotEvent, Building, PersonRole, Unit
+from app.db.models import BotEvent, Building, PersonRole, Provider, Unit
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +102,13 @@ class BotProcessor:
         now: Callable[[], datetime] | None = None,
         warm_up: Callable[[], object] = lambda: None,
         lock: ConversationLock = no_lock,
+        notifier: Notifier | None = None,
     ) -> None:
         """warm_up: logs in to ConsorPlus in the background (app.sync.live.warm_up); called
         when an identified owner writes, so a debt query finds the session ready.
-        lock: the cross-process lock (app.channels.locks.advisory_lock in production)."""
+        lock: the cross-process lock (app.channels.locks.advisory_lock in production).
+        notifier: the claims' WhatsApp messages (answers to providers)."""
+        self.notifier = notifier
         self.channel = channel
         self.session_factory = session_factory
         self._agent_factory = agent_factory
@@ -147,6 +156,10 @@ class BotProcessor:
 
     def _handle(self, session: Session, message: InboundMessage) -> None:
         conversation_id = message.conversation_id
+        provider = provider_for_phone(session, message.phone) if message.phone else None
+        if provider is not None:
+            self._provider_turn(session, message, provider)
+            return
         if not self.channel.still_with_bot(message):
             logger.info("Conversation %s no longer with the bot: message %s skipped",
                         conversation_id, message.message_id)  # fmt: skip
@@ -181,6 +194,7 @@ class BotProcessor:
                 self.channel.history(message),
                 conversation_id=conversation_id,
                 attachment_ids=photos,
+                payload=message.payload,
             )
             self._finish(session, message, answer.text, answer.handoff, answer.debt_messages,
                          answer.choices)  # fmt: skip
@@ -207,6 +221,7 @@ class BotProcessor:
             conversation_id=conversation_id,
             attachment_ids=photos,
             attachment_types=message.attachment_types,
+            payload=message.payload,
         )
         self._finish(
             session,
@@ -215,6 +230,29 @@ class BotProcessor:
             answer.handoff,
             answer.debt_messages,
             answer.choices,
+        )
+
+    def _provider_turn(self, session: Session, message: InboundMessage, provider: Provider) -> None:
+        """A provider wrote: the code answers (app.claims.provider_flow), never the agent."""
+        if self.notifier is None:
+            logger.warning("Conversation %s: a provider wrote but there is no notifier",
+                           message.conversation_id)  # fmt: skip
+            provider_flow.keep_as_provider(session, message.conversation_id)
+            session.commit()
+            return
+        action = provider_flow.handle(
+            session,
+            provider,
+            provider_flow.ProviderMessage(
+                text=message.content, payload=message.payload,
+                conversation_id=message.conversation_id,
+            ),
+            self.notifier,
+            now=self._now(),
+        )  # fmt: skip
+        logger.info("Conversation %s: a provider's message (%s)", message.conversation_id, action)
+        self._log(
+            session, message, None, "provider_message", action=action, provider_id=provider.id
         )
 
     def _finish(

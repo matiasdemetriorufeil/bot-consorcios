@@ -414,7 +414,10 @@ def test_new_claim_typed_by_hand(logged_in: Panel, w: World) -> None:
     claim = logged_in.session.scalar(select(Claim))
     assert claim is not None and claim.reporter_name == "Vecina Inventada"
     assert claim.reporter_phone_e164 == "+5493515550109" and claim.unit_id is None
-    assert claim.status == ClaimStatus.PENDING_SEND
+    # Its provider has WhatsApp: the claim went to it at once.
+    assert claim.status == ClaimStatus.SENT
+    [(kind, to, (name, _))] = logged_in.whatsapp.sent
+    assert (kind, to, name) == ("template", WA_LIFTS[1:], "reclamo_nuevo_proveedor")
 
 
 @pytest.mark.parametrize(
@@ -491,6 +494,7 @@ def test_an_operator_does_everything_in_claims(operator: Panel, w: World) -> Non
         ("claim_solved", "marta"),
         ("claim_cancelled", "marta"),
         ("claim_created", "marta"),
+        ("claim_sent_to_provider", "marta"),
     ]
     # The set-up of 8.1 stays for admins.
     assert operator.client.get("/admin/building-claims").status_code == 403
@@ -507,7 +511,13 @@ def test_urgent_open_claims_for_the_alerts_and_the_menu(logged_in: Panel, w: Wor
 
     data = logged_in.client.get("/admin/claims/poll").json()
     assert data["urgent_claims"] == [
-        {"id": lift.id, "number": lift.number, "problem": "Ascensor", "building": "TORRE INVENTADA"}
+        {
+            "id": f"{lift.id}:urgent",
+            "number": lift.number,
+            "title": f"Reclamo urgente #{lift.number}",
+            "problem": "Ascensor",
+            "building": "TORRE INVENTADA",
+        }
     ]
     polled = logged_in.client.get("/admin/conversations/poll").json()
     assert polled["urgent_claims"] == data["urgent_claims"]
@@ -527,7 +537,9 @@ def test_no_urgent_claims_hides_the_counter(logged_in: Panel, w: World) -> None:
     assert badge and "hidden" in badge.group(0)
 
 
-def test_nothing_reaches_whatsapp(logged_in: Panel, w: World) -> None:
+def test_what_reaches_whatsapp(logged_in: Panel, w: World) -> None:
+    """A claim without a provider with WhatsApp sends nothing; closing it as solved tells the
+    neighbor (her window is closed: the template). Notes never send anything."""
     claim = _claim(logged_in.session, w.building, w.lift)
     base = f"/admin/claims/{claim.id}"
     _new(
@@ -535,6 +547,101 @@ def test_nothing_reaches_whatsapp(logged_in: Panel, w: World) -> None:
     )
     logged_in.client.post(f"{base}/provider", data={"provider_id": str(w.plumber.id)})
     logged_in.client.post(f"{base}/note", data={"text": "Nota"})
-    logged_in.client.post(f"{base}/close", data={"reason": "Listo"})
     assert logged_in.whatsapp.sent == []
-    assert logged_in.session.scalar(select(func.count()).select_from(WaMessage)) == 0
+    logged_in.client.post(f"{base}/close", data={"reason": "Listo"})
+    [(kind, to, (name, _))] = logged_in.whatsapp.sent
+    assert (kind, to, name) == ("template", WA_ANA[1:], "reclamo_solucionado_vecino")
+
+
+# --- The provider by WhatsApp (8.5) ---------------------------------------------------------------
+
+
+def test_resend_to_the_provider(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.lift)  # by the bot, nothing sent yet
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "Reenviar al proveedor" in page and "Marcar como avisado" in page
+    assert "Se le va a mandar el reclamo por WhatsApp a Ascensores Ficticios SRL." in page
+
+    response = logged_in.client.post(f"/admin/claims/{claim.id}/resend", follow_redirects=True)
+    assert "Se le mandó el reclamo por WhatsApp a Ascensores Ficticios SRL." in _text(response.text)
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.SENT
+    [(kind, to, (name, _))] = logged_in.whatsapp.sent
+    assert (kind, to, name) == ("template", WA_LIFTS[1:], "reclamo_nuevo_proveedor")
+    assert [e["action"] for e in logged_in.admin_events()] == ["claim_sent_to_provider"]
+
+    # Its delivery shows in the history as the webhook reports it.
+    message = logged_in.session.scalar(
+        select(WaMessage).where(WaMessage.message_type == "template")
+    )
+    message.status = "delivered"
+    logged_in.session.commit()
+    history = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text).split(
+        'id="claim-history"'
+    )[1]
+    assert "Avisado a Ascensores Ficticios SRL por WhatsApp" in history and "entregado" in history
+
+
+def test_a_failed_resend_leaves_it_pending_with_an_alert(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    claim.provider_id = w.lifts.id
+    claim.status = ClaimStatus.PENDING_SEND
+    logged_in.session.commit()
+    logged_in.whatsapp.fail_on.add("template")
+
+    response = logged_in.client.post(f"/admin/claims/{claim.id}/resend", follow_redirects=True)
+
+    assert "No se le pudo mandar a Ascensores Ficticios SRL" in _text(response.text)
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.PENDING_SEND and claim.attention == "send_failed"
+    [alert] = logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+    assert alert["title"] == f"No se le pudo avisar al proveedor · #{claim.number}"
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert 'id="claim-attention"' in page
+
+
+def test_mark_as_told_for_a_provider_without_whatsapp(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    claim.provider_id = w.plumber.id
+    claim.status = ClaimStatus.PENDING_SEND
+    logged_in.session.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert (
+        "Este proveedor no tiene WhatsApp cargado: avisale por teléfono y marcalo como avisado."
+        in page
+    )
+    assert "Reenviar al proveedor" not in page
+
+    logged_in.client.post(f"/admin/claims/{claim.id}/mark-sent")
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.SENT and logged_in.whatsapp.sent == []
+    assert [e["action"] for e in logged_in.admin_events()] == ["claim_marked_sent"]
+    history = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "Avisado a Plomería Inventada por teléfono" in history
+
+
+def test_changing_the_provider_sends_it_to_the_new_one(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)  # the studio
+    response = logged_in.client.post(
+        f"/admin/claims/{claim.id}/provider",
+        data={"provider_id": str(w.lifts.id)},
+        follow_redirects=True,
+    )
+    assert "Se le mandó el reclamo por WhatsApp" in _text(response.text)
+    assert _reload(logged_in.session, claim).status == ClaimStatus.SENT
+    [(kind, to, _)] = logged_in.whatsapp.sent
+    assert (kind, to) == ("template", WA_LIFTS[1:])
+
+
+def test_providers_in_conversations(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.lift)
+    logged_in.client.post(f"/admin/claims/{claim.id}/resend")
+    page = _text(logged_in.client.get("/admin/conversations?tab=providers").text)
+    assert "Proveedores" in page and "Proveedor · Ascensores Ficticios SRL" in page
+    conversation_id = logged_in.session.scalar(
+        select(WaMessage.conversation_id).where(WaMessage.message_type == "template")
+    )
+    card = _text(logged_in.client.get(f"/admin/conversations/{conversation_id}").text).split(
+        'class="contact-card"'
+    )[1]
+    assert "Reclamos abiertos" in card and f"#{claim.number} · Ascensor" in card

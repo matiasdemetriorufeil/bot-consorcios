@@ -51,6 +51,10 @@ CREATED_WITH_PROVIDER = (
     "Listo, registramos tu reclamo *#{number}* ({problem}). Le vamos a avisar a la empresa que "
     "se encarga y te escribimos cuando lo confirme."
 )
+CREATED_AND_SENT = (
+    "Listo, registramos tu reclamo *#{number}* ({problem}). Ya le avisamos a la empresa que se "
+    "encarga y te escribimos cuando lo confirme."
+)
 CREATED_FOR_STUDIO = (
     "Listo, registramos tu reclamo *#{number}* ({problem}). Lo va a ver una persona del estudio."
 )
@@ -65,9 +69,52 @@ ALREADY_JOINED = (
 PREVIOUS = "Lo vinculamos con tu reclamo anterior #{number}."
 NOT_REGISTERED = "Listo, no registré el reclamo. Si querés, empezamos de nuevo cuando quieras."
 CANCELLED = "Listo, dejé el reclamo sin registrar."
+REPROMPT = "No te entendí: elegí una de las opciones."
 DROPPED = "Dejé sin registrar el reclamo que estabas cargando."
 EXPIRED = "Pasó un rato largo, así que dejé sin registrar el reclamo que estabas cargando."
 FAILED = "No pude registrar el reclamo: {reason}"
+
+# --- What the provider reads ---------------------------------------------------------------
+
+ACK_BUTTON = "Recibido"
+DECLINE_BUTTON = "No puedo atenderlo"
+SOLVED_BUTTON = "Ya está solucionado"
+REGISTER_BUTTON = "Registrar reclamo"
+PROVIDER_THANKS = (
+    "Gracias, quedó registrado el reclamo #{number}. Cuando esté solucionado, tocá el botón."
+)
+PROVIDER_DECLINED = "Entendido, le avisamos al estudio."
+PROVIDER_CLOSED = "Gracias, cerramos el reclamo #{number}."
+PROVIDER_NOT_YOURS = (
+    "Ese reclamo ya no está a tu cargo. Si tenés dudas, escribinos por acá y te responde "
+    "alguien del estudio."
+)
+PROVIDER_NUDGE = "Si ya está solucionado el reclamo #{number}, tocá el botón."
+PHOTO_CAPTION = "Foto del reclamo #{number} ({count} de {total})"
+WHOLE_BUILDING_CONTACT = "Todo el edificio"
+URGENT_SUFFIX = " (URGENTE)"
+
+# --- What the neighbors read when the provider answers ---------------------------------------
+
+NEIGHBOR_CONFIRMED = (
+    "La empresa ya confirmó que recibió tu reclamo *#{number}* ({problem}). Te avisamos cuando "
+    "esté solucionado."
+)
+NEIGHBOR_SOLVED = (
+    "Tu reclamo *#{number}* ({problem}) ya está solucionado, así que lo cerramos. Si el problema "
+    "sigue, podés registrar uno nuevo."
+)
+
+# How our copy of each template reads (the history and the panel's test chat): the real text
+# is the one approved in Meta, with the same variables in the same order.
+TEMPLATE_PREVIEWS = {
+    "provider": (
+        "Nuevo reclamo #{0} en {1} ({2}).\nProblema: {3}\nDetalle: {4}\nUnidad y contacto: {5}"
+    ),
+    "reminder": "Recordatorio: el reclamo #{0} en {1} ({2}) sigue abierto.",
+    "confirmed": "La empresa confirmó que recibió tu reclamo #{0} ({1}).",
+    "solved": "Tu reclamo #{0} ({1}) ya está solucionado.",
+}
 
 # --- Who may report -------------------------------------------------------------------------
 

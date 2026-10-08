@@ -104,8 +104,22 @@ cargado, el bot no puede confirmarlo solo y te lo deja en **Verificaciones**.
 
 Los problemas que reportan los vecinos (el ascensor, el agua, una filtración…) están en
 **Reclamos**. En los edificios con «Reclamos por el bot», el vecino los registra solo por
-WhatsApp: elige el problema, cuenta qué pasa y puede mandar fotos. Todavía nadie le avisa a la
-empresa: eso lo ven ustedes en el panel.
+WhatsApp: elige el problema, cuenta qué pasa y puede mandar fotos.
+
+**El proveedor:** si el problema tiene una empresa asignada con WhatsApp, el sistema le manda
+el reclamo en el momento, con dos botones: «Recibido» y «No puedo atenderlo». Cuando confirma,
+al vecino le llega un aviso; cuando toca «Ya está solucionado», el reclamo se cierra y se les
+avisa a todos los vecinos que reclamaron. En la historia del reclamo ves cada aviso y si llegó
+(enviado, entregado, leído).
+
+- **No le llegó (o no tiene WhatsApp):** el reclamo queda en «Falta avisar al proveedor». Tocá
+  **Reenviar al proveedor** o, si le avisaste por teléfono, **Marcar como avisado**.
+- **Dijo que no puede:** el reclamo pasa a «Lo atiende el estudio» y el panel avisa. Elegí otro
+  proveedor con **Cambiar quién lo atiende**: se le manda en el momento.
+- **Lo solucionaron y el proveedor no avisó:** **Cerrar como solucionado** también les avisa a
+  los vecinos. **Cancelar reclamo**, en cambio, no le avisa a nadie.
+- Los proveedores aparecen en **Conversaciones**, pestaña **Proveedores**. El bot no les
+  contesta: si escriben algo, lo ven ustedes y pueden responderles.
 
 **Reclamos urgentes:** cuando entra uno (por ejemplo, olor a gas), el panel suena y muestra un
 aviso, igual que «Esperando persona», y al lado de **Reclamos** en el menú aparece un número

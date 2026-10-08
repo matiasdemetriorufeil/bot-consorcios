@@ -384,7 +384,12 @@ def test_cancel_at_any_step(w: World) -> None:
 
 def test_another_question_drops_the_draft_and_goes_to_the_model(w: World) -> None:
     agent, script = _agent([Say("Tu consulta, respondida.")])
-    say(w, agent, ANA, "Registrar reclamo")
+    first = say(w, agent, ANA, "Registrar reclamo")
+    # The first answer that fits no option: the same list once more.
+    again = say(w, agent, ANA, "¿Cuánto debo de expensas?")
+    assert again.text.startswith(texts.REPROMPT) and first.text in again.text
+    assert _titles(again) == _titles(first) and script.requests == []
+    # The second: the draft goes and the model answers.
     reply = say(w, agent, ANA, "¿Cuánto debo de expensas?")
     assert reply.text == "Tu consulta, respondida."
     assert reply.debt_messages[0] == texts.DROPPED
@@ -486,6 +491,34 @@ def test_the_hint_prefers_the_list_title() -> None:
     lift = kind("No funciona el o los ascensores", "Ascensor no funciona")
     kinds = [water, damp, lift]
     assert match_category(kinds, "en el edificio no hay agua desde la mañana") is water
+    lights = kind("No hay luz en todo el edificio", "Sin luz en el edificio")
+    assert match_category([*kinds, lights], "no hay agua en el edificio desde las 8") is water
+    assert match_category([*kinds, lights], "se cortó la luz") is lights
     assert match_category(kinds, "hay una filtración en el techo") is damp
     assert match_category(kinds, "no anda el ascensor") is lift
     assert match_category(kinds, "hola") is None
+
+
+def test_a_new_claim_goes_to_the_provider_and_a_repeated_one_does_not(w: World) -> None:
+    from app.claims.notify import Notifier
+    from tests.whatsapp.fakes import FakeWhatsApp
+
+    fake = FakeWhatsApp()
+    settings = Settings(_env_file=None, claims_payload_secret="secreto-inventado")
+    provider, _ = scripted_provider("anthropic", [])
+    agent = Agent(
+        provider, settings=settings, refresh_debt=lambda uid: None, now=lambda: NOW,
+        notifier=Notifier(fake, settings, now=lambda: NOW),
+    )  # type: ignore[arg-type]  # fmt: skip
+
+    reply = _report_lift(w, agent, ANA)
+    [claim] = _claims(w.session)
+    assert claim.status == ClaimStatus.SENT
+    assert reply.text == texts.CREATED_AND_SENT.format(
+        number=claim.number, problem="Ascensor no funciona"
+    )
+    assert [kind for kind, _, _ in fake.sent] == ["template"]
+
+    reply = _report_lift(w, agent, BETO, "Sigue sin andar")
+    assert reply.text == texts.JOINED.format(number=claim.number)
+    assert [kind for kind, _, _ in fake.sent] == ["template"]  # nothing new to the provider

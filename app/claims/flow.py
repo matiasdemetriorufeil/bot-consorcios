@@ -8,11 +8,13 @@ steps go with buttons and lists:
     -> follow-up question (if any)  ->  description  ->  photos  ->  summary "¿Lo registro?"
 
 Only "Sí, registrar" in the summary creates the claim (app.claims.service.create_claim, source
-bot). "cancelar" ends it at any step. An answer that belongs to no step (another question
-while buttons were offered) drops the draft with a short notice and the message goes on to the
-agent (FlowReply.handled False). In the photos step a text is added to the description instead;
-in the description step a photo is kept and the description asked again. A draft unanswered
-for 30 minutes expires.
+bot) and, if it has a provider with WhatsApp, sends it to it (app.claims.notify). "cancelar"
+ends it at any step. An answer that fits no option of a list or of buttons gets the same step
+once more ("No te entendí..."); a second one drops the draft with a short notice and the
+message goes on to the agent (FlowReply.handled False). "Registrar reclamo" tapped in the
+notice of a solved claim starts with that problem proposed and links the new claim to it. In
+the photos step a text is added to the description instead; in the description step a photo is
+kept and the description asked again. A draft unanswered for 30 minutes expires.
 
 Who may: an identified owner or tenant with a unit in a building with "Reclamos por el bot".
 An unknown number waits in WAITING_IDENTITY while the agent verifies it as usual; resume()
@@ -20,7 +22,7 @@ picks up after confirm_email_code. The safety text of an urgent kind goes out fi
 unknown number or from a building without claims by the bot.
 
 Every step is logged in bot_events ("claim_flow": step and action, never what the person wrote
-nor the photos). Nothing is sent to the provider here (step 8.5).
+nor the photos).
 """
 
 import re
@@ -36,18 +38,20 @@ from sqlalchemy.orm import Session
 from app.bot.choices import Choice
 from app.bot.identity import Identity, identify_by_phone, to_e164
 from app.bot.unit_search import display_building_name
-from app.claims import texts
+from app.claims import payloads, texts
 from app.claims.service import ClaimProblem, Reporter, create_claim
 from app.claims.setup import enabled_categories, split_for_whatsapp
 from app.db.models import (
     BotEvent,
     Building,
+    Claim,
     ClaimAttachment,
     ClaimCategory,
     ClaimDraft,
     ClaimDraftStep,
     ClaimScope,
     ClaimSource,
+    ClaimStatus,
     Unit,
     WaMediaStatus,
     WaMessage,
@@ -120,6 +124,12 @@ _STOP = frozenset(
         "todo",
         "esta",
         "estan",
+        # Where it happens, not what: "no hay agua en el edificio" is about the water.
+        "edificio",
+        "departamento",
+        "depto",
+        "unidad",
+        "casa",
     ]
 )
 
@@ -256,9 +266,24 @@ def _offer(
     draft: ClaimDraft, step: Step, text: str, choices: Sequence[Choice], now: datetime
 ) -> FlowReply:
     draft.step = step
-    draft.options = {"items": [[c.title, c.value] for c in choices]}
+    draft.options = {
+        "items": [[c.title, c.value, c.description] for c in choices],
+        "text": text,
+    }
+    draft.reprompted = False
     draft.updated_at = now
     return FlowReply(text=text, choices=tuple(choices))
+
+
+def _offer_again(draft: ClaimDraft, now: datetime) -> FlowReply:
+    """The same step once more, after an answer that fit none of its options."""
+    items = draft.options.get("items", [])
+    choices = tuple(Choice(item[0], item[1], item[2] if len(item) > 2 else "") for item in items)
+    draft.reprompted = True
+    draft.updated_at = now
+    return FlowReply(
+        text=f"{texts.REPROMPT}\n\n{draft.options.get('text', '')}".strip(), choices=choices
+    )
 
 
 def _pick(draft: ClaimDraft, text: str) -> str | None:
@@ -269,10 +294,10 @@ def _pick(draft: ClaimDraft, text: str) -> str | None:
         return None
     if answer.isdigit() and 1 <= int(answer) <= len(items):
         return items[int(answer) - 1][1]
-    for title, value in items:
-        if normalize(title) == answer:
-            return value
-    values = [value for _, value in items]
+    for item in items:
+        if normalize(item[0]) == answer:
+            return item[1]
+    values = [item[1] for item in items]
     if "yes" in values and answer in YES_WORDS:
         return "yes"
     if "no" in values and answer in NO_WORDS:
@@ -290,16 +315,39 @@ def start(
     *,
     conversation_id: int | None = None,
     now: datetime | None = None,
+    again_payload: str = "",
+    secret: bytes | None = None,
 ) -> FlowReply:
     """Begin a claim (a new draft replaces an old one). Commits. status: "ok" (the first step
     is the reply), "not_verified" (the agent verifies the number; the flow resumes after),
     "not_available" (no unit in a building with claims by the bot: text says so) or
-    "no_phone". The safety text of an urgent kind the hint names goes in blocks anyway."""
+    "no_phone". The safety text of an urgent kind the hint names goes in blocks anyway.
+    again_payload: the payload of "Registrar reclamo" in the notice of a solved claim (signed
+    for this phone): that claim's problem is proposed and the new one is linked to it."""
     now = _now(now)
     e164 = to_e164(phone) if phone else None
     if e164 is None:
         return FlowReply(status="no_phone", handled=False)
     session.execute(delete(ClaimDraft).where(ClaimDraft.phone_e164 == e164))
+    previous_id = None
+    if again_payload and secret is not None:
+        read = payloads.read(secret, again_payload, e164)
+        previous = session.get(Claim, read.claim_id) if read and read.action == "again" else None
+        if previous is not None:
+            previous_id = previous.id
+            hint = hint or previous.category.list_title
+    reply = _start(session, e164, hint, conversation_id, now)
+    if previous_id is not None:
+        draft = session.scalar(select(ClaimDraft).where(ClaimDraft.phone_e164 == e164))
+        if draft is not None:
+            draft.previous_claim_id = previous_id
+            session.commit()
+    return reply
+
+
+def _start(
+    session: Session, e164: str, hint: str, conversation_id: int | None, now: datetime
+) -> FlowReply:
     hint = (hint or "").strip()[:200]
     hinted = _hinted_anywhere(session, hint)
     urgent = bool(hinted and hinted.urgent)
@@ -543,15 +591,17 @@ def handle(
     photo_ids: Sequence[int] = (),
     *,
     now: datetime | None = None,
+    notifier: Any = None,
 ) -> FlowReply:
-    """The next message of a draft in a step. Commits."""
+    """The next message of a draft in a step. Commits. notifier (app.claims.notify.Notifier):
+    sends a new claim to its provider; without one, nothing is sent."""
     now = _now(now)
     text = (text or "").strip()
     if normalize(text) in CANCEL_WORDS or _pick(draft, text) == "cancel":
         _drop(session, draft, "cancelled")
         return FlowReply(text=texts.CANCELLED)
     try:
-        reply = _answer(session, draft, text, photo_ids, now)
+        reply = _answer(session, draft, text, photo_ids, now, notifier)
     except ClaimProblem as exc:
         session.rollback()
         _drop(session, draft, "failed")
@@ -569,14 +619,21 @@ def _off_step(session: Session, draft: ClaimDraft) -> FlowReply:
 
 
 def _answer(
-    session: Session, draft: ClaimDraft, text: str, photo_ids: Sequence[int], now: datetime
+    session: Session,
+    draft: ClaimDraft,
+    text: str,
+    photo_ids: Sequence[int],
+    now: datetime,
+    notifier: Any = None,
 ) -> FlowReply:
     step = Step(draft.step)
     if step in CHOICE_STEPS:
         value = _pick(draft, text)
+        if value is None and not draft.reprompted:
+            return _offer_again(draft, now)
         if value is None:
             return _off_step(session, draft)
-        return _choice(session, draft, step, value, now)
+        return _choice(session, draft, step, value, now, notifier)
     if step in FREE_TEXT_STEPS:
         if photo_ids:
             problem = _add_photos(session, draft, photo_ids)
@@ -611,7 +668,12 @@ def _answer(
 
 
 def _choice(
-    session: Session, draft: ClaimDraft, step: Step, value: str, now: datetime
+    session: Session,
+    draft: ClaimDraft,
+    step: Step,
+    value: str,
+    now: datetime,
+    notifier: Any = None,
 ) -> FlowReply:
     if step == Step.CHOOSE_UNIT and value.startswith("unit:"):
         draft.unit_id = int(value.removeprefix("unit:"))
@@ -627,11 +689,13 @@ def _choice(
         _drop(session, draft, "not_registered")
         return FlowReply(text=texts.NOT_REGISTERED, status="not_registered")
     if step == Step.CONFIRM and value == "yes":
-        return _register(session, draft, now)
+        return _register(session, draft, now, notifier)
     return _off_step(session, draft)
 
 
-def _register(session: Session, draft: ClaimDraft, now: datetime) -> FlowReply:
+def _register(
+    session: Session, draft: ClaimDraft, now: datetime, notifier: Any = None
+) -> FlowReply:
     who = identify_by_phone(session, draft.phone_e164)
     unit = _unit(session, draft)
     if not who.known or all(u.unit_id != unit.id for u in who.units):
@@ -652,6 +716,7 @@ def _register(session: Session, draft: ClaimDraft, now: datetime) -> FlowReply:
         source=ClaimSource.BOT,
         wa_conversation_id=draft.conversation_id,
         follow_up_answer=draft.follow_up_answer,
+        previous_claim_id=draft.previous_claim_id,
         now=now,
     )
     claim = result.claim
@@ -664,7 +729,18 @@ def _register(session: Session, draft: ClaimDraft, now: datetime) -> FlowReply:
     elif result.repeated:
         text = texts.JOINED.format(number=claim.number)
     else:
-        template = texts.CREATED_WITH_PROVIDER if claim.provider_id else texts.CREATED_FOR_STUDIO
+        session.flush()
+        sent = (
+            notifier.notify_provider(session, claim).ok
+            if notifier is not None and claim.status == ClaimStatus.PENDING_SEND
+            else False
+        )
+        if sent:
+            template = texts.CREATED_AND_SENT
+        elif claim.provider_id:
+            template = texts.CREATED_WITH_PROVIDER
+        else:
+            template = texts.CREATED_FOR_STUDIO
         text = template.format(number=claim.number, problem=category.list_title)
         if claim.previous is not None:
             text += " " + texts.PREVIOUS.format(number=claim.previous.number)

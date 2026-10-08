@@ -12,6 +12,12 @@
 - POST /admin/claims/{id}/close           "Cerrar como solucionado" (with a reason)
 - POST /admin/claims/{id}/cancel          "Cancelar reclamo" (with a reason)
 - POST /admin/claims/{id}/note            "Nota interna"
+- POST /admin/claims/{id}/resend          "Reenviar al proveedor" (by WhatsApp)
+- POST /admin/claims/{id}/mark-sent       "Marcar como avisado" (told by phone)
+
+A claim with a provider with WhatsApp is sent to it when it is created here and when the
+provider changes; closing it as solved tells the neighbors (app.claims.notify). Cancelling tells
+nobody.
 
 Every change goes through app.claims.service (its rules, history and audit); this module only
 collects the choice and shows the result. Nothing is sent to anybody from here.
@@ -34,6 +40,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from app.admin import formatting, labels
 from app.admin.auth import admin_user, display_names
 from app.bot.identity import to_e164
+from app.claims.notify import Notifier
 from app.claims.service import (
     ClaimProblem,
     Reporter,
@@ -41,6 +48,7 @@ from app.claims.service import (
     change_provider,
     close_claim,
     create_claim,
+    mark_sent,
 )
 from app.claims.setup import enabled_categories
 from app.config import Settings
@@ -52,6 +60,7 @@ from app.db.models import (
     ClaimActor,
     ClaimAttachment,
     ClaimCategory,
+    ClaimEvent,
     ClaimReporter,
     ClaimSource,
     ClaimStatus,
@@ -281,18 +290,34 @@ def filter_options(session: Session) -> dict[str, list[tuple[str, str]]]:
     }
 
 
+# Open claims someone of the studio should look at now: urgent, or the provider cannot
+# attend it, or it could not be sent to the provider.
+NEEDS_SOMEONE = Claim.status.in_(OPEN_CLAIM_STATUSES) & (
+    Claim.urgent.is_(True) | Claim.attention.is_not(None)
+)
+
+
+def _alert_title(claim: Claim) -> str:
+    if claim.attention is not None:
+        return f"{labels.label(labels.CLAIM_ATTENTION, claim.attention)} · #{claim.number}"
+    return f"Reclamo urgente #{claim.number}"
+
+
 def urgent_open_claims(session: Session) -> list[dict[str, Any]]:
-    """The urgent claims still open (newest first), for the alerts and the menu's counter."""
+    """The open claims that need someone (urgent, or with an alert), newest first: the
+    panel's sound and notification, and the menu's counter. The key includes the alert, so a
+    claim that gets one later alerts again."""
     claims = session.scalars(
         select(Claim)
-        .where(Claim.urgent.is_(True), Claim.status.in_(OPEN_CLAIM_STATUSES))
+        .where(NEEDS_SOMEONE)
         .options(selectinload(Claim.building), selectinload(Claim.category))
         .order_by(Claim.created_at.desc(), Claim.id.desc())
     ).all()
     return [
         {
-            "id": c.id,
+            "id": f"{c.id}:{c.attention or 'urgent'}",
             "number": c.number,
+            "title": _alert_title(c),
             "problem": c.category.list_title,
             "building": formatting.building(c.building.name),
         }
@@ -301,14 +326,7 @@ def urgent_open_claims(session: Session) -> list[dict[str, Any]]:
 
 
 def urgent_open_count(session: Session) -> int:
-    return (
-        session.scalar(
-            select(func.count())
-            .select_from(Claim)
-            .where(Claim.urgent.is_(True), Claim.status.in_(OPEN_CLAIM_STATUSES))
-        )
-        or 0
-    )
+    return session.scalar(select(func.count()).select_from(Claim).where(NEEDS_SOMEONE)) or 0
 
 
 # --- The claim ------------------------------------------------------------------------------
@@ -329,6 +347,8 @@ class EventLine:
     who: str
     text: str
     kind: str
+    # A WhatsApp notice: how its delivery went ("entregado", "leído"...), "" otherwise.
+    delivery: str = ""
 
 
 @dataclass(frozen=True)
@@ -365,7 +385,7 @@ def load_claim(session: Session, claim_id: int) -> Claim | None:
             selectinload(Claim.previous),
             selectinload(Claim.reporters).selectinload(ClaimReporter.unit),
             selectinload(Claim.attachments).selectinload(ClaimAttachment.message),
-            selectinload(Claim.events),
+            selectinload(Claim.events).selectinload(ClaimEvent.message),
         )
     ).first()
 
@@ -431,6 +451,9 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
                 who=who,
                 text=labels.claim_event(e.kind, e.text),
                 kind=str(e.kind),
+                delivery=labels.label(labels.MESSAGE_STATUS, e.message.status, "")
+                if e.message is not None and e.message.status
+                else "",
             )
         )
     return page
@@ -528,6 +551,10 @@ def _redirect(request: Request, identity: str, query: str = "", **params: Any) -
     return RedirectResponse(f"{url}?{query}" if query else url, status_code=302)
 
 
+NO_WHATSAPP = "{provider} no tiene WhatsApp cargado: avisale por teléfono y marcalo como avisado."
+NOT_CONFIGURED = "WhatsApp no está configurado en este servidor: no se mandó nada."
+
+
 class ClaimsView(BaseView):
     name = "Reclamos"
     icon = "fa-solid fa-screwdriver-wrench"
@@ -535,6 +562,8 @@ class ClaimsView(BaseView):
     menu_badge = "urgent_claims"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
+    # Builds the claims' WhatsApp messages (setup_admin; None in a server without WhatsApp).
+    notifier_factory: ClassVar[Any] = None
 
     def now(self) -> datetime:
         return datetime.now(UTC)
@@ -604,7 +633,12 @@ class ClaimsView(BaseView):
                     session.rollback()
                     error = str(exc)
                 else:
+                    sent = None
+                    if not result.repeated:
+                        sent = self._send_to_provider(session, result.claim, admin_user(request))
                     session.commit()
+                    if isinstance(sent, tuple):
+                        (Flash.success if sent[0] else Flash.warning)(request, sent[1])
                     number = result.claim.number
                     if result.already_reporter:
                         Flash.info(
@@ -664,13 +698,19 @@ class ClaimsView(BaseView):
                 studio_label=labels.STUDIO,
                 scope_labels=labels.CLAIM_SCOPE,
                 source_label=labels.label(labels.CLAIM_SOURCE, claim.source),
+                attention_label=labels.label(labels.CLAIM_ATTENTION, claim.attention, ""),
                 previous_status=labels.label(labels.CLAIM_STATUS, claim.previous.status)
                 if claim.previous
                 else "",
             )
 
+    def notifier(self) -> Notifier | None:
+        """The claims' WhatsApp messages (None: WhatsApp is not set up in this server)."""
+        return self.notifier_factory() if self.notifier_factory else None
+
     async def _act(self, request: Request, action: Any, done: str) -> Response:
-        """Apply one change to the claim through the service and go back to it."""
+        """Apply one change to the claim through the service and go back to it. The action
+        may return a second message (what happened with a WhatsApp notice)."""
         claim_id = request.path_params["claim_id"]
         form = await request.form()
         with self.session_maker() as session:
@@ -678,14 +718,66 @@ class ClaimsView(BaseView):
             if claim is None:
                 return Response("Reclamo inexistente", status_code=404)
             try:
-                action(session, claim, form)
+                extra = action(session, claim, form)
             except ClaimProblem as exc:
                 session.rollback()
                 Flash.error(request, str(exc))
             else:
                 session.commit()
                 Flash.success(request, done)
+                if isinstance(extra, tuple):
+                    ok, text = extra
+                    (Flash.success if ok else Flash.warning)(request, text)
         return _redirect(request, "claim", claim_id=claim_id)
+
+    def _send_to_provider(self, session: Session, claim: Claim, user: str) -> Any:
+        """After a change: a claim waiting for its provider (with WhatsApp) goes to it."""
+        provider = claim.provider
+        if claim.status != ClaimStatus.PENDING_SEND or provider is None:
+            return None
+        if not provider.whatsapp_e164:
+            return False, NO_WHATSAPP.format(provider=provider.name)
+        notifier = self.notifier()
+        if notifier is None:
+            return False, NOT_CONFIGURED
+        sent = notifier.notify_provider(session, claim, user)
+        if sent.ok:
+            return True, f"Se le mandó el reclamo por WhatsApp a {provider.name}."
+        return False, f"No se le pudo mandar a {provider.name}: {sent.error}."
+
+    def _tell_neighbors(self, session: Session, claim: Claim) -> Any:
+        notifier = self.notifier()
+        if notifier is None:
+            return False, NOT_CONFIGURED
+        sent = notifier.notify_neighbors(session, claim, "solved")
+        if not sent:
+            return None
+        went = sum(s.ok for s in sent)
+        if went == len(sent):
+            return True, "Se les avisó a los vecinos que está solucionado."
+        return False, f"Se les avisó a {went} de {len(sent)} vecinos: mirá la historia."
+
+    @expose("/claims/{claim_id:int}/resend", methods=["POST"], identity="claim-resend")
+    async def claim_resend(self, request: Request) -> Response:
+        user = admin_user(request)
+
+        def resend(session: Session, claim: Claim, form: Any) -> Any:
+            if claim.status != ClaimStatus.PENDING_SEND or claim.provider is None:
+                raise ClaimProblem("Este reclamo no está esperando que se le avise al proveedor.")
+            return self._send_to_provider(session, claim, user)
+
+        return await self._act(request, resend, "Listo.")
+
+    @expose("/claims/{claim_id:int}/mark-sent", methods=["POST"], identity="claim-mark-sent")
+    async def claim_mark_sent(self, request: Request) -> Response:
+        who = self._who(request)
+
+        def mark(session: Session, claim: Claim, form: Any) -> None:
+            if claim.provider is None:
+                raise ClaimProblem("Lo atiende el estudio: no hay proveedor a quien avisarle.")
+            mark_sent(session, claim, text=f"Avisado a {claim.provider.name} por teléfono", **who)
+
+        return await self._act(request, mark, "Marcado como avisado.")
 
     def _who(self, request: Request) -> dict[str, Any]:
         return {"actor": ClaimActor.PANEL, "user": admin_user(request), "now": self.now()}
@@ -695,7 +787,10 @@ class ClaimsView(BaseView):
         who = self._who(request)
         return await self._act(
             request,
-            lambda s, c, f: change_provider(s, c, _int(f.get("provider_id")), **who),
+            lambda s, c, f: (
+                change_provider(s, c, _int(f.get("provider_id")), **who),
+                self._send_to_provider(s, c, who["user"]),
+            )[1],
             "Listo: cambió quién lo atiende.",
         )
 
@@ -704,7 +799,10 @@ class ClaimsView(BaseView):
         who = self._who(request)
         return await self._act(
             request,
-            lambda s, c, f: close_claim(s, c, ClaimStatus.SOLVED, str(f.get("reason", "")), **who),
+            lambda s, c, f: (
+                close_claim(s, c, ClaimStatus.SOLVED, str(f.get("reason", "")), **who),
+                self._tell_neighbors(s, c),
+            )[1],
             "Reclamo cerrado como solucionado.",
         )
 

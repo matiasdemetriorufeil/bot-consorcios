@@ -7,6 +7,7 @@ from app.channels.handoff import REASONS
 from app.db.models import (
     BuildingInfoCategory,
     ClaimActor,
+    ClaimAttention,
     ClaimEventKind,
     ClaimScope,
     ClaimSource,
@@ -20,6 +21,7 @@ from app.db.models import (
     SyncStatus,
     VerificationRequestStatus,
     WaConversationStatus,
+    WaMessageStatus,
 )
 
 VERIFICATION_STATUS = {
@@ -44,6 +46,7 @@ CONVERSATION_STATUS = {
     WaConversationStatus.WAITING_HUMAN: "Esperando persona",
     WaConversationStatus.HUMAN: "Con una persona",
     WaConversationStatus.RESOLVED: "Resuelta",
+    WaConversationStatus.PROVIDER: "Proveedor",
 }
 INFO_CATEGORY = {
     BuildingInfoCategory.REGLAMENTO: "Reglamento",
@@ -106,6 +109,21 @@ CLAIM_EVENT = {
     ClaimEventKind.SOLVED: "Cerrado como solucionado",
     ClaimEventKind.CANCELLED: "Reclamo cancelado",
     ClaimEventKind.NOTE: "Nota interna",
+    ClaimEventKind.NOTIFIED: "Aviso por WhatsApp",
+    ClaimEventKind.NOTIFY_FAILED: "No se pudo avisar",
+    ClaimEventKind.DECLINED: "El proveedor no puede atenderlo",
+    ClaimEventKind.PROVIDER_MESSAGE: "El proveedor escribió",
+}
+# The delivery of a WhatsApp message (what the webhook reports), in a claim's history.
+MESSAGE_STATUS = {
+    WaMessageStatus.SENT: "enviado",
+    WaMessageStatus.DELIVERED: "entregado",
+    WaMessageStatus.READ: "leído",
+    WaMessageStatus.FAILED: "no se pudo entregar",
+}
+CLAIM_ATTENTION = {
+    ClaimAttention.DECLINED: "El proveedor no puede atenderlo",
+    ClaimAttention.SEND_FAILED: "No se le pudo avisar al proveedor",
 }
 
 # Handoff reasons: a short label (the inbox's tags) and the long text of
@@ -230,6 +248,11 @@ def claim_event(kind: ClaimEventKind | str, text: str | None) -> str:
         return f"{title} {text}" if text else title
     if str(kind) == ClaimEventKind.PROVIDER_CHANGED:
         return f"{title} {text}" if text else f"{title} el estudio"
+    # Their text already says it all ("Avisado a X por WhatsApp", "X dijo que no puede...").
+    if str(kind) in (ClaimEventKind.NOTIFIED, ClaimEventKind.DECLINED) and text:
+        return text
+    if str(kind) == ClaimEventKind.SENT and text:
+        return text
     return f"{title}: {text}" if text else title
 
 

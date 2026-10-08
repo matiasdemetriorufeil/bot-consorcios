@@ -16,7 +16,9 @@ from typing import NamedTuple
 
 MAX_BUTTONS = 3
 MAX_OPTIONS = 10
-MIN_OPTIONS = 2
+MIN_OPTIONS = 2  # what the model offers (offer_choices)
+# WhatsApp itself takes one reply button ("Ya está solucionado", "Registrar reclamo").
+MIN_SENT_OPTIONS = 1
 MAX_BUTTON_TITLE = 20
 MAX_LIST_TITLE = 24
 MAX_TEXT = 1024
@@ -28,6 +30,9 @@ class Choice(NamedTuple):
     value: str
     # Only in a list: the gray line under the title (72 characters at most).
     description: str = ""
+    # The id WhatsApp gives back when it is tapped (a claim's signed payload,
+    # app.claims.notify). Empty: "opt-<n>".
+    payload: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,15 +52,15 @@ def title_limit(count: int) -> int:
     return MAX_BUTTON_TITLE if count <= MAX_BUTTONS else MAX_LIST_TITLE
 
 
-def problems(text: str, titles: Sequence[str]) -> list[str]:
+def problems(text: str, titles: Sequence[str], min_options: int = MIN_OPTIONS) -> list[str]:
     """What WhatsApp would reject (in Spanish: the model reads them). Empty when it fits."""
     found: list[str] = []
     if not text.strip():
         found.append("falta el texto del mensaje")
     elif len(text) > MAX_TEXT:
         found.append(f"el texto tiene {len(text)} caracteres (máximo {MAX_TEXT})")
-    if not MIN_OPTIONS <= len(titles) <= MAX_OPTIONS:
-        found.append(f"tiene que haber entre {MIN_OPTIONS} y {MAX_OPTIONS} opciones")
+    if not min_options <= len(titles) <= MAX_OPTIONS:
+        found.append(f"tiene que haber entre {min_options} y {MAX_OPTIONS} opciones")
     limit = title_limit(len(titles))
     if long := [t for t in titles if len(t) > limit]:
         found.append(f"títulos de más de {limit} caracteres: {', '.join(long)}")

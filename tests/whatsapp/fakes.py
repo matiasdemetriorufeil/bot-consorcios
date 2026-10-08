@@ -8,7 +8,7 @@ from datetime import datetime
 from itertools import count
 from typing import Any
 
-from app.bot.choices import Choice, problems
+from app.bot.choices import MIN_SENT_OPTIONS, Choice, problems
 from app.whatsapp.client import MediaTooLargeError, WhatsAppError
 
 APP_SECRET = "test-app-secret"
@@ -74,11 +74,20 @@ def text_message(body: str, at: datetime, message_id: str | None = None) -> dict
     return {**_base("text", at, message_id), "text": {"body": body}}
 
 
-def button_reply(title: str, at: datetime, message_id: str | None = None) -> dict[str, Any]:
+def button_reply(
+    title: str, at: datetime, message_id: str | None = None, reply_id: str = "opt-1"
+) -> dict[str, Any]:
     return {
         **_base("interactive", at, message_id),
-        "interactive": {"type": "button_reply", "button_reply": {"id": "opt-1", "title": title}},
+        "interactive": {"type": "button_reply", "button_reply": {"id": reply_id, "title": title}},
     }
+
+
+def template_button(
+    title: str, payload: str, at: datetime, message_id: str | None = None
+) -> dict[str, Any]:
+    """A quick-reply button of a template, as Meta delivers it."""
+    return {**_base("button", at, message_id), "button": {"text": title, "payload": payload}}
 
 
 def list_reply(title: str, at: datetime, message_id: str | None = None) -> dict[str, Any]:
@@ -162,6 +171,10 @@ class FakeWhatsApp:
     files: dict[str, bytes] = field(default_factory=dict)
     sent: list[tuple[str, str, Any]] = field(default_factory=list)  # (kind, to, content)
     wamids: list[str] = field(default_factory=list)
+    # Per message with options or a template: the payloads of its buttons, in order.
+    payloads: list[list[str]] = field(default_factory=list)
+    # The components of each template sent (its variables and buttons).
+    components: list[Any] = field(default_factory=list)
 
     def _send(self, kind: str, to: str, content: Any) -> str:
         if kind in self.fail_on:
@@ -174,12 +187,24 @@ class FakeWhatsApp:
         return self._send("text", to, text)
 
     def send_choices(self, to: str, text: str, choices: tuple[Choice, ...]) -> str:
-        if found := problems(text, [c.title for c in choices]):
+        if found := problems(text, [c.title for c in choices], MIN_SENT_OPTIONS):
             raise ValueError("; ".join(found))
+        self.payloads.append([c.payload for c in choices])
         return self._send("choices", to, (text, [c.title for c in choices]))
 
     def send_template(self, to: str, name: str, language: str = "es_AR", components=None) -> str:  # type: ignore[no-untyped-def]
+        self.components.append(components)
+        buttons = [c for c in components or [] if c.get("type") == "button"]
+        self.payloads.append([b["parameters"][0]["payload"] for b in buttons])
         return self._send("template", to, (name, language))
+
+    def send_image(self, to: str, media_id: str, caption: str = "") -> str:
+        return self._send("image", to, (media_id, caption))
+
+    def upload_media(self, content: bytes, mime_type: str, filename: str = "foto") -> str:
+        if "upload_media" in self.fail_on:
+            raise WhatsAppError("POST /media falló")
+        return f"subido-{len(content)}"
 
     def get_media(self, media_id: str) -> dict[str, Any]:
         if "get_media" in self.fail_on:

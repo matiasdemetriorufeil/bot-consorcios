@@ -36,6 +36,7 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
@@ -56,6 +57,7 @@ from app.bot.prompts import (
 )
 from app.bot.tools import TOOLS, Handoff, ToolContext, run_tool
 from app.claims import flow as claim_flow
+from app.claims import payloads
 from app.claims import texts as claim_texts
 from app.config import Settings, get_settings
 from app.llm import (
@@ -70,6 +72,9 @@ from app.llm import (
 )
 from app.notify.email import EmailSender
 from app.sync.live import DebtResult, refresh_unit
+
+if TYPE_CHECKING:
+    from app.claims.notify import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +144,11 @@ class Agent:
         refresh_debt: Callable[[int], DebtResult] = refresh_unit,
         email_sender: EmailSender | None = None,
         now: Callable[[], datetime] | None = None,
+        notifier: "Notifier | None" = None,
     ) -> None:
+        """notifier: sends a new claim to its provider (app.claims.notify); without one
+        (evaluations, the CLI) nothing is sent."""
+        self.notifier = notifier
         self.provider = provider
         self.prices = prices or Prices()
         self.settings = settings or get_settings()
@@ -158,6 +167,7 @@ class Agent:
         conversation_id: int | None = None,
         attachment_ids: Sequence[int] = (),
         attachment_types: Sequence[str] = (),
+        payload: str = "",
     ) -> AgentReply:
         """attachment_ids: the stored WhatsApp messages with an image (photos of a claim);
         attachment_types: what the person attached (the model is told it cannot see them)."""
@@ -171,7 +181,7 @@ class Agent:
         notices: list[str] = []
         if to_e164(phone):
             code = self._claim_turn(
-                session, phone, text, attachment_ids, conversation_id, now, notices
+                session, phone, text, attachment_ids, conversation_id, now, notices, payload
             )
             if code is not None:
                 reply_text, choices, blocks = code
@@ -266,13 +276,17 @@ class Agent:
         conversation_id: int | None,
         now: datetime,
         notices: list[str],
+        payload: str = "",
     ) -> tuple[str, tuple[Choice, ...], list[str]] | None:
         """(text, options, blocks) when the code answers this message (a claim step or the
         menu's claim options), else None (notices may get a "dropped"/"expired" notice)."""
         asked = claim_flow.normalize(text)
         known = identify_by_phone(session, phone).known
         if asked == REPORT_CLAIM and known:
-            started = claim_flow.start(session, phone, conversation_id=conversation_id, now=now)
+            started = claim_flow.start(
+                session, phone, conversation_id=conversation_id, now=now,
+                again_payload=payload, secret=self._secret(),
+            )  # fmt: skip
             if started.status == "not_available":
                 return started.text, HANDOFF_OFFER, started.blocks
             if started.status == "ok":
@@ -285,11 +299,16 @@ class Agent:
         if expired:
             notices.append(claim_texts.EXPIRED)
         if draft is not None and claim_flow.in_steps(draft):
-            step = claim_flow.handle(session, draft, text, attachment_ids, now=now)
+            step = claim_flow.handle(
+                session, draft, text, attachment_ids, now=now, notifier=self.notifier
+            )
             if step.handled:
                 return step.text, step.choices, step.blocks
             notices.extend(step.blocks)
         return None
+
+    def _secret(self) -> bytes:
+        return self.notifier.secret if self.notifier else payloads.secret_of(self.settings)
 
     def _code_reply(
         self,

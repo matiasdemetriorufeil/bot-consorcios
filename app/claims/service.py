@@ -9,6 +9,9 @@ neighbor comes in step 8.5.
 - Every change leaves a ClaimEvent (the history the panel shows) and, when it comes from the
   panel, the usual admin_action in bot_events (ids and field names, never texts).
 
+Sending the claim to the provider and telling the neighbors is app.claims.notify; the
+provider's buttons are read by app.claims.provider_flow. Both change the claim only here.
+
 Changes are flushed, never committed: the caller commits (one transaction per action).
 """
 
@@ -26,6 +29,7 @@ from app.db.models import (
     BuildingClaimCategory,
     Claim,
     ClaimActor,
+    ClaimAttention,
     ClaimCategory,
     ClaimEvent,
     ClaimEventKind,
@@ -93,6 +97,7 @@ def _event(
     user: str | None,
     text: str | None = None,
     now: datetime | None = None,
+    wa_message_id: int | None = None,
 ) -> None:
     session.add(
         ClaimEvent(
@@ -101,9 +106,26 @@ def _event(
             actor=actor,
             panel_user=user if actor == ClaimActor.PANEL else None,
             text=text,
+            wa_message_id=wa_message_id,
             created_at=_now(now),
         )
     )
+
+
+def record_event(
+    session: Session,
+    claim: Claim,
+    kind: ClaimEventKind,
+    *,
+    actor: ClaimActor = ClaimActor.SYSTEM,
+    text: str | None = None,
+    wa_message_id: int | None = None,
+    now: datetime | None = None,
+) -> None:
+    """A line of the history that changes nothing else (a WhatsApp notice, what the provider
+    wrote, a notice that could not go out)."""
+    _event(session, claim, kind, actor, None, text, now, wa_message_id)
+    session.flush()
 
 
 def _audit(
@@ -181,6 +203,17 @@ def _previous_claim(
     ).first()
 
 
+def _own_closed_claim(session: Session, claim_id: int, reporter: Reporter) -> Claim | None:
+    conditions = _reporter_condition(reporter)
+    if not conditions:
+        return None
+    return session.scalars(
+        select(Claim).where(
+            Claim.id == claim_id, Claim.status.in_(CLOSED_CLAIM_STATUSES), or_(*conditions)
+        )
+    ).first()
+
+
 def _unit_of(session: Session, unit_id: int | None, building_id: int) -> Unit | None:
     if unit_id is None:
         return None
@@ -205,10 +238,13 @@ def create_claim(
     user: str | None = None,
     wa_conversation_id: int | None = None,
     follow_up_answer: str | None = None,
+    previous_claim_id: int | None = None,
     now: datetime | None = None,
 ) -> CreateResult:
     """A new claim, or the open one of the same kind of the whole building that the neighbor
-    joins (CreateResult.repeated). Raises ClaimProblem."""
+    joins (CreateResult.repeated). previous_claim_id: the claim it follows ("Registrar reclamo"
+    from the notice of a solved one), kept only if it is a closed claim of this neighbor.
+    Raises ClaimProblem."""
     now = _now(now)
     actor = _actor(source)
     description = _clean(description)
@@ -280,6 +316,8 @@ def create_claim(
     if provider is not None and not provider.active:
         provider = None  # a deactivated provider is never notified: the studio attends it
     previous = _previous_claim(session, building_id, category, unit, reporter, now)
+    if previous_claim_id is not None:
+        previous = _own_closed_claim(session, previous_claim_id, reporter) or previous
     claim = Claim(
         building_id=building_id,
         unit_id=unit.id if category.scope == ClaimScope.UNIT and unit else None,
@@ -326,13 +364,45 @@ def mark_sent(
     claim: Claim,
     *,
     actor: ClaimActor = ClaimActor.SYSTEM,
+    user: str | None = None,
+    text: str | None = None,
+    wa_message_id: int | None = None,
     now: datetime | None = None,
 ) -> None:
-    """The provider was notified (step 8.5 sends it; nothing is sent here)."""
+    """The provider was notified: by WhatsApp (app.claims.notify, with its message) or by
+    phone ("Marcar como avisado" in the panel)."""
     now = _now(now)
     _move(claim, ClaimStatus.SENT, now)
     claim.sent_at = now
-    _event(session, claim, ClaimEventKind.SENT, actor, None, None, now)
+    claim.attention = None
+    _event(session, claim, ClaimEventKind.SENT, actor, user, text, now, wa_message_id)
+    action = "claim_sent_to_provider" if wa_message_id else "claim_marked_sent"
+    _audit(session, actor, user, action, claim)
+    session.flush()
+
+
+def provider_declined(session: Session, claim: Claim, *, now: datetime | None = None) -> None:
+    """The provider said it cannot attend it ("No puedo atenderlo"): the studio attends it,
+    and the panel shows an alert. The neighbor is not told."""
+    if not claim.is_open:
+        raise InvalidTransition("El reclamo ya está cerrado: no se puede cambiar.")
+    now = _now(now)
+    name = claim.provider.name if claim.provider else "El proveedor"
+    if claim.status != ClaimStatus.STUDIO:
+        _move(claim, ClaimStatus.STUDIO, now)
+    claim.provider_id = None
+    claim.sent_at = None
+    claim.acknowledged_at = None
+    claim.attention = ClaimAttention.DECLINED
+    _event(
+        session, claim, ClaimEventKind.DECLINED, ClaimActor.PROVIDER, None,
+        f"{name} dijo que no puede atenderlo", now,
+    )  # fmt: skip
+    session.flush()
+
+
+def needs_attention(session: Session, claim: Claim, attention: ClaimAttention | None) -> None:
+    claim.attention = attention
     session.flush()
 
 
@@ -370,6 +440,7 @@ def close_claim(
     now = _now(now)
     _move(claim, status, now)
     claim.closed_at = now
+    claim.attention = None
     claim.close_reason = reason
     kind = ClaimEventKind.SOLVED if status == ClaimStatus.SOLVED else ClaimEventKind.CANCELLED
     _event(session, claim, kind, actor, user, reason, now)
@@ -404,6 +475,7 @@ def change_provider(
     else:
         claim.status_at = now
     claim.provider_id = provider.id if provider else None
+    claim.attention = None
     claim.sent_at = None
     claim.acknowledged_at = None
     _event(

@@ -46,6 +46,8 @@ class InboundMessage:
     content: str
     content_type: str = "text"
     attachment_types: tuple[str, ...] = ()
+    # The payload of the button tapped (a claim's signed payload: app.claims.notify).
+    payload: str = ""
     # The channel's own message, read only by its Channel.
     source: object = field(default=None, compare=False)
 

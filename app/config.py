@@ -85,6 +85,16 @@ class Settings(BaseSettings):
     # ⚠️ DEVELOPMENT ONLY (APP_ENV=development; ignored otherwise). "from:to,..." digits that
     # rewrite the recipient for Meta's test number with Argentine numbers (549... -> 54...15...).
     whatsapp_dev_recipient_rewrite: str = ""
+    # The approved templates of the claims (Meta: WhatsApp Manager > Plantillas) and their
+    # language. Their variables and buttons are in app.claims.notify.
+    whatsapp_template_lang: str = "es_AR"
+    claim_template_provider: str = "reclamo_nuevo_proveedor"
+    claim_template_reminder: str = "reclamo_recordatorio_proveedor"
+    claim_template_confirmed: str = "reclamo_confirmado_vecino"
+    claim_template_solved: str = "reclamo_solucionado_vecino"
+    # Signs the payload of the claims' buttons (a made-up one never closes a claim). Empty:
+    # ADMIN_SECRET_KEY is used.
+    claims_payload_secret: SecretStr | None = None
 
     # "console" (development: logs the email, including the code) or "smtp".
     email_backend: Literal["console", "smtp"] = "console"

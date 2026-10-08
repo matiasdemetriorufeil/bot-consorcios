@@ -55,6 +55,27 @@
       </div>
     </div>
 
+    {% if providers %}
+    <div class="card mb-3">
+      <div class="card-header"><h3 class="card-title">Hablar como proveedor</h3></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin:view-dev-chat-provider') }}" class="row g-2">
+          <div class="col-12 col-md-8">
+            <select class="form-select" name="provider_id" required aria-label="Proveedor">
+              {% for p in providers %}<option value="{{ p.id }}">{{ p.name }} · {{ p.whatsapp_e164 | phone }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-4"><button class="btn btn-primary w-100" type="submit">Hablar como este proveedor</button></div>
+        </form>
+        <p class="text-muted small mt-2 mb-0">
+          Para ver lo que le llega cuando se registra un reclamo (con sus botones) y tocarlos.
+          Elegilo ANTES de registrar el reclamo: desde ese momento nada de lo que se le mande
+          sale a WhatsApp.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">Buscar una persona de la base</h3></div>
       <div class="card-body">
@@ -131,8 +152,8 @@
       .catch(function () { /* next poll */ });
   }
 
-  function send(text, tapped) {
-    var body = new URLSearchParams({ phone: phone, text: text, tapped: tapped ? "1" : "0" });
+  function send(text, tapped, payload) {
+    var body = new URLSearchParams({ phone: phone, text: text, tapped: tapped ? "1" : "0", payload: payload || "" });
     typing.textContent = "Enviado. Esperando respuesta…";
     return fetch(thread.dataset.sendUrl, { method: "POST", credentials: "same-origin", body: body })
       .then(function (r) { return r.json(); })
@@ -155,7 +176,7 @@
   });
   thread.addEventListener("click", function (e) {
     var button = e.target.closest(".phone-choice");
-    if (button) send(button.dataset.title, true);
+    if (button) send(button.dataset.title, true, button.dataset.payload);
   });
 
   bottom();

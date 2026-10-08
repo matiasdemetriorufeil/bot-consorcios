@@ -1,5 +1,20 @@
 # Inventario del panel `/admin`
 
+## Actualización 8.5: el proveedor por WhatsApp (2026-10-08)
+
+- **Ficha del reclamo:** «Reenviar al proveedor» (falta avisar + proveedor con WhatsApp, con
+  confirmación), «Marcar como avisado» (avisado por teléfono), aviso «Este proveedor no tiene
+  WhatsApp cargado…», alerta si no se le pudo avisar o dijo que no puede. «Cambiar quién lo
+  atiende» le manda el reclamo al nuevo (la confirmación lo dice); «Cerrar como solucionado»
+  les avisa a los vecinos; «Cancelar» no. La historia muestra cada aviso con su entrega
+  (enviado, entregado, leído, no se pudo entregar).
+- **Avisos del panel:** además de los urgentes, suenan y cuentan en el menú los reclamos que el
+  proveedor no puede atender y los que no se le pudieron mandar.
+- **Conversaciones:** pestaña «Proveedores» (estado nuevo «Proveedor»: el bot nunca contesta),
+  etiqueta «Proveedor · empresa» y, en la ficha del contacto, sus reclamos abiertos.
+- **Chat de prueba:** «Hablar como proveedor» (proveedores activos con WhatsApp): sus mensajes
+  quedan simulados y se ven las plantillas con sus botones, que se pueden tocar.
+
 ## Actualización 8.3: reclamos por WhatsApp (2026-10-08)
 
 - **Reclamos urgentes:** Conversaciones y Reclamos (lista y ficha) avisan con sonido y

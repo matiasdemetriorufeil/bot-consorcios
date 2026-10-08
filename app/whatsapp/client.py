@@ -18,7 +18,13 @@ from typing import Any
 
 import requests
 
-from app.bot.choices import MAX_BUTTONS, MAX_LIST_DESCRIPTION, Choice, problems
+from app.bot.choices import (
+    MAX_BUTTONS,
+    MAX_LIST_DESCRIPTION,
+    MIN_SENT_OPTIONS,
+    Choice,
+    problems,
+)
 from app.channels.base import ChannelError
 from app.channels.base import WindowClosedError as ChannelWindowClosedError
 from app.config import Settings, get_settings
@@ -156,19 +162,19 @@ class WhatsAppClient:
     def send_choices(self, to: str, text: str, choices: Sequence[Choice]) -> str:
         """Reply buttons (up to 3) or a list (more). ValueError if Meta would reject them."""
         titles = [c.title for c in choices]
-        if found := problems(text, titles):
+        if found := problems(text, titles, MIN_SENT_OPTIONS):
             raise ValueError("; ".join(found))
         if len(choices) <= MAX_BUTTONS:
             action: dict[str, Any] = {
                 "buttons": [
-                    {"type": "reply", "reply": {"id": f"opt-{n}", "title": title}}
-                    for n, title in enumerate(titles, 1)
+                    {"type": "reply", "reply": {"id": c.payload or f"opt-{n}", "title": c.title}}
+                    for n, c in enumerate(choices, 1)
                 ]
             }
             kind = "button"
         else:
             rows = [
-                {"id": f"opt-{n}", "title": c.title}
+                {"id": c.payload or f"opt-{n}", "title": c.title}
                 | ({"description": c.description[:MAX_LIST_DESCRIPTION]} if c.description else {})
                 for n, c in enumerate(choices, 1)
             ]
@@ -191,7 +197,28 @@ class WhatsAppClient:
             template["components"] = components
         return self._send(to, "template", template)
 
+    def send_image(self, to: str, media_id: str, caption: str = "") -> str:
+        """An image uploaded with upload_media."""
+        image: dict[str, Any] = {"id": media_id}
+        if caption:
+            image["caption"] = caption[:1024]
+        return self._send(to, "image", image)
+
     # --- Media ----------------------------------------------------------------------------
+
+    def upload_media(self, content: bytes, mime_type: str, filename: str = "foto") -> str:
+        """Uploads a file to send it (a media id Meta gave for a RECEIVED file cannot be sent
+        again); returns the new media id."""
+        data = self._request(
+            "POST",
+            f"{self.base_url}/{self.phone_number_id}/media",
+            data={"messaging_product": "whatsapp", "type": mime_type},
+            files={"file": (filename, content, mime_type)},
+        )
+        media_id = data.get("id")
+        if not media_id:
+            raise WhatsAppError("POST /media: sin id")
+        return str(media_id)
 
     def get_media(self, media_id: str) -> dict[str, Any]:
         """{url, mime_type, file_size, sha256, id}; the url lasts a few minutes."""

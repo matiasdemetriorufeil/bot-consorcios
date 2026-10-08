@@ -452,6 +452,7 @@ class WaConversationStatus(StrEnum):
     WAITING_HUMAN = "waiting_human"  # handed off by the bot, nobody took it yet
     HUMAN = "human"  # an operator has it
     RESOLVED = "resolved"  # back to the bot with the contact's next message
+    PROVIDER = "provider"  # a provider's (app.claims.provider_flow): the bot never answers
 
 
 class WaDirection(StrEnum):
@@ -567,6 +568,10 @@ class WaMessage(Base):
     body: Mapped[str | None] = mapped_column(Text)
     # Titles of the options offered (buttons or list), in order.
     choices: Mapped[list[str] | None] = mapped_column(JSONB)
+    # The payload of each of our buttons (aligned with choices), and of the one tapped (a
+    # template's button.payload or an interactive option's id): app.claims.notify.
+    button_payloads: Mapped[list[str] | None] = mapped_column(JSONB)
+    reply_payload: Mapped[str | None] = mapped_column(String(200))
     wa_message_id: Mapped[str | None] = mapped_column(String(200), unique=True)
     status: Mapped[WaMessageStatus | None] = mapped_column(
         _str_enum(WaMessageStatus, "status_valid")
@@ -795,6 +800,17 @@ class ClaimEventKind(StrEnum):
     SOLVED = "solved"
     CANCELLED = "cancelled"
     NOTE = "note"
+    NOTIFIED = "notified"  # a WhatsApp message to the provider or a neighbor
+    NOTIFY_FAILED = "notify_failed"
+    DECLINED = "declined"  # the provider said it cannot attend it
+    PROVIDER_MESSAGE = "provider_message"  # what the provider wrote
+
+
+class ClaimAttention(StrEnum):
+    """Why a claim needs someone of the studio (an alert in the panel)."""
+
+    DECLINED = "declined"
+    SEND_FAILED = "send_failed"
 
 
 CLAIM_NUMBER = Sequence("claims_number_seq", start=1001)
@@ -859,6 +875,11 @@ class Claim(Base):
     acknowledged_at: Mapped[datetime | None]
     closed_at: Mapped[datetime | None]
     close_reason: Mapped[str | None] = mapped_column(Text)
+    attention: Mapped[ClaimAttention | None] = mapped_column(
+        _str_enum(ClaimAttention, "attention_valid")
+    )
+    # When the provider was last reminded to tap "Ya está solucionado" (once every 12 h).
+    provider_nudged_at: Mapped[datetime | None]
 
     building: Mapped[Building] = relationship()
     unit: Mapped[Unit | None] = relationship(foreign_keys=[unit_id])
@@ -938,9 +959,14 @@ class ClaimEvent(Base):
     actor: Mapped[ClaimActor] = mapped_column(_str_enum(ClaimActor, "actor_valid"))
     panel_user: Mapped[str | None] = mapped_column(String(100))
     text: Mapped[str | None] = mapped_column(Text)
+    # The WhatsApp message of a "notified" event (its delivery status shows in the history).
+    wa_message_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("wa_messages.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     claim: Mapped[Claim] = relationship(back_populates="events")
+    message: Mapped[WaMessage | None] = relationship()
 
 
 class ClaimDraftStep(StrEnum):
@@ -972,6 +998,12 @@ class ClaimDraft(Base):
         ForeignKey("claim_categories.id", ondelete="CASCADE")
     )
     category_hint: Mapped[str | None] = mapped_column(String(200))
+    # "Registrar reclamo" from the notice of a solved claim: the new one is linked to it.
+    previous_claim_id: Mapped[int | None] = mapped_column(
+        ForeignKey("claims.id", ondelete="SET NULL")
+    )
+    # Whether the current step was already offered again after an answer that fit no option.
+    reprompted: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     category_page: Mapped[int] = mapped_column(default=0, server_default=text("0"))
     # Whether the kind's safety text already went out (it goes once, first).
     safety_sent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))

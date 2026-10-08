@@ -7,6 +7,9 @@ only (AdminOnly: operators get 403 on every endpoint, the people search included
 - GET  /admin/dev-chat/poll             JSON every 2 s: the messages after the last one shown
 - POST /admin/dev-chat/send             a message (or an option tapped) of the contact
 - POST /admin/dev-chat/restart          deletes the test conversation's messages
+- POST /admin/dev-chat/provider         "Hablar como proveedor": that provider's WhatsApp is
+                                        simulated from now on (the claims sent to it show up
+                                        here, with their buttons) and the chat opens as it
 
 What is typed is stored as a WhatsApp delivery would (app.whatsapp.simulator.receive) and
 answered by the same WhatsAppBot as the webhook's, in the background. The conversation is one
@@ -37,6 +40,7 @@ from app.db.models import (
     Building,
     Person,
     Phone,
+    Provider,
     Unit,
     UnitPerson,
     WaConversationStatus,
@@ -138,6 +142,11 @@ class DevChatView(AdminOnly, BaseView):
         with self.session_maker() as session:
             if term:
                 context["results"] = search_people(session, term)
+            context["providers"] = session.scalars(
+                select(Provider)
+                .where(Provider.active.is_(True), Provider.whatsapp_e164.is_not(None))
+                .order_by(Provider.name)
+            ).all()
             if phone:
                 known = inbox.identify_many(session, [phone]).get(phone)
                 context["who"] = known
@@ -201,20 +210,47 @@ class DevChatView(AdminOnly, BaseView):
             )
         tapped = form.get("tapped") == "1"
         profile = str(form.get("profile_name", "")).strip()[:200] or None
-        message_id = await anyio.to_thread.run_sync(self._receive, phone, text, tapped, profile)
+        payload = str(form.get("payload", "")).strip()[:200]
+        message_id = await anyio.to_thread.run_sync(
+            self._receive, phone, text, tapped, profile, payload
+        )
         bot = self.bot_factory()
         # After the response, like the webhook: the bot answers in the background.
         return JSONResponse(
             {"message_id": message_id}, background=BackgroundTask(bot.process, message_id)
         )
 
-    def _receive(self, phone: str, text: str, tapped: bool, profile: str | None) -> int:
+    def _receive(
+        self, phone: str, text: str, tapped: bool, profile: str | None, payload: str = ""
+    ) -> int:
         with self.session_maker() as session:
             message_id = simulator.receive(
-                session, phone, text, self.clock(), tapped=tapped, profile_name=profile
-            )
+                session, phone, text, self.clock(), tapped=tapped, profile_name=profile,
+                payload=payload,
+            )  # fmt: skip
             session.commit()
             return message_id
+
+    @expose("/dev-chat/provider", methods=["POST"], identity="dev-chat-provider")
+    async def as_provider(self, request: Request) -> Response:
+        self._check()
+        form = await request.form()
+        with self.session_maker() as session:
+            provider = session.get(Provider, _int(form.get("provider_id")) or 0)
+            if provider is None or not provider.active or not provider.whatsapp_e164:
+                Flash.error(request, "Elegí un proveedor activo con WhatsApp.")
+                return RedirectResponse(str(request.url_for("admin:view-dev-chat")), 302)
+            phone = provider.whatsapp_e164
+            simulator.simulate_contact(session, phone, provider=True)
+            session.commit()
+        Flash.info(
+            request,
+            "Ahora hablás como el proveedor: lo que le mande el sistema aparece acá y no sale "
+            "a WhatsApp.",
+        )
+        return RedirectResponse(
+            str(request.url_for("admin:view-dev-chat").include_query_params(phone=phone)), 302
+        )
 
     @expose("/dev-chat/restart", methods=["POST"], identity="dev-chat-restart")
     async def restart(self, request: Request) -> Response:

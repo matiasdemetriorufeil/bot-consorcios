@@ -101,7 +101,7 @@
     var ids = claims.map(function (c) { return c.id; });
     if (seenUrgent) {
       claims.filter(function (c) { return seenUrgent.indexOf(c.id) < 0; }).forEach(function (c) {
-        notify("Reclamo urgente #" + c.number, c.problem + " · " + c.building);
+        notify(c.title || "Reclamo urgente #" + c.number, c.problem + " · " + c.building);
       });
     }
     seenUrgent = ids;

@@ -120,6 +120,7 @@ class WhatsAppBot:
                     if message.message_type in ATTACHMENT_KINDS
                     else ()
                 ),
+                payload=message.reply_payload or "",
                 source=WaSource(message_id=message.id, wa_id=str(wa_id)),
             )
             kind = message.message_type
