@@ -61,7 +61,21 @@
     <span class="nav-link disabled text-uppercase small fw-bold opacity-75">Administración</span>
   </li>
   {% endif %}
+  {% if item.view.menu_badge is defined and item.is_visible(request) and item.is_accessible(request) %}
+  {#- "Reclamos": the urgent open claims next to its name (panel.js keeps it up to date). -#}
+  {% set count = urgent_claims_count() %}
+  <li class="nav-item">
+    <a class="nav-link {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
+      <span class="nav-link-icon d-md-none d-lg-inline-block">
+        {% if item.icon %}<i class="{{ item.icon }}"></i>{% endif %}
+      </span>
+      <span class="nav-link-title">{{ item.display_name }}</span>
+      <span class="badge bg-red text-white ms-2 menu-badge" data-urgent-claims title="Reclamos urgentes abiertos" {% if not count %}hidden{% endif %}>{{ count }}</span>
+    </a>
+  </li>
+  {% else %}
   {{ menu_item(item, request) }}
+  {% endif %}
   {% elif item.type_ == "Category" %}
   {{ menu_category(item, request) }}
   {% endif %}

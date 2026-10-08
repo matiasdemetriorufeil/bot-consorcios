@@ -496,6 +496,37 @@ def test_an_operator_does_everything_in_claims(operator: Panel, w: World) -> Non
     assert operator.client.get("/admin/building-claims").status_code == 403
 
 
+def test_urgent_open_claims_for_the_alerts_and_the_menu(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    lift = _claim(s, w.building, w.lift)  # urgent
+    _claim(s, w.building, w.damp, unit=w.unit)  # not urgent
+    closed = _claim(s, w.other, w.gate, "Carla Inventada", None)
+    closed.urgent = True
+    close_claim(s, closed, ClaimStatus.SOLVED, "Listo", actor=ClaimActor.BOT)
+    s.commit()
+
+    data = logged_in.client.get("/admin/claims/poll").json()
+    assert data["urgent_claims"] == [
+        {"id": lift.id, "number": lift.number, "problem": "Ascensor", "building": "TORRE INVENTADA"}
+    ]
+    polled = logged_in.client.get("/admin/conversations/poll").json()
+    assert polled["urgent_claims"] == data["urgent_claims"]
+
+    page = logged_in.client.get("/admin/claims").text
+    badge = re.search(r"<span[^>]*data-urgent-claims[^>]*>(\d+)</span>", page)
+    assert badge and badge.group(1) == "1" and "hidden" not in badge.group(0)
+    assert "data-urgent-poll" in page and 'id="enable-alerts"' in page
+    # Elsewhere too (the menu is on every page).
+    other = logged_in.client.get("/admin/phones").text
+    assert re.search(r"data-urgent-claims[^>]*>1</span>", other)
+
+
+def test_no_urgent_claims_hides_the_counter(logged_in: Panel, w: World) -> None:
+    page = logged_in.client.get("/admin/claims").text
+    badge = re.search(r"<span[^>]*data-urgent-claims[^>]*>", page)
+    assert badge and "hidden" in badge.group(0)
+
+
 def test_nothing_reaches_whatsapp(logged_in: Panel, w: World) -> None:
     claim = _claim(logged_in.session, w.building, w.lift)
     base = f"/admin/claims/{claim.id}"

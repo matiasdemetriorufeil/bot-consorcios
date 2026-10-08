@@ -163,6 +163,24 @@ def _assignments(session: Session, building_id: int) -> dict[int, BuildingClaimC
     return {row.category_id: row for row in rows}
 
 
+def enabled_categories(session: Session, building_id: int) -> list[ClaimCategory]:
+    """The kinds of problem that can be reported in the building, in its table's order."""
+    return list(
+        session.scalars(
+            select(ClaimCategory)
+            .join(BuildingClaimCategory, BuildingClaimCategory.category_id == ClaimCategory.id)
+            .where(
+                BuildingClaimCategory.building_id == building_id,
+                BuildingClaimCategory.enabled.is_(True),
+                ClaimCategory.active.is_(True),
+            )
+            .order_by(
+                BuildingClaimCategory.sort_order, ClaimCategory.sort_order, ClaimCategory.name
+            )
+        )
+    )
+
+
 def _sort_key(row: TableRow) -> tuple[int, int, str]:
     return (row.sort_order, row.category.sort_order, row.category.name)
 

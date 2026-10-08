@@ -6,7 +6,9 @@ webhook's 200). The channel (app.channels.base.Channel) does what depends on it.
 2. Who writes: the channel gives the phone and whether it set it itself (trusted).
 3. Known people of a building outside the pilot go straight to a human.
 4. Audio, stickers, locations... get a fixed "escribilo" reply; images and files a fixed
-   thanks. Text goes to the agent with the channel's history.
+   thanks, unless the person is reporting a claim and the bot asked for photos or a
+   description (app.claims.flow): then a photo goes to the agent, which hands it to the claim.
+   Text goes to the agent with the channel's history (and the ids of its images, if any).
 5. The reply is sent only if the conversation is still with the bot (checked again by the
    channel right before each message: if a human took it meanwhile, ConversationTakenError
    drops the rest of the turn, with no handoff), as ONE message: the debt
@@ -51,6 +53,7 @@ from app.channels.base import (
 )
 from app.channels.locks import ConversationLock, no_lock
 from app.channels.outgoing import pack, with_buttons
+from app.claims.flow import accepts_photos
 from app.config import Settings
 from app.db.models import BotEvent, Building, PersonRole, Unit
 
@@ -80,14 +83,6 @@ def in_pilot(session: Session, who: Identity) -> bool:
         .where(Unit.id.in_(unit_ids))
     )
     return any(pilots)
-
-
-def _attachment_note(types: tuple[str, ...]) -> str:
-    kinds = ", ".join(sorted(set(types)))
-    return (
-        f"\n\n[La persona además mandó un adjunto ({kinds}) que vos no podés ver ni escuchar; "
-        "si derivás, el estudio sí lo ve.]"
-    )
 
 
 class BotProcessor:
@@ -177,6 +172,19 @@ class BotProcessor:
             self._warm_up()  # they may ask for their debt: log in while the LLM thinks
 
         text = message.content
+        photos = (message.message_id,) if "image" in message.attachment_types else ()
+        if not text and photos and accepts_photos(session, phone, self._now()):
+            answer = self.agent.reply(
+                session,
+                phone,
+                "",
+                self.channel.history(message),
+                conversation_id=conversation_id,
+                attachment_ids=photos,
+            )
+            self._finish(session, message, answer.text, answer.handoff, answer.debt_messages,
+                         answer.choices)  # fmt: skip
+            return
         if not text:
             viewable = any(t in VIEWABLE_ATTACHMENTS for t in message.attachment_types)
             reply = ATTACHMENT_REPLY if viewable and not message.is_sticker else UNSUPPORTED_REPLY
@@ -187,8 +195,6 @@ class BotProcessor:
             self._log(session, message, phone, "fixed_reply", kind="attachment")
             self._finish(session, message, reply, None)
             return
-        if message.attachment_types:
-            text += _attachment_note(message.attachment_types)
 
         if not phone:
             # Unknown with no way to verify; the agent still answers.
@@ -199,6 +205,8 @@ class BotProcessor:
             text,
             self.channel.history(message),
             conversation_id=conversation_id,
+            attachment_ids=photos,
+            attachment_types=message.attachment_types,
         )
         self._finish(
             session,

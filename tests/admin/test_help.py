@@ -24,6 +24,7 @@ JARGON = [
 NOT_PAGES = {
     "view-conversations-poll",
     "view-dev-chat-poll",
+    "view-claims-poll",
     "view-wa-media",
 }
 

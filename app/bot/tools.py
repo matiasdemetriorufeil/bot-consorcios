@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot import amenity_tools, identity
+from app.bot import amenity_tools, claim_tools, identity
 from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
 from app.bot.choices import Choice, Offer, problems
 from app.bot.debt_message import FIRST_GREETING, render_debt_message, render_payment_message
@@ -45,6 +45,7 @@ from app.bot.unit_search import (
     search_building,
     search_unit,
 )
+from app.claims import flow as claim_flow
 from app.config import Settings
 from app.db.models import BotEvent, Building, BuildingInfo, PersonRole, Unit
 from app.llm import ToolSpec
@@ -148,6 +149,11 @@ class ToolContext:
     last_bot_text: str = ""
     # Set by offer_choices: the reply of this turn, with buttons or a list.
     offer: Offer | None = None
+    # Whether that reply was built by the code (a step of the claim flow), not the model.
+    code_reply: bool = False
+    # Messages built by the code (claims: safety texts, "Mis reclamos", a claim's status),
+    # sent as is before the agent's text, after the debt messages.
+    blocks: list[str] = field(default_factory=list)
 
     @property
     def e164(self) -> str | None:
@@ -387,6 +393,44 @@ TOOLS: list[ToolSpec] = [
                 }
             },
             ["reservation_id"],
+        ),
+    ),
+    ToolSpec(
+        name="start_claim",
+        description=(
+            "Empieza a registrar un reclamo de mantenimiento del edificio o de la unidad "
+            "(ascensor, agua, luz, gas, humedad, portón, puertas, ruidos, limpieza...). Desde ahí "
+            "el sistema guía a la persona con botones hasta registrarlo: TERMINA tu respuesta "
+            "si devuelve ok. NO es para reclamos por la deuda o las expensas."
+        ),
+        parameters=_object(
+            {
+                "category_hint": {
+                    "type": "string",
+                    "description": "El problema con las palabras de la persona (por ejemplo "
+                    "'no anda el ascensor', 'olor a gas'). Vacío si no dijo cuál.",
+                }
+            },
+            [],
+        ),
+    ),
+    ToolSpec(
+        name="my_claims",
+        description=(
+            "Los reclamos de mantenimiento de la persona (abiertos y cerrados hace poco) con su "
+            "estado. El sistema le manda la lista tal cual."
+        ),
+        parameters=_object({}, []),
+    ),
+    ToolSpec(
+        name="claim_status",
+        description=(
+            "El estado de un reclamo de mantenimiento por su número (#1001). Solo lo muestra si "
+            "es de la persona o se sumó; el sistema le manda el texto tal cual."
+        ),
+        parameters=_object(
+            {"number": {"type": "integer", "description": "El número del reclamo, sin #."}},
+            ["number"],
         ),
     ),
     ToolSpec(
@@ -637,7 +681,21 @@ def confirm_email_code(ctx: ToolContext, code: str) -> dict[str, Any]:
     confirmed = identity.confirm_email_code(ctx.session, ctx.phone, code)
     match confirmed.status:
         case ConfirmStatus.VERIFIED:
-            return {"status": "verified", "units": _units_of(confirmed.identity)}
+            result: dict[str, Any] = {
+                "status": "verified",
+                "units": _units_of(confirmed.identity),
+            }
+            # A claim waited for the verification: its next step goes out now.
+            resumed = claim_flow.resume(ctx.session, ctx.phone, ctx.now)
+            if resumed is not None and resumed.status == "ok":
+                claim_tools.apply_flow_reply(ctx, resumed)
+                result["next_step"] = claim_tools.STEP_SENT
+            elif resumed is not None:  # verified, but no unit where the bot takes claims
+                result["claim"] = {"status": resumed.status, "say": resumed.text}
+                result["next_step"] = (
+                    "Decí el texto de claim.say y ofrecé pasarlo con una persona con offer_choices."
+                )
+            return result
         case ConfirmStatus.WRONG_CODE | ConfirmStatus.INVALID_CODE:
             return {"status": confirmed.status.value, "attempts_left": confirmed.attempts_left}
         case ConfirmStatus.EXPIRED | ConfirmStatus.LOCKED:
@@ -959,6 +1017,9 @@ _HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "get_building_info": get_building_info,
     "handoff_to_human": handoff_to_human,
     "offer_choices": offer_choices,
+    "start_claim": claim_tools.start_claim,
+    "my_claims": claim_tools.my_claims,
+    "claim_status": claim_tools.claim_status,
     "sum_availability": amenity_tools.sum_availability,
     "book_sum": amenity_tools.book_sum,
     "my_sum_reservations": amenity_tools.my_sum_reservations,

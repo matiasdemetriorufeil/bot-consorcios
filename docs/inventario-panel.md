@@ -1,5 +1,15 @@
 # Inventario del panel `/admin`
 
+## Actualización 8.3: reclamos por WhatsApp (2026-10-08)
+
+- **Reclamos urgentes:** Conversaciones y Reclamos (lista y ficha) avisan con sonido y
+  notificación del navegador cuando entra un reclamo urgente abierto, y el menú muestra al lado
+  de «Reclamos» un contador rojo de urgentes abiertos (en todas las pantallas). El botón
+  «🔔 Avisos» está en Conversaciones y en Reclamos. La conversación del vecino no se deriva.
+- **Bot:** el vecino registra el reclamo por WhatsApp con botones y listas (el modelo solo lo
+  arranca). El menú del saludo es una lista «Ver opciones»: Mi deuda, Registrar reclamo, Mis
+  reclamos, Info del edificio, Reservar el SUM, Hablar con alguien.
+
 ## Actualización 8.2: reclamos (2026-10-08)
 
 **Menú de la operadora:** Conversaciones, Reclamos, Teléfonos, Verificaciones, Reservas de SUM,

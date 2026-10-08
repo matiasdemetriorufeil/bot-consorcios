@@ -14,6 +14,13 @@ is empty (the model is told it already went). The history keeps them
 joined with the text (join_blocks), as the person gets them and the channel reads them back.
 "$" amounts in the text that match no debt message are logged (debt_amount_mismatch).
 
+Claims (app.claims.flow): while the phone has a claim draft in a step, the code answers the
+message (no model call); so do the menu's "Registrar reclamo" and "Mis reclamos". The claim
+tools leave their texts in ToolContext.blocks (safety texts, a list of claims), which go out
+like the debt messages: as is, before the agent's text (AgentReply.debt_messages carries both).
+A message that is not an answer to the step drops the draft: its notice goes first and the
+model answers as usual.
+
 Options: offer_choices ends the turn without another model call. Its text is AgentReply.text
 and its options AgentReply.choices; the channel sends them as buttons or a list (or numbered
 where it cannot). It runs after the other tools of its round, so a handoff of that round
@@ -26,7 +33,7 @@ found earlier are not lost).
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -36,8 +43,9 @@ from sqlalchemy.orm import Session
 from app.bot import tools
 from app.bot.bot_config import load_bot_config
 from app.bot.choices import Choice, with_options
+from app.bot.claim_tools import my_claims_text
 from app.bot.debt_message import FIRST_GREETING, amounts_not_in, join_blocks
-from app.bot.identity import identify_by_phone
+from app.bot.identity import identify_by_phone, to_e164
 from app.bot.prompts import (
     SYSTEM_PROMPT,
     build_user_turn,
@@ -47,6 +55,8 @@ from app.bot.prompts import (
     urgent_handoff_notice,
 )
 from app.bot.tools import TOOLS, Handoff, ToolContext, run_tool
+from app.claims import flow as claim_flow
+from app.claims import texts as claim_texts
 from app.config import Settings, get_settings
 from app.llm import (
     AssistantMessage,
@@ -67,6 +77,10 @@ MAX_ROUNDS = 6
 HISTORY_MESSAGES = 20
 # Followed by the handoff notice (which depends on office hours).
 FALLBACK_REPLY = "Tuve un problema técnico."
+# The menu's options the code answers by itself (normalized, app.claims.flow.normalize).
+REPORT_CLAIM = "registrar reclamo"
+MY_CLAIMS = "mis reclamos"
+HANDOFF_OFFER = (Choice("Sí, pasame", "Sí, pasame"), Choice("No, gracias", "No, gracias"))
 
 
 @dataclass
@@ -83,6 +97,14 @@ class AgentReply:
     usage: list[Usage] = field(default_factory=list)
     # (tool name, result status) in call order, for logs and the CLI.
     tools_called: list[tuple[str, str | None]] = field(default_factory=list)
+
+
+def _attachment_note(types: Sequence[str]) -> str:
+    kinds = ", ".join(sorted(set(types)))
+    return (
+        f"\n\n[La persona además mandó un adjunto ({kinds}) que vos no podés ver ni escuchar; "
+        "si derivás, el estudio sí lo ve.]"
+    )
 
 
 def _is_conversation_message(message: Message) -> bool:
@@ -134,13 +156,30 @@ class Agent:
         history: list[Message] | None = None,
         *,
         conversation_id: int | None = None,
+        attachment_ids: Sequence[int] = (),
+        attachment_types: Sequence[str] = (),
     ) -> AgentReply:
+        """attachment_ids: the stored WhatsApp messages with an image (photos of a claim);
+        attachment_types: what the person attached (the model is told it cannot see them)."""
         past = trim_history(list(history or []))
         now = self._now().astimezone(ZoneInfo(self.settings.timezone))
         # Admin panel values over .env, re-read at most every minute.
         cfg = load_bot_config(session, self.settings)
         hours = cfg.hours
         first_message = not any(isinstance(m, UserMessage) for m in past)
+        greeting = cfg.welcome_message.strip() or FIRST_GREETING
+        notices: list[str] = []
+        if to_e164(phone):
+            code = self._claim_turn(
+                session, phone, text, attachment_ids, conversation_id, now, notices
+            )
+            if code is not None:
+                reply_text, choices, blocks = code
+                return self._code_reply(
+                    past, text, reply_text, choices, blocks, greeting if first_message else None
+                )
+        note = _attachment_note(attachment_types) if attachment_types else ""
+        text_for_model = text + note
         ctx = ToolContext(
             session=session,
             phone=phone,
@@ -157,7 +196,7 @@ class Agent:
             office_hours_text=describe_office_hours(*hours),
             emergency_contact=cfg.emergency_contact_text,
             first_message=first_message,
-            greeting=cfg.welcome_message.strip() or FIRST_GREETING,
+            greeting=greeting,
             now=now,
             user_text=text,
             person_texts=[m.text for m in past if isinstance(m, UserMessage)] + [text],
@@ -171,7 +210,7 @@ class Agent:
             ),  # fmt: skip
         )
         user_turn = build_user_turn(
-            text,
+            text_for_model,
             who=identify_by_phone(session, phone),
             now=now,
             office_hours=is_office_hours(now, *hours),
@@ -200,7 +239,7 @@ class Agent:
             if not message.tool_calls:
                 if not message.text:
                     return self._fail(ctx, past, text, usages, called, "empty_answer")
-                return self._done(ctx, past, text, turn, usages, called, round_number)
+                return self._done(ctx, past, text, turn, usages, called, round_number, notices)
 
             results: dict[str, ToolResult] = {}
             # offer_choices last: it ends the turn, and a handoff of this round rejects it.
@@ -212,9 +251,69 @@ class Agent:
             turn.append(ToolResultsMessage(tuple(results[c.id] for c in message.tool_calls)))
             if ctx.offer is not None:
                 turn.append(AssistantMessage(ctx.offer.text))
-                return self._done(ctx, past, text, turn, usages, called, round_number)
+                return self._done(ctx, past, text, turn, usages, called, round_number, notices)
 
         return self._fail(ctx, past, text, usages, called, "max_rounds")
+
+    # --- Claims, answered by the code ------------------------------------------------------
+
+    def _claim_turn(
+        self,
+        session: Session,
+        phone: str,
+        text: str,
+        attachment_ids: Sequence[int],
+        conversation_id: int | None,
+        now: datetime,
+        notices: list[str],
+    ) -> tuple[str, tuple[Choice, ...], list[str]] | None:
+        """(text, options, blocks) when the code answers this message (a claim step or the
+        menu's claim options), else None (notices may get a "dropped"/"expired" notice)."""
+        asked = claim_flow.normalize(text)
+        known = identify_by_phone(session, phone).known
+        if asked == REPORT_CLAIM and known:
+            started = claim_flow.start(session, phone, conversation_id=conversation_id, now=now)
+            if started.status == "not_available":
+                return started.text, HANDOFF_OFFER, started.blocks
+            if started.status == "ok":
+                return started.text, started.choices, started.blocks
+        if asked == MY_CLAIMS and known:
+            listed = my_claims_text(session, phone, now)
+            if listed is not None:
+                return listed, (), []
+        draft, expired = claim_flow.active_draft(session, phone, now)
+        if expired:
+            notices.append(claim_texts.EXPIRED)
+        if draft is not None and claim_flow.in_steps(draft):
+            step = claim_flow.handle(session, draft, text, attachment_ids, now=now)
+            if step.handled:
+                return step.text, step.choices, step.blocks
+            notices.extend(step.blocks)
+        return None
+
+    def _code_reply(
+        self,
+        past: list[Message],
+        text: str,
+        reply: str,
+        choices: tuple[Choice, ...],
+        blocks: list[str],
+        greeting: str | None,
+    ) -> AgentReply:
+        """A turn answered by the code, without the model (no tokens)."""
+        blocks = list(blocks)
+        if greeting:
+            if blocks:
+                blocks[0] = join_blocks([greeting], blocks[0])
+            else:
+                blocks = [greeting]
+        shown = with_options(reply, [c.title for c in choices]) if choices else reply
+        return AgentReply(
+            text=reply,
+            debt_messages=blocks,
+            choices=choices,
+            history=[*past, UserMessage(text), AssistantMessage(join_blocks(blocks, shown))],
+        )
 
     def _done(
         self,
@@ -225,16 +324,20 @@ class Agent:
         usages: list[Usage],
         called: list[tuple[str, str | None]],
         rounds: int,
+        notices: Sequence[str] = (),
     ) -> AgentReply:
         """The reply of a turn that ended well; turn[-1] is the agent's text."""
         self._log_turn(ctx, usages, rounds)
         last = turn[-1]
         reply = last.text if isinstance(last, AssistantMessage) else ""
-        debt_messages = list(ctx.debt_messages.values())
+        debt_only = list(ctx.debt_messages.values())
+        if debt_only:
+            self._check_amounts(ctx, reply, debt_only)
+        debt_messages = [*notices, *debt_only, *ctx.blocks]
         if debt_messages and ctx.first_message:
             debt_messages[0] = join_blocks([ctx.greeting], debt_messages[0])
-        if debt_messages:
-            self._check_amounts(ctx, reply, debt_messages)
+        elif ctx.first_message and ctx.code_reply:
+            debt_messages = [ctx.greeting]  # a claim step built by the code: greet first
         choices = ctx.offer.choices if ctx.offer is not None else ()
         if debt_messages or choices:
             # As the person sees it (and as the history gives it back next time).
@@ -277,6 +380,8 @@ class Agent:
         reply = f"{FALLBACK_REPLY} {ctx.handoff_notice}"
         return AgentReply(
             text=reply,
+            # A safety text the code already built still goes out.
+            debt_messages=list(ctx.blocks),
             history=past + [UserMessage(text), AssistantMessage(reply)],
             handed_off=True,
             handoff=ctx.handoff,

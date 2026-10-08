@@ -139,6 +139,9 @@ TOOLS = {
     "cancel_sum_reservation": "Cancelar reserva",
     "my_sum_reservations": "Mis reservas",
     "offer_choices": "Ofrecer opciones",
+    "start_claim": "Registrar reclamo",
+    "my_claims": "Mis reclamos",
+    "claim_status": "Estado de un reclamo",
 }
 UNKNOWN_TOOL = "Otra herramienta"
 

@@ -135,6 +135,19 @@ def test_more_options_go_as_a_list() -> None:
     assert [r["title"] for r in interactive["action"]["sections"][0]["rows"]] == titles
 
 
+def test_list_rows_carry_their_description() -> None:
+    http = FakeHttp()
+    choices = [
+        Choice(f"Problema {n}", f"cat:{n}", "Una aclaración" if n == 1 else "") for n in range(1, 5)
+    ]
+
+    make_client(http).send_choices(CONTACT_WA_ID, "¿Cuál?", choices)
+
+    rows = http.requests[0]["json"]["interactive"]["action"]["sections"][0]["rows"]
+    assert rows[0] == {"id": "opt-1", "title": "Problema 1", "description": "Una aclaración"}
+    assert "description" not in rows[1]
+
+
 @pytest.mark.parametrize(
     "titles",
     [

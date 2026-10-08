@@ -409,7 +409,10 @@ def test_the_page_has_the_alerts_and_double_click_guard(operator: Panel) -> None
 
     page = _page(operator, conv)
 
-    assert 'id="enable-alerts"' in page and "Notification" in page
+    # The beep and the browser notification are panel.js's (shared with "Reclamos").
+    assert 'id="enable-alerts"' in page and "window.panelNotify" in page
+    script = operator.client.get("/admin/static/panel.js").text
+    assert "new Notification" in script and "panelUrgentClaims" in script
     assert 'class="js-once"' in page and "Enviando…" in page
     assert "|safe" not in page
 

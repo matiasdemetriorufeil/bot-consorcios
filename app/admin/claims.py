@@ -2,6 +2,9 @@
 
 - GET  /admin/claims                      the list: tabs Abiertos / Cerrados / Todos, filters,
                                           search (urgent open ones first, then the newest)
+- GET  /admin/claims/poll                 the urgent open claims (JSON): the menu's counter and
+                                          the alert of a new one (panel.js; "Conversaciones"
+                                          gets them in its own poll)
 - GET  /admin/claims/new                  "Nuevo reclamo" (by phone or in person): first the
 - POST /admin/claims/new                  building, then the form
 - GET  /admin/claims/{id}                 the claim: data, who reported, photos, history
@@ -26,7 +29,7 @@ from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app.admin import formatting, labels
 from app.admin.auth import admin_user, display_names
@@ -39,12 +42,12 @@ from app.claims.service import (
     close_claim,
     create_claim,
 )
+from app.claims.setup import enabled_categories
 from app.config import Settings
 from app.db.models import (
     CLOSED_CLAIM_STATUSES,
     OPEN_CLAIM_STATUSES,
     Building,
-    BuildingClaimCategory,
     Claim,
     ClaimActor,
     ClaimAttachment,
@@ -62,6 +65,8 @@ from app.db.models import (
 from app.whatsapp.media import INLINE_TYPES, base_mime
 
 PAGE_SIZE = 50
+# How often the claims' pages ask for new urgent claims (seconds).
+POLL_SECONDS = 10
 TABS = {"open": "Abiertos", "closed": "Cerrados", "all": "Todos"}
 TAB_STATUSES = {"open": OPEN_CLAIM_STATUSES, "closed": CLOSED_CLAIM_STATUSES}
 STUDIO_FILTER = "studio"
@@ -276,6 +281,36 @@ def filter_options(session: Session) -> dict[str, list[tuple[str, str]]]:
     }
 
 
+def urgent_open_claims(session: Session) -> list[dict[str, Any]]:
+    """The urgent claims still open (newest first), for the alerts and the menu's counter."""
+    claims = session.scalars(
+        select(Claim)
+        .where(Claim.urgent.is_(True), Claim.status.in_(OPEN_CLAIM_STATUSES))
+        .options(selectinload(Claim.building), selectinload(Claim.category))
+        .order_by(Claim.created_at.desc(), Claim.id.desc())
+    ).all()
+    return [
+        {
+            "id": c.id,
+            "number": c.number,
+            "problem": c.category.list_title,
+            "building": formatting.building(c.building.name),
+        }
+        for c in claims
+    ]
+
+
+def urgent_open_count(session: Session) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(Claim)
+            .where(Claim.urgent.is_(True), Claim.status.in_(OPEN_CLAIM_STATUSES))
+        )
+        or 0
+    )
+
+
 # --- The claim ------------------------------------------------------------------------------
 
 
@@ -411,24 +446,6 @@ class RosterPerson:
     role: str
 
 
-def enabled_categories(session: Session, building_id: int) -> list[ClaimCategory]:
-    """The kinds of problem that can be reported in the building, in its order."""
-    return list(
-        session.scalars(
-            select(ClaimCategory)
-            .join(BuildingClaimCategory, BuildingClaimCategory.category_id == ClaimCategory.id)
-            .where(
-                BuildingClaimCategory.building_id == building_id,
-                BuildingClaimCategory.enabled.is_(True),
-                ClaimCategory.active.is_(True),
-            )
-            .order_by(
-                BuildingClaimCategory.sort_order, ClaimCategory.sort_order, ClaimCategory.name
-            )
-        )
-    )
-
-
 def roster(session: Session, building_id: int) -> list[tuple[Unit, list[RosterPerson]]]:
     """The active units of the building with their people (for "Del padrón")."""
     units = session.scalars(
@@ -514,6 +531,8 @@ def _redirect(request: Request, identity: str, query: str = "", **params: Any) -
 class ClaimsView(BaseView):
     name = "Reclamos"
     icon = "fa-solid fa-screwdriver-wrench"
+    # The menu shows the urgent open claims next to its name (templates/sqladmin/_macros.html).
+    menu_badge = "urgent_claims"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
 
@@ -547,7 +566,14 @@ class ClaimsView(BaseView):
             tabs=TABS,
             options=options,
             link=link,
+            poll_seconds=POLL_SECONDS,
         )
+
+    @expose("/claims/poll", methods=["GET"], identity="claims-poll")
+    async def claims_poll(self, request: Request) -> Response:
+        with self.session_maker() as session:
+            urgent = urgent_open_claims(session)
+        return JSONResponse({"urgent_claims": urgent}, headers={"Cache-Control": "no-store"})
 
     @expose("/claims/new", methods=["GET", "POST"], identity="claim-new")
     async def claim_new(self, request: Request) -> Response:

@@ -3,6 +3,7 @@
 {% extends "sqladmin/layout.html" %}
 {% block content %}
 {% set c = page.claim %}
+<div hidden data-urgent-poll="{{ url_for('admin:view-claims-poll') }}"></div>
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2 align-items-center">
     <a class="btn btn-secondary" href="{{ url_for('admin:view-claims') }}"><i class="fa-solid fa-arrow-left me-2"></i>Reclamos</a>

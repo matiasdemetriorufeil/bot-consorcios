@@ -131,46 +131,15 @@
   var thread = document.getElementById("chat-thread");
   var list = document.getElementById("inbox-list");
   var header = document.getElementById("chat-header");
-  var seenWaiting = null, seenMine = null, busy = false, audio = null;
+  var seenWaiting = null, seenMine = null, busy = false;
   var baseTitle = document.title;
 
   function toBottom() { if (thread) thread.scrollTop = thread.scrollHeight; }
   toBottom();
 
-  // --- Alerts: a short beep (no sound file) and a browser notification -------------------
-  function beep() {
-    try {
-      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-      var osc = audio.createOscillator(), gain = audio.createGain();
-      osc.frequency.value = 880;
-      osc.connect(gain); gain.connect(audio.destination);
-      gain.gain.setValueAtTime(0.2, audio.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.5);
-      osc.start(); osc.stop(audio.currentTime + 0.5);
-    } catch (e) { /* no sound */ }
-  }
-  function notify(title, body) {
-    beep();
-    if ("Notification" in window && Notification.permission === "granted") {
-      try { new Notification(title, { body: body }); } catch (e) { /* not allowed here */ }
-    }
-  }
-  var alertsButton = document.getElementById("enable-alerts");
-  function showAlertsState() {
-    if (!alertsButton) return;
-    var granted = "Notification" in window && Notification.permission === "granted";
-    alertsButton.textContent = granted ? "🔔 Avisos activos" : "🔔 Activar avisos";
-  }
-  showAlertsState();
-  if (alertsButton) {
-    alertsButton.addEventListener("click", function () {
-      beep();  // a click unlocks the sound for the rest of the visit
-      if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().then(showAlertsState);
-      }
-      showAlertsState();
-    });
-  }
+  // --- Alerts: the panel's beep and browser notification (panel.js) ----------------------
+  // panel.js loads after this script: looked up when used.
+  function notify(title, body) { window.panelNotify(title, body); }
 
   // --- Polling --------------------------------------------------------------------------
   function poll() {
@@ -205,6 +174,7 @@
       }
     }
     seenWaiting = data.waiting_ids;
+    window.panelUrgentClaims(data.urgent_claims);
 
     if (seenMine) {
       Object.keys(data.mine_last).forEach(function (id) {

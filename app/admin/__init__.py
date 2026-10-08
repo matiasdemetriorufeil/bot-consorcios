@@ -38,7 +38,7 @@ from starlette.staticfiles import StaticFiles
 from app.admin import formatting, help, i18n, labels
 from app.admin.amenities import AmenitiesView
 from app.admin.auth import AdminAuth, LoginLimiter
-from app.admin.claims import ClaimsView
+from app.admin.claims import ClaimsView, urgent_open_count
 from app.admin.claims_setup import BuildingClaimsView, ClaimCategoryAdmin, ProviderAdmin
 from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
@@ -136,6 +136,19 @@ def _bot_settings_form(session_maker: sessionmaker) -> Callable[[Request], Respo
     return endpoint
 
 
+def _urgent_claims_counter(session_maker: sessionmaker) -> Callable[[], int]:
+    """The menu's counter of urgent open claims ("Reclamos"); 0 if it cannot be read."""
+
+    def count() -> int:
+        try:
+            with session_maker() as session:
+                return urgent_open_count(session)
+        except Exception:
+            return 0
+
+    return count
+
+
 def static_version() -> str:
     """A short hash of the panel's style sheet and script."""
     digest = hashlib.sha256()
@@ -185,6 +198,7 @@ def setup_admin(
         authentication_backend=auth,
     )
     _install_texts(admin.templates.env, settings.timezone)
+    admin.templates.env.globals["urgent_claims_count"] = _urgent_claims_counter(session_maker)
     auth.templates = admin.templates
     conversations: dict[str, object] = {
         "timezone": settings.timezone,

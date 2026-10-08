@@ -20,11 +20,14 @@ MIN_OPTIONS = 2
 MAX_BUTTON_TITLE = 20
 MAX_LIST_TITLE = 24
 MAX_TEXT = 1024
+MAX_LIST_DESCRIPTION = 72
 
 
 class Choice(NamedTuple):
     title: str
     value: str
+    # Only in a list: the gray line under the title (72 characters at most).
+    description: str = ""
 
 
 @dataclass(frozen=True)

@@ -2,8 +2,9 @@
 records and forms, the sync runs' errors and statistics, the metrics. Invented data only."""
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime, time, timedelta
 from html.parser import HTMLParser
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -23,6 +24,13 @@ from app.db.models import (
 )
 from tests.admin.conftest import ADMIN, PASSWORD, Panel
 from tests.bot import factories as f
+
+# The sync run started today at 02:32 in Córdoba (the list says "hoy 02:32" whatever the day).
+RUN_AT = datetime.combine(
+    datetime.now(ZoneInfo("America/Argentina/Cordoba")).date(),
+    time(2, 32, 45, 123456),
+    tzinfo=ZoneInfo("America/Argentina/Cordoba"),
+)
 
 # SQLAdmin's English, as whole words of what a person reads (texts, placeholders, buttons).
 ENGLISH = [
@@ -105,8 +113,8 @@ def data(db_session: Session) -> dict[str, int]:
         kind=SyncKind.NIGHTLY,
         job=SyncJob.ROSTER,
         status=SyncStatus.PARTIAL,
-        started_at=datetime(2026, 10, 7, 5, 32, 45, 123456, tzinfo=UTC),
-        finished_at=datetime(2026, 10, 7, 5, 44, 45, tzinfo=UTC),
+        started_at=RUN_AT,
+        finished_at=RUN_AT + timedelta(minutes=12),
         units_ok=2450,
         units_failed=2,
         error_summary="Edificio 095: no disponible\nEdificio 096: página distinta",
@@ -313,7 +321,7 @@ def test_sync_runs_readable(logged_in: Panel, data: dict[str, int]) -> None:
     for expected in (
         "Unidades", "2.450", "Teléfonos válidos", "1.800", "Duración", "12 min",
         "Por tipo de unidad", "Cochera", "Con teléfono del propietario",
-        "Errores por tipo", "ConsorPlus no disponible", "Algo nuevo", "07/10/2026 02:32",
+        "Errores por tipo", "ConsorPlus no disponible", "Algo nuevo", f"{RUN_AT:%d/%m/%Y} 02:32",
     ):  # fmt: skip
         assert expected in text, expected
     assert "<li>Edificio 095: no disponible</li>" in page

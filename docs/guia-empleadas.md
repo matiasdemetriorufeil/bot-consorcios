@@ -103,8 +103,14 @@ cargado, el bot no puede confirmarlo solo y te lo deja en **Verificaciones**.
 ## 6. Reclamos
 
 Los problemas que reportan los vecinos (el ascensor, el agua, una filtración…) están en
-**Reclamos**. Todavía el bot no los toma ni le avisa a nadie: por ahora se cargan y se siguen
-desde el panel.
+**Reclamos**. En los edificios con «Reclamos por el bot», el vecino los registra solo por
+WhatsApp: elige el problema, cuenta qué pasa y puede mandar fotos. Todavía nadie le avisa a la
+empresa: eso lo ven ustedes en el panel.
+
+**Reclamos urgentes:** cuando entra uno (por ejemplo, olor a gas), el panel suena y muestra un
+aviso, igual que «Esperando persona», y al lado de **Reclamos** en el menú aparece un número
+rojo con los urgentes abiertos. Para que suene, tocá **🔔 Avisos** una vez en Conversaciones o
+en Reclamos. La conversación sigue con el bot: si hace falta, tomala vos.
 
 **Ver un reclamo**
 

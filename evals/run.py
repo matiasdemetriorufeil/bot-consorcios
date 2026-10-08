@@ -64,7 +64,7 @@ PRICES = {
     "gemini-3.8-flash": Prices(input=0.75, output=3.75, cache_read=0.075),
     "claude-haiku-4-5": Prices(input=1, output=5, cache_read=0.10, cache_write=1.25),
 }
-MAX_TURNS = 4
+MAX_TURNS = 6  # a claim reported step by step takes 5
 # In the transcripts: a debt message built by the code (the agent's text is 🤖).
 DEBT_MARK = "🧾"
 

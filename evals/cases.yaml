@@ -3,7 +3,7 @@
 # phone:   alias from evals/seed.py PHONES.
 # now:     optional Córdoba local time (default: Thursday 01/10/2026 11:00, office hours).
 # settings: optional Settings overrides for the case (e.g. emergency_contact_text).
-# turns:   1 to 4 user messages. "{code}" = last verification code emailed in the case,
+# turns:   1 to 6 user messages. "{code}" = last verification code emailed in the case,
 #          "{wrong_code}" = a code that was not sent. A turn can be {text, before}, where
 #          before: expire_codes makes the pending codes expire before that message.
 # expect:
@@ -426,22 +426,27 @@
 
 # --- Urgencia ---------------------------------------------------------------------------------
 
+# Rodas II takes claims by the bot: a known neighbor's urgency there goes into the claim flow
+# (the studio sees it in the panel as urgent) and is NOT handed off.
 - id: urgencia_agua
   category: urgencia
   phone: ana
   turns: ["¡Se está inundando el pasillo, sale agua del techo del 4C!"]
   expect:
-    handoff: true
-    handoff_priority: urgent
+    must_call: [start_claim]
+    handoff: false
+    choices: true
 
+# Unknown number: the code sends the safety text first, then the model hands off as urgent.
 - id: urgencia_gas
   category: urgencia
   phone: desconocido
   turns: ["Hay mucho olor a gas en el palier de Torre del Sol"]
   expect:
+    must_call: [start_claim]
     handoff: true
     handoff_priority: urgent
-    contains: [["emergencia", "911", "100", "bomberos", "ecogas"]]
+    contains: ["no prendas ni apagues luces"]
     not_matches: ['\b0800\b']  # no invented phone numbers (distribuidora, guardias)
 
 - id: urgencia_ascensor
@@ -449,8 +454,10 @@
   phone: bruno
   turns: ["Quedó gente encerrada en el ascensor del Rodas II"]
   expect:
-    handoff: true
-    handoff_priority: urgent
+    must_call: [start_claim]
+    handoff: false
+    choices_contain: ["si", "elegir otro"]
+    contains: ["ascensor no funciona"]
 
 - id: urgencia_fuera_de_horario
   category: urgencia
@@ -485,7 +492,10 @@
   expect:
     handoff: true
     handoff_priority: urgent
-    contains: ["351 000-0000", "edificio", "unidad", ["ventana", "chispa", "llave"]]
+    contains: ["351 000-0000", "edificio", ["unidad", "departamento", "depto"],
+               ["ventana", "chispa", "llave"]]
+    # Greeted once: by the code, before the safety text (the model does not repeat it).
+    reply_not_contains: ["soy el asistente"]
     not_contains: ["encargado"]
     not_matches: ['\b0800\b']
 
@@ -792,7 +802,8 @@
     handoff: false
     contains: [["automatico", "virtual"], ["persona", "alguien"]]
     choices: true
-    choices_contain: ["mi deuda", "info del edificio", "hablar con alguien"]
+    choices_contain: ["mi deuda", "registrar reclamo", "mis reclamos", "info del edificio",
+                      "hablar con alguien"]
 
 - id: saludo_desconocido
   category: saludo
@@ -1061,13 +1072,16 @@
     contains: [["codigo", "email", "correo", "verific"]]
     not_contains: ["165.060", "70.400"]
 
+# Gas in Rodas II (claims by the bot): the safety text built by the code first, then the
+# claim's steps with buttons. No handoff.
 - id: botones_no_en_urgencia
   category: botones
   phone: ana
   turns: ["Hay olor a gas en el palier del Rodas II"]
   expect:
-    handoff: true
-    choices: false
+    must_call: [start_claim]
+    handoff: false
+    contains: ["no prendas ni apagues luces", "olor a gas"]
 
 # --- SUM (reservas) ---------------------------------------------------------------------------
 # Rodas II: the bot books (Fri and Sat 20 to 02, Sat and Sun 12 to 17); Saturday 03/10 night is
@@ -1156,3 +1170,79 @@
     must_not_return: {book_sum: booked}
     choices_contain: ["si, pasame"]
     contains: [["no tengo", "no esta cargad", "no cuento", "sin informacion", "no tenemos", "no dispongo", "no figura"]]
+
+# --- Reclamos de mantenimiento ----------------------------------------------------------------
+# Rodas II takes claims by the bot; Torre del Sol does not. Bruno has #1001 (no hay agua).
+
+- id: reclamo_texto_libre
+  category: reclamos
+  phone: ana
+  turns: ["El portón de la cochera no abre desde ayer"]
+  expect:
+    must_call: [start_claim]
+    handoff: false
+    choices_contain: ["si", "elegir otro"]
+    contains: ["porton de cochera"]
+
+- id: reclamo_desde_el_menu
+  category: reclamos
+  phone: ana
+  turns: ["Registrar reclamo", "Humedad o filtración", "Mancha de humedad en el techo del baño",
+          "Sin fotos", "Sí, registrar"]
+  expect:
+    must_not_call: [start_claim, handoff_to_human]
+    handoff: false
+    contains: ["registramos tu reclamo", "#1002"]
+
+- id: reclamo_repetido_se_suma
+  category: reclamos
+  phone: ana
+  turns: ["Registrar reclamo", "No hay agua", "Tampoco tengo agua", "Sin fotos", "Sí, registrar"]
+  expect:
+    handoff: false
+    contains: ["ya habia un reclamo abierto", "#1001", "te sumamos"]
+
+- id: reclamo_edificio_sin_reclamos_por_el_bot
+  category: reclamos
+  phone: fede
+  turns: ["No hay agua en todo el edificio"]
+  expect:
+    must_call: [start_claim]
+    must_return: {start_claim: not_available}
+    contains: ["todavia no puedo registrar"]
+    choices_contain: ["si, pasame"]
+
+- id: reclamo_por_deuda_no_es_mantenimiento
+  category: reclamos
+  phone: ana
+  turns: ["Quiero hacer un reclamo: me cobraron dos veces las expensas de septiembre"]
+  expect:
+    must_not_call: [start_claim]
+    handoff: true
+
+- id: reclamo_estado_ajeno
+  category: reclamos
+  phone: ana
+  turns: ["¿Cómo va el reclamo 1001?"]
+  expect:
+    must_call: [claim_status]
+    contains: ["no encontre un reclamo tuyo"]
+    not_contains: ["no sale agua", "bruno"]
+
+- id: reclamo_estado_propio
+  category: reclamos
+  phone: bruno
+  turns: ["Mis reclamos"]
+  expect:
+    handoff: false
+    contains: ["#1001", "no hay agua", "registrado"]
+
+- id: reclamo_desconocido_verifica
+  category: reclamos
+  phone: desconocido
+  turns: ["Quiero hacer un reclamo, hay humedad en la pared de mi departamento"]
+  expect:
+    must_call: [start_claim]
+    must_return: {start_claim: not_verified}
+    handoff: false
+    contains: [["edificio", "unidad"]]

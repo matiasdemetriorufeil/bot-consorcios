@@ -10,18 +10,24 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.claims.service import Reporter, create_claim
 from app.db.models import (
     Amenity,
     AmenitySlot,
     Building,
+    BuildingClaimCategory,
     BuildingInfo,
     BuildingInfoCategory,
+    ClaimCategory,
+    ClaimScope,
+    ClaimSource,
     DataSource,
     DebtLine,
     DebtSnapshot,
     Person,
     PersonRole,
     Phone,
+    Provider,
     Reservation,
     ReservationSource,
     SyncKind,
@@ -223,6 +229,64 @@ def seed(session: Session) -> None:
         ]
     )  # fmt: skip
     _amenities(session, rodas2, sol, r2_4c, r2_4b)
+    session.commit()
+    _claims(session, rodas2, r2_4b, bruno)
+
+
+# Claims: Rodas II takes them by the bot (the others do not). Bruno already has #1001 (no hay
+# agua), the first number of a fresh database.
+GAS_SAFETY_TEXT = (
+    "Si sentís olor a gas: no prendas ni apagues luces ni aparatos eléctricos, no uses fuego, "
+    "abrí puertas y ventanas, cerrá la llave de paso si podés hacerlo sin riesgo y alejate del "
+    "lugar."
+)
+CLAIM_KINDS = [
+    # (name, list title, scope, urgent, follow-up question, safety text)
+    ("No funciona el o los ascensores", "Ascensor no funciona", ClaimScope.BUILDING, True,
+     "¿Hay alguien encerrado?", None),
+    ("No hay agua", "No hay agua", ClaimScope.BUILDING, False, None, None),
+    ("No funciona el portón de la cochera", "Portón de cochera", ClaimScope.BUILDING, False,
+     None, None),
+    ("Tengo o hay humedad o filtración de agua", "Humedad o filtración", ClaimScope.UNIT, False,
+     None, None),
+    ("Siento olor a gas", "Olor a gas", ClaimScope.BUILDING, True, None, GAS_SAFETY_TEXT),
+]  # fmt: skip
+
+
+def _claims(session: Session, rodas2: Building, r2_4b: Unit, bruno: Person) -> None:
+    rodas2.claims_bot_enabled = True
+    plumber = Provider(name="Plomería Inventada", whatsapp_e164="+5493515550160")
+    session.add(plumber)
+    kinds = []
+    for order, (name, title, scope, urgent, question, safety) in enumerate(CLAIM_KINDS, 1):
+        kind = ClaimCategory(
+            name=name, list_title=title, scope=scope, urgent=urgent,
+            follow_up_question=question, safety_text=safety, sort_order=order * 10,
+        )  # fmt: skip
+        session.add(kind)
+        kinds.append(kind)
+    session.flush()
+    for kind in kinds:
+        provider = (
+            plumber.id if kind.list_title in ("No hay agua", "Humedad o filtración") else None
+        )
+        session.add(
+            BuildingClaimCategory(
+                building_id=rodas2.id, category_id=kind.id, enabled=True,
+                provider_id=provider, sort_order=kind.sort_order,
+            )
+        )  # fmt: skip
+    session.flush()
+    create_claim(
+        session,
+        building_id=rodas2.id,
+        category_id=kinds[1].id,
+        unit_id=r2_4b.id,
+        description="No sale agua en la cocina",
+        reporter=Reporter(name=bruno.full_name, phone_e164=PHONES["bruno"], person_id=bruno.id,
+                          unit_id=r2_4b.id),
+        source=ClaimSource.BOT,
+    )  # fmt: skip
     session.commit()
 
 

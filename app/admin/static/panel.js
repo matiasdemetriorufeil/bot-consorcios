@@ -49,6 +49,78 @@
     });
   }
 
+  // --- Alerts: a short beep (no sound file) and a browser notification --------------------------
+  // Used by "Conversaciones" (people waiting) and by the urgent claims (both "Conversaciones" and
+  // "Reclamos" poll them). A click on the "Avisos" button unlocks the sound for the visit.
+  var audio = null;
+  function beep() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      var osc = audio.createOscillator(), gain = audio.createGain();
+      osc.frequency.value = 880;
+      osc.connect(gain); gain.connect(audio.destination);
+      gain.gain.setValueAtTime(0.2, audio.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.5);
+      osc.start(); osc.stop(audio.currentTime + 0.5);
+    } catch (e) { /* no sound */ }
+  }
+  function notify(title, body) {
+    beep();
+    if ("Notification" in window && Notification.permission === "granted") {
+      try { new Notification(title, { body: body }); } catch (e) { /* not allowed here */ }
+    }
+  }
+  window.panelBeep = beep;
+  window.panelNotify = notify;
+  var alertsButton = document.getElementById("enable-alerts");
+  function showAlertsState() {
+    if (!alertsButton) return;
+    var granted = "Notification" in window && Notification.permission === "granted";
+    alertsButton.textContent = granted ? "🔔 Avisos activos" : "🔔 Activar avisos";
+  }
+  showAlertsState();
+  if (alertsButton) {
+    alertsButton.addEventListener("click", function () {
+      beep();
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().then(showAlertsState);
+      }
+      showAlertsState();
+    });
+  }
+
+  // Urgent open claims: the menu's counter, and an alert for each new one (not for those that
+  // were already open when the page loaded).
+  var seenUrgent = null;
+  window.panelUrgentClaims = function (claims) {
+    if (!claims) return;
+    document.querySelectorAll("[data-urgent-claims]").forEach(function (badge) {
+      badge.textContent = String(claims.length);
+      badge.hidden = claims.length === 0;
+    });
+    var ids = claims.map(function (c) { return c.id; });
+    if (seenUrgent) {
+      claims.filter(function (c) { return seenUrgent.indexOf(c.id) < 0; }).forEach(function (c) {
+        notify("Reclamo urgente #" + c.number, c.problem + " · " + c.building);
+      });
+    }
+    seenUrgent = ids;
+  };
+  // Pages without their own polling ("Reclamos") ask for them every few seconds.
+  var urgentPoll = document.querySelector("[data-urgent-poll]");
+  if (urgentPoll) {
+    var urgentUrl = urgentPoll.dataset.urgentPoll;
+    var urgentEvery = (Number(urgentPoll.dataset.seconds) || 10) * 1000;
+    var askUrgent = function () {
+      fetch(urgentUrl, { credentials: "same-origin", headers: { Accept: "application/json" } })
+        .then(function (r) { return r.ok && (r.headers.get("content-type") || "").indexOf("json") >= 0 ? r.json() : null; })
+        .then(function (data) { if (data) window.panelUrgentClaims(data.urgent_claims); })
+        .catch(function () { /* offline for a moment: next time */ });
+    };
+    askUrgent();
+    setInterval(askUrgent, urgentEvery);
+  }
+
   // --- "Nuevo reclamo" (claim_new.html) ---------------------------------------------------------
   // Only the fields of the chosen way of saying who reported, and only the people of the chosen
   // unit. A help: the server checks both again.

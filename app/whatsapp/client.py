@@ -18,7 +18,7 @@ from typing import Any
 
 import requests
 
-from app.bot.choices import MAX_BUTTONS, Choice, problems
+from app.bot.choices import MAX_BUTTONS, MAX_LIST_DESCRIPTION, Choice, problems
 from app.channels.base import ChannelError
 from app.channels.base import WindowClosedError as ChannelWindowClosedError
 from app.config import Settings, get_settings
@@ -167,7 +167,11 @@ class WhatsAppClient:
             }
             kind = "button"
         else:
-            rows = [{"id": f"opt-{n}", "title": title} for n, title in enumerate(titles, 1)]
+            rows = [
+                {"id": f"opt-{n}", "title": c.title}
+                | ({"description": c.description[:MAX_LIST_DESCRIPTION]} if c.description else {})
+                for n, c in enumerate(choices, 1)
+            ]
             action = {"button": LIST_BUTTON, "sections": [{"rows": rows}]}
             kind = "list"
         return self._send(

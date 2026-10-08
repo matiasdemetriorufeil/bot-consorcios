@@ -35,6 +35,7 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app.admin import example, inbox
 from app.admin.auth import admin_user, current_user_id, display_names
+from app.admin.claims import urgent_open_claims
 from app.config import Settings
 from app.db.models import PanelUser, QuickReply, WaConversationStatus
 
@@ -233,6 +234,7 @@ class ConversationsView(BaseView):
                 "counts": context["counts"],
                 "waiting_ids": inbox.waiting_ids(session),
                 "mine_last": {str(k): v for k, v in inbox.mine_last_inbound(session, user).items()},
+                "urgent_claims": urgent_open_claims(session),
             }
             data["inbox_html"] = await self._fragment(
                 request, "_inbox_list.html", {**context, "open_id": open_id}

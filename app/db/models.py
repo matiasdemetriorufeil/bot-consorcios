@@ -941,3 +941,49 @@ class ClaimEvent(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     claim: Mapped[Claim] = relationship(back_populates="events")
+
+
+class ClaimDraftStep(StrEnum):
+    CHOOSE_UNIT = "choose_unit"
+    CONFIRM_CATEGORY = "confirm_category"
+    CHOOSE_CATEGORY = "choose_category"
+    FOLLOW_UP = "follow_up"
+    DESCRIPTION = "description"
+    PHOTOS = "photos"
+    CONFIRM = "confirm"
+    # Unknown number: the agent verifies it as usual, then the flow resumes.
+    WAITING_IDENTITY = "waiting_identity"
+
+
+class ClaimDraft(Base):
+    """A claim being reported by WhatsApp, step by step (app.claims.flow): one per phone.
+    Expires 30 minutes after its last answer. Nothing here is a claim yet."""
+
+    __tablename__ = "claim_drafts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    phone_e164: Mapped[str] = mapped_column(String(20), unique=True)
+    conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("wa_conversations.id", ondelete="SET NULL")
+    )
+    step: Mapped[ClaimDraftStep] = mapped_column(_str_enum(ClaimDraftStep, "step_valid"))
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"))
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("claim_categories.id", ondelete="CASCADE")
+    )
+    category_hint: Mapped[str | None] = mapped_column(String(200))
+    category_page: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    # Whether the kind's safety text already went out (it goes once, first).
+    safety_sent: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    follow_up_answer: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    # wa_messages.id of the photos (stored attachments of Conversaciones).
+    attachment_ids: Mapped[list[int]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    # What the current step offered: {title: value}, to read the answer.
+    options: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -440,6 +440,45 @@ def add_note(
 # --- Reading --------------------------------------------------------------------------------
 
 
+def claims_of_person(
+    session: Session,
+    person_id: int | None,
+    phone: str | None,
+    now: datetime | None = None,
+    limit: int = 10,
+) -> list[Claim]:
+    """A neighbor's claims (reported first or joined): the open ones and those closed in the
+    last 30 days, newest first."""
+    conditions = _reporter_condition(Reporter(name=None, phone_e164=phone, person_id=person_id))
+    if not conditions:
+        return []
+    since = _now(now) - PREVIOUS_WINDOW
+    return list(
+        session.scalars(
+            select(Claim)
+            .where(
+                or_(*conditions),
+                or_(Claim.status.in_(OPEN_CLAIM_STATUSES), Claim.closed_at >= since),
+            )
+            .order_by(Claim.created_at.desc(), Claim.id.desc())
+            .limit(limit)
+        )
+    )
+
+
+def claim_of_person(
+    session: Session, number: int, person_id: int | None, phone: str | None
+) -> Claim | None:
+    """The claim with that number, only if this neighbor reported it or joined it (None
+    otherwise, the same as if it did not exist)."""
+    conditions = _reporter_condition(Reporter(name=None, phone_e164=phone, person_id=person_id))
+    if not conditions:
+        return None
+    return session.scalars(
+        select(Claim).where(Claim.number == number, or_(*conditions)).limit(1)
+    ).first()
+
+
 def claims_for_phone(session: Session, e164: str, limit: int = 5) -> list[Claim]:
     """The latest claims of a phone: reported first or joined."""
     return list(

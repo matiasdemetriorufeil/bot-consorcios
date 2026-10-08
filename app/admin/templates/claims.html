@@ -5,7 +5,9 @@
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
     <a class="btn btn-primary" href="{{ url_for('admin:view-claim-new') }}"><i class="fa-solid fa-plus me-2"></i>Nuevo reclamo</a>
+    <button type="button" class="btn btn-secondary ms-auto" id="enable-alerts" title="Sonido y notificación del navegador cuando entra un reclamo urgente">🔔 Avisos</button>
   </div>
+  <div hidden data-urgent-poll="{{ url_for('admin:view-claims-poll') }}" data-seconds="{{ poll_seconds }}"></div>
 </div>
 <div class="col-12">
   <div class="card">
