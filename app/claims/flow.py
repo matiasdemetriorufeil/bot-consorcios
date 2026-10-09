@@ -730,18 +730,22 @@ def _register(
         text = texts.JOINED.format(number=claim.number)
     else:
         session.flush()
-        sent = (
-            notifier.notify_provider(session, claim).ok
+        done = (
+            notifier.dispatch(session, claim)
             if notifier is not None and claim.status == ClaimStatus.PENDING_SEND
-            else False
+            else None
         )
-        if sent:
-            template = texts.CREATED_AND_SENT
-        elif claim.provider_id:
-            template = texts.CREATED_WITH_PROVIDER
+        if done is not None and done.sent is not None and done.sent.ok:
+            text = texts.CREATED_AND_SENT.format(number=claim.number, problem=category.list_title)
+        elif done is not None and done.scheduled_at is not None:
+            text = texts.CREATED_SCHEDULED.format(
+                number=claim.number, problem=category.list_title, when=done.when
+            )
         else:
-            template = texts.CREATED_FOR_STUDIO
-        text = template.format(number=claim.number, problem=category.list_title)
+            template = (
+                texts.CREATED_WITH_PROVIDER if claim.provider_id else texts.CREATED_FOR_STUDIO
+            )
+            text = template.format(number=claim.number, problem=category.list_title)
         if claim.previous is not None:
             text += " " + texts.PREVIOUS.format(number=claim.previous.number)
     _log(

@@ -10,6 +10,8 @@ only (AdminOnly: operators get 403 on every endpoint, the people search included
 - POST /admin/dev-chat/provider         "Hablar como proveedor": that provider's WhatsApp is
                                         simulated from now on (the claims sent to it show up
                                         here, with their buttons) and the chat opens as it
+- POST /admin/dev-chat/claim-jobs       "Correr tareas de reclamos ahora" (app.claims.jobs),
+                                        optionally "como si fueran las" another date and time
 
 What is typed is stored as a WhatsApp delivery would (app.whatsapp.simulator.receive) and
 answered by the same WhatsAppBot as the webhook's, in the background. The conversation is one
@@ -20,6 +22,7 @@ and what she sends shows up here (it never reaches Meta: the contact is simulate
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, ClassVar
+from zoneinfo import ZoneInfo
 
 import anyio
 from sqladmin import BaseView, expose
@@ -35,6 +38,7 @@ from app.admin.auth import AdminOnly, display_names, is_admin
 from app.admin.conversations import _int
 from app.bot.identity import to_e164
 from app.bot.unit_search import display_building_name
+from app.claims.jobs import run_claim_jobs
 from app.config import Settings
 from app.db.models import (
     Building,
@@ -96,6 +100,8 @@ class DevChatView(AdminOnly, BaseView):
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
     bot_factory: ClassVar[Callable[[], WhatsAppBot]] = staticmethod(lambda: None)  # type: ignore[assignment,return-value]
     clock: ClassVar[Callable[[], datetime]] = staticmethod(lambda: datetime.now(UTC))
+    # The claims' WhatsApp messages (setup_admin: the same as "Reclamos"; None without WhatsApp).
+    notifier_factory: ClassVar[Any] = None
 
     def is_visible(self, request: Request) -> bool:
         return self.enabled and is_admin(request)
@@ -252,6 +258,40 @@ class DevChatView(AdminOnly, BaseView):
             str(request.url_for("admin:view-dev-chat").include_query_params(phone=phone)), 302
         )
 
+    @expose("/dev-chat/claim-jobs", methods=["POST"], identity="dev-chat-claim-jobs")
+    async def claim_jobs(self, request: Request) -> Response:
+        """Runs the claims' periodic job now, or "como si fueran las" the given local time
+        (to see a scheduled send, a reminder or an alert without waiting)."""
+        self._check()
+        form = await request.form()
+        phone = _phone(form.get("phone")) or ""
+        back = str(request.url_for("admin:view-dev-chat").include_query_params(phone=phone))
+        at = _local_time(str(form.get("at", "")), self.timezone)
+        if at is None:
+            Flash.error(request, "Esa fecha y hora no se entiende.")
+            return RedirectResponse(back, status_code=302)
+        now = at or self.clock()
+        notifier = self.notifier_factory(now=lambda: now) if self.notifier_factory else None
+        if notifier is None:
+            Flash.error(request, "WhatsApp no está configurado en este servidor.")
+            return RedirectResponse(back, status_code=302)
+        report = await anyio.to_thread.run_sync(
+            run_claim_jobs, self.session_maker, notifier, now, self.timezone
+        )
+        when = now.astimezone(ZoneInfo(self.timezone)).strftime("%d/%m/%Y %H:%M")
+        if not report.ran:
+            Flash.warning(
+                request, "Ya había otra corrida de las tareas de reclamos: probá de nuevo."
+            )
+        else:
+            Flash.success(
+                request,
+                f"Tareas de reclamos corridas como si fueran las {when}: "
+                f"{len(report.sent)} mandado(s) al proveedor, {len(report.reminded)} "
+                f"recordatorio(s), {len(report.alerted)} aviso(s) al estudio.",
+            )
+        return RedirectResponse(back, status_code=302)
+
     @expose("/dev-chat/restart", methods=["POST"], identity="dev-chat-restart")
     async def restart(self, request: Request) -> Response:
         self._check()
@@ -267,3 +307,14 @@ class DevChatView(AdminOnly, BaseView):
             str(request.url_for("admin:view-dev-chat").include_query_params(phone=phone or "")),
             status_code=302,
         )
+
+
+def _local_time(value: str, timezone: str) -> datetime | None | bool:
+    """ "2026-10-03T08:05" (a datetime-local field, Córdoba time) -> that moment; "" -> False
+    (now); None when it cannot be read."""
+    if not value.strip():
+        return False
+    try:
+        return datetime.fromisoformat(value.strip()).replace(tzinfo=ZoneInfo(timezone))
+    except ValueError:
+        return None

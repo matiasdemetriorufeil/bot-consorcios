@@ -40,7 +40,9 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from app.admin import formatting, labels
 from app.admin.auth import admin_user, display_names
 from app.bot.identity import to_e164
+from app.claims import texts
 from app.claims.notify import Notifier
+from app.claims.schedule import when_text
 from app.claims.service import (
     ClaimProblem,
     Reporter,
@@ -80,6 +82,7 @@ TABS = {"open": "Abiertos", "closed": "Cerrados", "all": "Todos"}
 TAB_STATUSES = {"open": OPEN_CLAIM_STATUSES, "closed": CLOSED_CLAIM_STATUSES}
 STUDIO_FILTER = "studio"
 URGENT_FILTER = {"yes": "Urgentes", "no": "No urgentes"}
+ATTENTION_FILTER = {"yes": "Necesitan atención"}
 WHOLE_BUILDING = "Todo el edificio"
 
 
@@ -102,17 +105,22 @@ class Filters:
     attends: str = ""  # "" | "studio" | a provider's id
     status: str = ""
     urgent: str = ""
+    attention: str = ""  # "yes": only the ones that need attention
     page: int = 1
 
     @property
     def any_filter(self) -> bool:
-        return bool(self.building or self.category or self.attends or self.status or self.urgent)
+        return bool(
+            self.building or self.category or self.attends or self.status or self.urgent
+            or self.attention
+        )  # fmt: skip
 
     def params(self, **changes: Any) -> dict[str, Any]:
         values = {
             "tab": self.tab, "q": self.query, "building": self.building,
             "category": self.category, "attends": self.attends, "status": self.status,
-            "urgent": self.urgent, "page": self.page if self.page > 1 else None,
+            "urgent": self.urgent, "attention": self.attention,
+            "page": self.page if self.page > 1 else None,
         }  # fmt: skip
         values.update(changes)
         return {k: v for k, v in values.items() if v not in ("", None)}
@@ -130,6 +138,7 @@ def read_filters(params: Any) -> Filters:
         attends=attends if attends == STUDIO_FILTER or _int(attends) else "",
         status=status if status in {s.value for s in ClaimStatus} else "",
         urgent=params.get("urgent", "") if params.get("urgent") in URGENT_FILTER else "",
+        attention="yes" if params.get("attention") in ATTENTION_FILTER else "",
         page=max(1, _int(params.get("page")) or 1),
     )
 
@@ -179,6 +188,8 @@ def _filtered(filters: Filters) -> Select:
         stmt = stmt.where(Claim.status == filters.status)
     if filters.urgent:
         stmt = stmt.where(Claim.urgent.is_(filters.urgent == "yes"))
+    if filters.attention:
+        stmt = stmt.where(Claim.attention.is_not(None))
     return stmt
 
 
@@ -197,6 +208,7 @@ class ClaimRow:
     group: str
     ago: str
     urgent: bool
+    attention: str = ""  # why someone of the studio should look at it ("" if nothing)
 
 
 @dataclass(frozen=True)
@@ -264,6 +276,7 @@ def list_claims(session: Session, filters: Filters, now: datetime, timezone: str
             group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
             ago=formatting.ago(c.status_at, now),
             urgent=c.urgent,
+            attention=texts.attention_text(c, now) if c.is_open else "",
         )
         for c in claims
     ]
@@ -287,23 +300,25 @@ def filter_options(session: Session) -> dict[str, list[tuple[str, str]]]:
         + [(str(p.id), p.name) for p in providers],
         "statuses": [(s.value, labels.CLAIM_STATUS[s]) for s in ClaimStatus],
         "urgent": list(URGENT_FILTER.items()),
+        "attention": list(ATTENTION_FILTER.items()),
     }
 
 
-# Open claims someone of the studio should look at now: urgent, or the provider cannot
-# attend it, or it could not be sent to the provider.
+# Open claims someone of the studio should look at now: urgent, or with an alert (the
+# provider cannot attend it, it could not be sent, the provider did not confirm, it has been
+# open too long: app.claims.jobs).
 NEEDS_SOMEONE = Claim.status.in_(OPEN_CLAIM_STATUSES) & (
     Claim.urgent.is_(True) | Claim.attention.is_not(None)
 )
 
 
-def _alert_title(claim: Claim) -> str:
+def _alert_title(claim: Claim, now: datetime) -> str:
     if claim.attention is not None:
-        return f"{labels.label(labels.CLAIM_ATTENTION, claim.attention)} · #{claim.number}"
+        return f"{texts.attention_text(claim, now)} · #{claim.number}"
     return f"Reclamo urgente #{claim.number}"
 
 
-def urgent_open_claims(session: Session) -> list[dict[str, Any]]:
+def urgent_open_claims(session: Session, now: datetime | None = None) -> list[dict[str, Any]]:
     """The open claims that need someone (urgent, or with an alert), newest first: the
     panel's sound and notification, and the menu's counter. The key includes the alert, so a
     claim that gets one later alerts again."""
@@ -313,11 +328,12 @@ def urgent_open_claims(session: Session) -> list[dict[str, Any]]:
         .options(selectinload(Claim.building), selectinload(Claim.category))
         .order_by(Claim.created_at.desc(), Claim.id.desc())
     ).all()
+    now = now or datetime.now(UTC)
     return [
         {
             "id": f"{c.id}:{c.attention or 'urgent'}",
             "number": c.number,
-            "title": _alert_title(c),
+            "title": _alert_title(c, now),
             "problem": c.category.list_title,
             "building": formatting.building(c.building.name),
         }
@@ -370,6 +386,9 @@ class ClaimPage:
     joined: list[PersonLine] = field(default_factory=list)
     photos: list[Photo] = field(default_factory=list)
     events: list[EventLine] = field(default_factory=list)
+    attention: str = ""  # why someone of the studio should look at it
+    scheduled: str = ""  # when it goes to the provider (out of the providers' hours)
+    reminded: str = ""  # when the provider got the reminder
 
 
 def load_claim(session: Session, claim_id: int) -> Claim | None:
@@ -423,6 +442,13 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
         group=labels.CLAIM_STATUS_GROUP[ClaimStatus(claim.status)],
         attends=attends_text(claim),
         reporter=person(reporter_text(claim), claim.reporter_phone_e164, claim.reporter_unit),
+        attention=texts.attention_text(claim, now) if claim.is_open else "",
+        scheduled=when_text(claim.send_after, now, timezone)
+        if claim.send_after and claim.status == ClaimStatus.PENDING_SEND
+        else "",
+        reminded=formatting.when(claim.reminded_at, now, timezone)
+        if claim.reminded_at and claim.status == ClaimStatus.SENT
+        else "",
     )
     for r in claim.reporters:
         line = person(r.name, r.phone_e164, r.unit)
@@ -546,6 +572,12 @@ def reporter_from_form(
 # --- Pages ----------------------------------------------------------------------------------
 
 
+def _mode(form: Any) -> str:
+    """The page's choice out of the providers' hours: "now" or "later" ("auto" otherwise)."""
+    mode = str(form.get("when", ""))
+    return mode if mode in ("now", "later") else "auto"
+
+
 def _redirect(request: Request, identity: str, query: str = "", **params: Any) -> RedirectResponse:
     url = str(request.url_for(f"admin:view-{identity}", **params))
     return RedirectResponse(f"{url}?{query}" if query else url, status_code=302)
@@ -564,9 +596,11 @@ class ClaimsView(BaseView):
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
     # Builds the claims' WhatsApp messages (setup_admin; None in a server without WhatsApp).
     notifier_factory: ClassVar[Any] = None
+    # The panel's clock (setup_admin; tests fix it): the providers' hours depend on it.
+    clock: ClassVar[Any] = None
 
     def now(self) -> datetime:
-        return datetime.now(UTC)
+        return self.clock() if self.clock else datetime.now(UTC)
 
     async def _page(
         self, request: Request, template: str, title: str, status_code: int = 200, **context: Any
@@ -601,7 +635,7 @@ class ClaimsView(BaseView):
     @expose("/claims/poll", methods=["GET"], identity="claims-poll")
     async def claims_poll(self, request: Request) -> Response:
         with self.session_maker() as session:
-            urgent = urgent_open_claims(session)
+            urgent = urgent_open_claims(session, self.now())
         return JSONResponse({"urgent_claims": urgent}, headers={"Cache-Control": "no-store"})
 
     @expose("/claims/new", methods=["GET", "POST"], identity="claim-new")
@@ -698,7 +732,7 @@ class ClaimsView(BaseView):
                 studio_label=labels.STUDIO,
                 scope_labels=labels.CLAIM_SCOPE,
                 source_label=labels.label(labels.CLAIM_SOURCE, claim.source),
-                attention_label=labels.label(labels.CLAIM_ATTENTION, claim.attention, ""),
+                wait_when=self._wait_when(session, claim),
                 previous_status=labels.label(labels.CLAIM_STATUS, claim.previous.status)
                 if claim.previous
                 else "",
@@ -706,7 +740,14 @@ class ClaimsView(BaseView):
 
     def notifier(self) -> Notifier | None:
         """The claims' WhatsApp messages (None: WhatsApp is not set up in this server)."""
-        return self.notifier_factory() if self.notifier_factory else None
+        return self.notifier_factory(now=self.now) if self.notifier_factory else None
+
+    def _wait_when(self, session: Session, claim: Claim) -> str:
+        """Out of the providers' hours, when they open next ("mañana a las 8:00"): the page
+        then asks whether to send it now or then. "" inside them."""
+        notifier = self.notifier() if claim.is_open else None
+        opening = notifier.must_wait(session, claim) if notifier else None
+        return when_text(opening, self.now(), self.timezone) if opening else ""
 
     async def _act(self, request: Request, action: Any, done: str) -> Response:
         """Apply one change to the claim through the service and go back to it. The action
@@ -730,8 +771,12 @@ class ClaimsView(BaseView):
                     (Flash.success if ok else Flash.warning)(request, text)
         return _redirect(request, "claim", claim_id=claim_id)
 
-    def _send_to_provider(self, session: Session, claim: Claim, user: str) -> Any:
-        """After a change: a claim waiting for its provider (with WhatsApp) goes to it."""
+    def _send_to_provider(
+        self, session: Session, claim: Claim, user: str, mode: str = "auto"
+    ) -> Any:
+        """After a change: a claim waiting for its provider (with WhatsApp) goes to it, or,
+        out of the providers' hours, is scheduled for their next opening (mode: "auto", or
+        the page's choice "now" / "later")."""
         provider = claim.provider
         if claim.status != ClaimStatus.PENDING_SEND or provider is None:
             return None
@@ -740,10 +785,12 @@ class ClaimsView(BaseView):
         notifier = self.notifier()
         if notifier is None:
             return False, NOT_CONFIGURED
-        sent = notifier.notify_provider(session, claim, user)
-        if sent.ok:
+        done = notifier.dispatch(session, claim, user, mode=mode)
+        if done.sent is None:
+            return True, f"Se le va a mandar a {provider.name} {done.when}."
+        if done.sent.ok:
             return True, f"Se le mandó el reclamo por WhatsApp a {provider.name}."
-        return False, f"No se le pudo mandar a {provider.name}: {sent.error}."
+        return False, f"No se le pudo mandar a {provider.name}: {done.sent.error}."
 
     def _tell_neighbors(self, session: Session, claim: Claim) -> Any:
         notifier = self.notifier()
@@ -764,7 +811,7 @@ class ClaimsView(BaseView):
         def resend(session: Session, claim: Claim, form: Any) -> Any:
             if claim.status != ClaimStatus.PENDING_SEND or claim.provider is None:
                 raise ClaimProblem("Este reclamo no está esperando que se le avise al proveedor.")
-            return self._send_to_provider(session, claim, user)
+            return self._send_to_provider(session, claim, user, _mode(form))
 
         return await self._act(request, resend, "Listo.")
 
@@ -789,7 +836,7 @@ class ClaimsView(BaseView):
             request,
             lambda s, c, f: (
                 change_provider(s, c, _int(f.get("provider_id")), **who),
-                self._send_to_provider(s, c, who["user"]),
+                self._send_to_provider(s, c, who["user"], _mode(f)),
             )[1],
             "Listo: cambió quién lo atiende.",
         )

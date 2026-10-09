@@ -22,7 +22,7 @@ from app.admin import formatting, labels
 from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user
 from app.admin.filters import RelatedFilter, ValuesFilter, YesNoFilter
-from app.admin.metrics import compute_metrics
+from app.admin.metrics import compute_claim_metrics, compute_metrics
 from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
 from app.config import Settings
 from app.db.models import (
@@ -445,7 +445,9 @@ class MetricsView(AdminOnly, BaseView):
     @expose("/metrics", methods=["GET"], identity="metrics")
     async def metrics_page(self, request: Request) -> Response:
         with self.session_maker() as session:
-            metrics = await _in_thread(compute_metrics, session, datetime.now(UTC), self.timezone)
+            now = datetime.now(UTC)
+            metrics = await _in_thread(compute_metrics, session, now, self.timezone)
+            claims = await _in_thread(compute_claim_metrics, session, now, self.timezone)
         peak = max((n for _, n in metrics.conversations_per_day), default=0)
         return await self.templates.TemplateResponse(
             request,
@@ -453,6 +455,7 @@ class MetricsView(AdminOnly, BaseView):
             {
                 "title": "Métricas",
                 "m": metrics,
+                "c": claims,
                 "peak": peak or 1,
                 "tools": [(labels.tool(name), count) for name, count in metrics.top_tools],
             },

@@ -85,18 +85,32 @@
   <div class="card mb-3" id="claim-actions">
     <div class="card-header"><h3 class="card-title">Qué hacer</h3></div>
     <div class="card-body">
-      {% if c.attention %}
-      <div class="alert alert-warning" id="claim-attention">{{ attention_label }}.</div>
+      {% if page.attention %}
+      <div class="alert alert-warning" id="claim-attention">{{ page.attention }}.</div>
+      {% endif %}
+      {% if page.reminded %}
+      <p class="text-secondary" id="claim-reminded"><i class="fa-solid fa-bell me-1"></i>Recordatorio enviado {{ page.reminded }}.</p>
       {% endif %}
       {% if c.status == 'pending_send' and c.provider %}
       <div class="mb-3 pb-3 border-bottom" id="claim-pending-send">
         {% if c.provider.whatsapp_e164 %}
+        {% set resend = confirm_attrs('resend_claim') %}
+        {% if page.scheduled %}
+        <p class="mb-2" id="claim-scheduled"><i class="fa-solid fa-clock me-1"></i>Se le manda a {{ c.provider.name }} {{ page.scheduled }} (fuera del horario de proveedores).</p>
+        {% else %}
         <p class="mb-2">Todavía no se le avisó a {{ c.provider.name }}.</p>
+        {% endif %}
         <div class="d-flex flex-wrap gap-2">
-          {% set resend = confirm_attrs('resend_claim') %}
-          <form method="POST" action="{{ url_for('admin:view-claim-resend', claim_id=c.id) }}"
-            {{ dict(resend, **{'data-confirm-text': 'Se le va a mandar el reclamo por WhatsApp a ' ~ c.provider.name ~ '.'}) | xmlattr }}>
+          <form method="POST" action="{{ url_for('admin:view-claim-resend', claim_id=c.id) }}" class="d-flex flex-wrap gap-2"
+            {% if not page.scheduled and not wait_when %}{{ dict(resend, **{'data-confirm-text': 'Se le va a mandar el reclamo por WhatsApp a ' ~ c.provider.name ~ '.'}) | xmlattr }}{% endif %}>
+            {% if page.scheduled %}
+            <button class="btn btn-primary" type="submit" name="when" value="now"><i class="fa-solid fa-paper-plane me-1"></i>Mandar ahora</button>
+            {% elif wait_when %}
+            <button class="btn btn-primary" type="submit" name="when" value="now"><i class="fa-solid fa-paper-plane me-1"></i>Mandar ahora</button>
+            <button class="btn btn-secondary" type="submit" name="when" value="later"><i class="fa-solid fa-clock me-1"></i>En el próximo horario ({{ wait_when }})</button>
+            {% else %}
             <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane me-1"></i>Reenviar al proveedor</button>
+            {% endif %}
           </form>
           <form method="POST" action="{{ url_for('admin:view-claim-mark-sent', claim_id=c.id) }}">
             <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-phone me-1"></i>Marcar como avisado</button>
@@ -120,9 +134,17 @@
             <option value="{{ p.id }}" {% if p.id == c.provider_id %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
           </select>
-          <button class="btn btn-primary text-nowrap" type="submit">Cambiar</button>
+          {% if not wait_when %}<button class="btn btn-primary text-nowrap" type="submit">Cambiar</button>{% endif %}
         </div>
+        {% if wait_when %}
+        <div class="d-flex flex-wrap gap-2 mt-2" id="claim-provider-when">
+          <button class="btn btn-primary" type="submit" name="when" value="now">Cambiar y mandar ahora</button>
+          <button class="btn btn-secondary" type="submit" name="when" value="later">Cambiar y mandar en el próximo horario ({{ wait_when }})</button>
+        </div>
+        <div class="form-hint">Ahora es fuera del horario de proveedores. Si tiene WhatsApp, elegí si al nuevo proveedor se le manda el reclamo ahora o cuando empieza su horario.</div>
+        {% else %}
         <div class="form-hint">Si tiene WhatsApp, al nuevo proveedor se le manda el reclamo en el momento.</div>
+        {% endif %}
       </form>
       <form method="POST" action="{{ url_for('admin:view-claim-close', claim_id=c.id) }}" class="mb-3">
         <label class="form-label" for="close-reason">Cerrar como solucionado</label>

@@ -804,6 +804,9 @@ class ClaimEventKind(StrEnum):
     NOTIFY_FAILED = "notify_failed"
     DECLINED = "declined"  # the provider said it cannot attend it
     PROVIDER_MESSAGE = "provider_message"  # what the provider wrote
+    SCHEDULED = "scheduled"  # out of the providers' hours: it goes at the next opening
+    REMINDED = "reminded"  # a reminder to the provider
+    ALERT = "alert"  # the panel is told someone should look at it (app.claims.jobs)
 
 
 class ClaimAttention(StrEnum):
@@ -811,6 +814,8 @@ class ClaimAttention(StrEnum):
 
     DECLINED = "declined"
     SEND_FAILED = "send_failed"
+    NO_ACK = "no_ack"  # nobody told the provider, or it did not confirm in time
+    STALE = "stale"  # confirmed (or with the studio) and not solved for days
 
 
 CLAIM_NUMBER = Sequence("claims_number_seq", start=1001)
@@ -880,6 +885,10 @@ class Claim(Base):
     )
     # When the provider was last reminded to tap "Ya está solucionado" (once every 12 h).
     provider_nudged_at: Mapped[datetime | None]
+    # Out of the providers' hours: when it goes to the provider (app.claims.jobs sends it).
+    send_after: Mapped[datetime | None] = mapped_column(index=True)
+    # When the provider got the reminder of an unconfirmed claim (once per claim).
+    reminded_at: Mapped[datetime | None]
 
     building: Mapped[Building] = relationship()
     unit: Mapped[Unit | None] = relationship(foreign_keys=[unit_id])
@@ -963,6 +972,11 @@ class ClaimEvent(Base):
     wa_message_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("wa_messages.id", ondelete="SET NULL")
     )
+    # The provider a send / confirmation / decline / reminder / close was about (metrics keep
+    # it even if the claim changes provider later).
+    provider_id: Mapped[int | None] = mapped_column(
+        ForeignKey("providers.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     claim: Mapped[Claim] = relationship(back_populates="events")
@@ -1019,3 +1033,26 @@ class ClaimDraft(Base):
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ClaimSettings(Base):
+    """The claims' settings of the admin panel ("Configuración de reclamos"), one row: when the
+    providers may be written to, and when they are reminded and the studio is told
+    (app.claims.claim_config, app.claims.jobs)."""
+
+    __tablename__ = "claim_settings"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    provider_weekdays: Mapped[str] = mapped_column(String(20), server_default="0,1,2,3,4,5")
+    provider_hours_start: Mapped[str] = mapped_column(String(5), server_default="08:00")
+    provider_hours_end: Mapped[str] = mapped_column(String(5), server_default="20:00")
+    # One date per line, DD/MM/AAAA.
+    holidays: Mapped[str | None] = mapped_column(Text)
+    urgent_any_time: Mapped[bool] = mapped_column(server_default=text("true"))
+    reminder_hours: Mapped[int] = mapped_column(server_default=text("4"))
+    reminder_urgent_minutes: Mapped[int] = mapped_column(server_default=text("30"))
+    alert_hours: Mapped[int] = mapped_column(server_default=text("8"))
+    alert_urgent_minutes: Mapped[int] = mapped_column(server_default=text("60"))
+    stale_days: Mapped[int] = mapped_column(server_default=text("3"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

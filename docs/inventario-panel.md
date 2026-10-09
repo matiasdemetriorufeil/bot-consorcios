@@ -1,5 +1,28 @@
 # Inventario del panel `/admin`
 
+## Actualización 8.6: horario de proveedores, recordatorios y avisos (2026-10-08)
+
+- **Configuración de reclamos** (Administración, solo admin, `/admin/claim-settings/list` abre
+  el formulario de la única fila): días con casillas Lunes…Domingo, horario desde/hasta,
+  feriados (una fecha por renglón, ej. 24/12/2026), «Urgentes a cualquier hora», recordatorio
+  (horas de horario / minutos si es urgente), aviso al estudio (ídem) y días sin solucionar.
+  Valida en el servidor (HH:MM, desde < hasta, al menos un día, fechas, números desde 1, aviso
+  después del recordatorio). Se usa sin reiniciar (caché de 60 s, en el mismo proceso al
+  instante). Auditado (`claim_settings_changed`, solo nombres de campos).
+- **Ficha del reclamo:** programado → «Se le manda a X mañana a las 8:00» + «Mandar ahora»;
+  fuera de horario «Reenviar» y «Cambiar quién lo atiende» ofrecen «ahora» o «en el próximo
+  horario (cuándo)»; «Recordatorio enviado …»; el motivo del aviso («El proveedor no confirmó»,
+  «Sin solucionar hace N días», «Lo tiene el estudio hace N días», «Todavía no se le avisó al
+  proveedor»).
+- **Lista de reclamos:** filtro «Atención → Necesitan atención» y el motivo bajo el estado.
+- **Avisos del panel:** los nuevos motivos suenan y cuentan como los urgentes.
+- **Métricas:** «Reclamos del mes» por estado, edificio y problema; por proveedor: enviados,
+  horas promedio hasta «Recibido» y hasta solucionado, «no pudo atenderlo» y con recordatorio.
+- **Chat de prueba:** «Tareas de reclamos» con «Como si fueran las» (fecha y hora) y «Correr
+  tareas de reclamos ahora».
+- **Servidor:** tarea cada 5 minutos (`app/claims/jobs.py`): programados, recordatorio
+  (`reclamo_recordatorio_proveedor`) y avisos; lock de Postgres y `FOR UPDATE SKIP LOCKED`.
+
 ## Actualización 8.5: el proveedor por WhatsApp (2026-10-08)
 
 - **Ficha del reclamo:** «Reenviar al proveedor» (falta avisar + proveedor con WhatsApp, con

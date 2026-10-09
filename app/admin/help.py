@@ -86,6 +86,11 @@ PAGE_HELP: dict[str, str] = {
     "edit:bot-settings": (
         "Los textos y horarios del bot. Los cambios se usan desde el próximo mensaje."
     ),
+    "edit:claim-settings": (
+        "Cuándo el bot les escribe a los proveedores, cuándo les recuerda un reclamo y cuándo "
+        "el panel avisa que uno necesita atención. Los cambios se usan en un minuto, sin "
+        "reiniciar nada."
+    ),
     "list:wa-template": (
         "Los mensajes ya preparados que se pueden mandar cuando pasó más de un día desde el "
         "último mensaje de la persona."

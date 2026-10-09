@@ -16,6 +16,7 @@ Rules live in app.claims.setup; every change is audited in bot_events (admin_act
 
 from typing import Any, ClassVar
 
+from markupsafe import Markup
 from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
 from sqlalchemy import Select, func, select
@@ -23,13 +24,16 @@ from sqlalchemy.orm import object_session, selectinload
 from starlette.datastructures import FormData
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
-from wtforms import ValidationError
+from wtforms import SelectMultipleField, ValidationError
 
 from app.admin import formatting, help, labels
-from app.admin.audit import log_admin_action
+from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user, require_admin
 from app.admin.filters import YesNoFilter
 from app.admin.views import AuditedView
+from app.bot.bot_config import parse_hour, parse_weekdays
+from app.claims.claim_config import invalidate_claim_config
+from app.claims.schedule import parse_dates
 from app.claims.setup import (
     Choice,
     SetupProblem,
@@ -49,6 +53,7 @@ from app.db.models import (
     BuildingClaimCategory,
     ClaimCategory,
     ClaimScope,
+    ClaimSettings,
     Provider,
 )
 
@@ -535,3 +540,186 @@ class BuildingClaimsView(AdminOnly, BaseView):
                     else f"Ya estaba igual que {name}.",
                 )
         return _redirect(request, "building-claims-table", building_id=building_id)
+
+
+# --- "Configuración de reclamos" ------------------------------------------------------------
+
+WEEKDAY_CHOICES = list(enumerate(["Lunes", "Martes", "Miércoles", "Jueves", "Viernes",
+                                  "Sábado", "Domingo"]))  # fmt: skip
+
+
+def _checkboxes(field: Any, **kwargs: Any) -> Markup:
+    """Inline check boxes (SQLAdmin's "form-control" class would draw them as text boxes)."""
+    boxes = [
+        Markup(
+            '<label class="form-check form-check-inline">'
+            '<input class="form-check-input" type="checkbox" name="{name}" id="{id}" '
+            'value="{value}"{checked}><span class="form-check-label">{label}</span></label>'
+        ).format(
+            name=field.name,
+            id=f"{field.id}-{value}",
+            value=value,
+            label=label,
+            checked=Markup(" checked") if checked else "",
+        )  # fmt: skip
+        for value, label, checked, _attrs in field.iter_choices()
+    ]
+    return Markup('<div id="{id}">{boxes}</div>').format(id=field.id, boxes=Markup("").join(boxes))
+
+
+class WeekdaysField(SelectMultipleField):
+    """The days as check boxes Lunes ... Domingo; stored as "0,1,2" (0 = Monday)."""
+
+    widget = staticmethod(_checkboxes)
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["choices"] = WEEKDAY_CHOICES
+        kwargs["coerce"] = int
+        super().__init__(*args, **kwargs)
+
+    def process_data(self, value: Any) -> None:
+        if isinstance(value, str):
+            value = parse_weekdays(value) or []
+        super().process_data(value)
+
+    def pre_validate(self, form: Any) -> None:
+        if not self.data:
+            raise ValidationError("Elegí al menos un día.")
+        super().pre_validate(form)
+
+
+def _valid_hour(form: Any, field: Any) -> None:
+    if parse_hour(str(field.data or "")) is None:
+        raise ValidationError("Usá el formato HH:MM, por ejemplo 08:00.")
+
+
+def _valid_holidays(form: Any, field: Any) -> None:
+    _dates, wrong = parse_dates(field.data or "")
+    if wrong:
+        raise ValidationError(
+            f"Estas fechas no se entienden: {', '.join(wrong)}. Una por renglón, como 24/12/2026."
+        )
+
+
+def _positive(form: Any, field: Any) -> None:
+    if field.data is None or field.data < 1:
+        raise ValidationError("Tiene que ser un número entero desde 1.")
+
+
+class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
+    """The single row of "Configuración de reclamos" (app.claims.claim_config): the menu opens
+    its form directly, like "Configuración del bot"."""
+
+    name = "Configuración de reclamos"
+    name_plural = "Configuración de reclamos"
+    icon = "fa-solid fa-clock"
+    audit_name = "claim_settings"
+    can_create = False
+    can_delete = False
+    column_list = [ClaimSettings.id, ClaimSettings.updated_at]
+    column_details_exclude_list = [ClaimSettings.id]
+    form_columns = [
+        ClaimSettings.provider_weekdays,
+        ClaimSettings.provider_hours_start,
+        ClaimSettings.provider_hours_end,
+        ClaimSettings.holidays,
+        ClaimSettings.urgent_any_time,
+        ClaimSettings.reminder_hours,
+        ClaimSettings.reminder_urgent_minutes,
+        ClaimSettings.alert_hours,
+        ClaimSettings.alert_urgent_minutes,
+        ClaimSettings.stale_days,
+    ]
+    form_overrides = {"provider_weekdays": WeekdaysField}
+    form_widget_args = {"holidays": {"rows": 5, "placeholder": "24/12/2026\n25/12/2026"}}
+    column_labels = {
+        ClaimSettings.id: "Configuración",
+        ClaimSettings.provider_weekdays: "Días para escribirles a los proveedores",
+        ClaimSettings.provider_hours_start: "Horario de proveedores: desde",
+        ClaimSettings.provider_hours_end: "Horario de proveedores: hasta",
+        ClaimSettings.holidays: "Feriados",
+        ClaimSettings.urgent_any_time: "Urgentes a cualquier hora",
+        ClaimSettings.reminder_hours: "Recordatorio al proveedor (horas de horario)",
+        ClaimSettings.reminder_urgent_minutes: "Recordatorio si es urgente (minutos)",
+        ClaimSettings.alert_hours: "Aviso al estudio si no confirma (horas de horario)",
+        ClaimSettings.alert_urgent_minutes: "Aviso al estudio si es urgente (minutos)",
+        ClaimSettings.stale_days: "Aviso si sigue sin solucionar (días)",
+        ClaimSettings.updated_at: "Actualizado",
+    }
+    column_formatters = {ClaimSettings.id: lambda m, a: "Configuración de reclamos"}
+    form_args = {
+        "provider_weekdays": {
+            "description": "Los días en que el bot les escribe a los proveedores (hora de Córdoba)."
+        },
+        "provider_hours_start": {
+            "description": "HH:MM. Fuera de este horario, un reclamo que no es urgente se le "
+            "manda al proveedor cuando abre.",
+            "validators": [_valid_hour],
+        },
+        "provider_hours_end": {"description": "HH:MM.", "validators": [_valid_hour]},
+        "holidays": {
+            "description": "Una fecha por renglón, como 24/12/2026. Esos días no cuentan como "
+            "horario.",
+            "validators": [_valid_holidays],
+        },
+        "urgent_any_time": {
+            "description": "Los reclamos urgentes (gas, ascensor...) se le mandan al proveedor "
+            "aunque sea de noche o feriado."
+        },
+        "reminder_hours": {
+            "description": "Si no tocó «Recibido», se le recuerda una vez, contando solo horas "
+            "del horario.",
+            "validators": [_positive],
+        },
+        "reminder_urgent_minutes": {
+            "description": "Lo mismo para los urgentes, en minutos a cualquier hora.",
+            "validators": [_positive],
+        },
+        "alert_hours": {
+            "description": "Si sigue sin confirmar, el panel avisa (con sonido). Tiene que ser "
+            "más que el recordatorio.",
+            "validators": [_positive],
+        },
+        "alert_urgent_minutes": {
+            "description": "Lo mismo para los urgentes, en minutos. Más que su recordatorio.",
+            "validators": [_positive],
+        },
+        "stale_days": {
+            "description": "Un reclamo confirmado, o que tiene el estudio, y que sigue sin "
+            "solucionar: el panel avisa a los tantos días.",
+            "validators": [_positive],
+        },
+    }
+
+    def audit_ids(self, model: ClaimSettings) -> dict[str, Any]:
+        return {}
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        days = data.get("provider_weekdays") or []
+        data["provider_weekdays"] = ",".join(str(d) for d in sorted(set(days)))
+        start = parse_hour(str(data.get("provider_hours_start") or "")) or ""
+        end = parse_hour(str(data.get("provider_hours_end") or "")) or ""
+        data["provider_hours_start"], data["provider_hours_end"] = start, end
+        if end <= start:
+            raise SetupProblem("El horario «hasta» tiene que ser después del «desde».")
+        if data.get("alert_hours", 0) <= data.get("reminder_hours", 0):
+            raise SetupProblem(
+                "El aviso al estudio tiene que ser después del recordatorio (más horas)."
+            )
+        if data.get("alert_urgent_minutes", 0) <= data.get("reminder_urgent_minutes", 0):
+            raise SetupProblem(
+                "El aviso al estudio de los urgentes tiene que ser después de su recordatorio "
+                "(más minutos)."
+            )
+        fields = changed_fields(model, data)
+        session = object_session(model)
+        if fields and session is not None:
+            log_admin_action(session, admin_user(request), "claim_settings_changed", fields=fields)
+
+    async def after_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> Response | None:
+        invalidate_claim_config()  # this process sees the change right away
+        return None

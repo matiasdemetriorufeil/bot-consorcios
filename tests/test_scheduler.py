@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.scheduler import build_scheduler
@@ -29,4 +29,12 @@ def test_jobs_never_overlap_and_catch_up_after_a_restart() -> None:
     for job in scheduler.get_jobs():
         assert job.max_instances == 1
         assert job.coalesce is True
-        assert job.misfire_grace_time >= 3600
+        # The daily ones catch up after a restart; the claims' one is done by its next run.
+        assert job.misfire_grace_time >= (300 if job.id == "claims" else 3600)
+
+
+def test_the_claims_job_runs_every_5_minutes() -> None:
+    now = datetime(2026, 3, 10, 12, 0, tzinfo=CORDOBA)
+    job = build_scheduler("America/Argentina/Cordoba").get_job("claims")
+    first = job.trigger.get_next_fire_time(None, now)
+    assert job.trigger.get_next_fire_time(first, first) - first == timedelta(minutes=5)

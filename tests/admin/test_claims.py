@@ -5,7 +5,7 @@ data only (fictitious buildings, people and providers, phones 351 555-01xx)."""
 import html
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
@@ -16,6 +16,7 @@ from app.admin import help
 from app.claims.service import Reporter, close_claim, create_claim, mark_sent
 from app.db.models import (
     Building,
+    BuildingClaimCategory,
     Claim,
     ClaimActor,
     ClaimAttachment,
@@ -28,12 +29,13 @@ from app.db.models import (
     WaMediaStatus,
     WaMessage,
 )
+from tests.admin.conftest import NOW as PANEL_NOW
 from tests.admin.conftest import Panel
 from tests.admin.wa_data import conversation, message
 from tests.bot import factories as f
 from tests.claims import factories as cf
 
-NOW = datetime.now(UTC)
+NOW = PANEL_NOW  # the panel's clock: a Wednesday at 11:00, inside the providers' hours
 WA_ANA = "+5493515550101"
 WA_BETO = "+5493515550102"
 WA_LIFTS = "+5493515550111"
@@ -645,3 +647,135 @@ def test_providers_in_conversations(logged_in: Panel, w: World) -> None:
         'class="contact-card"'
     )[1]
     assert "Reclamos abiertos" in card and f"#{claim.number} · Ascensor" in card
+
+
+# --- The providers' hours, reminders and alerts (8.6) ---------------------------------------
+
+FRIDAY_NIGHT = datetime(2026, 10, 2, 21, 0, tzinfo=NOW.tzinfo)  # opens Saturday at 8:00
+
+
+def _pending(panel: Panel, w: World) -> Claim:
+    """Not urgent, waiting to be told to a provider with WhatsApp."""
+    claim = _claim(panel.session, w.building, w.damp, unit=w.unit)
+    claim.provider_id = w.lifts.id
+    claim.status = ClaimStatus.PENDING_SEND
+    panel.session.commit()
+    return claim
+
+
+def test_out_of_hours_the_page_asks_now_or_later(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    inside = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "Reenviar al proveedor" in inside and "próximo horario" not in inside
+
+    logged_in.now[0] = FRIDAY_NIGHT
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "Mandar ahora" in page
+    assert "En el próximo horario (mañana a las 8:00)" in page
+    assert "Cambiar y mandar en el próximo horario (mañana a las 8:00)" in page
+
+    response = logged_in.client.post(
+        f"/admin/claims/{claim.id}/resend", data={"when": "later"}, follow_redirects=True
+    )
+    assert "Se le va a mandar a Ascensores Ficticios SRL mañana a las 8:00." in _text(response.text)
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.PENDING_SEND and logged_in.whatsapp.sent == []
+    assert claim.send_after == datetime(2026, 10, 3, 8, 0, tzinfo=NOW.tzinfo)
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert 'id="claim-scheduled"' in page
+    assert "Se le manda a Ascensores Ficticios SRL mañana a las 8:00" in page
+
+    # "Mandar ahora" sends it anyway.
+    logged_in.client.post(f"/admin/claims/{claim.id}/resend", data={"when": "now"})
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.SENT and claim.send_after is None
+    [(kind, to, _)] = logged_in.whatsapp.sent
+    assert (kind, to) == ("template", WA_LIFTS[1:])
+
+
+def test_changing_the_provider_out_of_hours(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)  # the studio
+    logged_in.now[0] = FRIDAY_NIGHT
+    logged_in.client.post(
+        f"/admin/claims/{claim.id}/provider", data={"provider_id": str(w.lifts.id), "when": "later"}
+    )
+    claim = _reload(logged_in.session, claim)
+    assert claim.status == ClaimStatus.PENDING_SEND and claim.send_after is not None
+    assert logged_in.whatsapp.sent == []
+
+    logged_in.client.post(f"/admin/claims/{claim.id}/provider", data={"provider_id": ""})
+    claim = _reload(logged_in.session, claim)
+    assert claim.send_after is None  # nothing left scheduled for the old provider
+
+
+def test_an_urgent_claim_goes_at_any_time(logged_in: Panel, w: World) -> None:
+    claim = _claim(logged_in.session, w.building, w.lift)  # urgent, not sent yet
+    logged_in.now[0] = FRIDAY_NIGHT
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "próximo horario" not in page and "Reenviar al proveedor" in page
+    logged_in.client.post(f"/admin/claims/{claim.id}/resend")
+    assert _reload(logged_in.session, claim).status == ClaimStatus.SENT
+
+
+def test_new_claim_out_of_hours_is_scheduled(logged_in: Panel, w: World) -> None:
+    row = logged_in.session.scalar(
+        select(BuildingClaimCategory).where(BuildingClaimCategory.category_id == w.damp.id)
+    )
+    row.provider_id = w.lifts.id
+    logged_in.session.commit()
+    logged_in.now[0] = FRIDAY_NIGHT
+    response = _new(
+        logged_in, w, category_id=str(w.damp.id), unit_id=str(w.unit.id), reporter="other",
+        name="Dora Ficticia",
+    )  # fmt: skip
+    assert "Se le va a mandar a Ascensores Ficticios SRL mañana a las 8:00." in _text(response.text)
+    assert logged_in.whatsapp.sent == []
+
+
+def test_reminder_and_attention_on_the_page_and_the_list(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    claim = _pending(logged_in, w)
+    mark_sent(s, claim, text="Avisado", actor=ClaimActor.BOT, now=NOW - timedelta(hours=9))
+    claim.reminded_at = NOW - timedelta(hours=4)
+    claim.attention = "no_ack"
+    other = _claim(s, w.building, w.lift)
+    s.commit()
+
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert "Recordatorio enviado" in page
+    assert '<div class="alert alert-warning" id="claim-attention">El proveedor no confirmó.' in page
+
+    listed = _text(logged_in.client.get("/admin/claims?attention=yes").text)
+    assert _numbers(listed) == [claim.number] and other.number not in _numbers(listed)
+    assert "El proveedor no confirmó" in listed and "(aplicados)" in listed
+
+    [alert] = [
+        a
+        for a in logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+        if a["number"] == claim.number
+    ]
+    assert alert == {
+        "id": f"{claim.id}:no_ack",
+        "number": claim.number,
+        "title": f"El proveedor no confirmó · #{claim.number}",
+        "problem": "Humedad",
+        "building": "TORRE INVENTADA",
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "text"),
+    [
+        (ClaimStatus.ACKNOWLEDGED, "Sin solucionar hace 4 días"),
+        (ClaimStatus.STUDIO, "Lo tiene el estudio hace 4 días"),
+        (ClaimStatus.PENDING_SEND, "Todavía no se le avisó al proveedor"),
+    ],
+)
+def test_the_alert_texts(logged_in: Panel, w: World, status: ClaimStatus, text: str) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    claim.status = status
+    claim.status_at = claim.acknowledged_at = NOW - timedelta(days=4)
+    claim.attention = "no_ack" if status == ClaimStatus.PENDING_SEND else "stale"
+    logged_in.session.commit()
+    [alert] = logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+    assert alert["title"] == f"{text} · #{claim.number}"

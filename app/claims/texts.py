@@ -2,7 +2,9 @@
 agent's claim tools use these: the model never writes them). Rioplatense Spanish, short, and
 never a promise of when it will be solved."""
 
-from app.db.models import ClaimStatus
+from datetime import datetime
+
+from app.db.models import Claim, ClaimStatus
 
 # --- The steps ------------------------------------------------------------------------------
 
@@ -55,6 +57,9 @@ CREATED_AND_SENT = (
     "Listo, registramos tu reclamo *#{number}* ({problem}). Ya le avisamos a la empresa que se "
     "encarga y te escribimos cuando lo confirme."
 )
+CREATED_SCHEDULED = (
+    "Listo, registramos tu reclamo *#{number}* ({problem}). Le avisamos a la empresa {when}."
+)
 CREATED_FOR_STUDIO = (
     "Listo, registramos tu reclamo *#{number}* ({problem}). Lo va a ver una persona del estudio."
 )
@@ -94,6 +99,17 @@ PHOTO_CAPTION = "Foto del reclamo #{number} ({count} de {total})"
 WHOLE_BUILDING_CONTACT = "Todo el edificio"
 URGENT_SUFFIX = " (URGENTE)"
 
+# --- What the studio is told in the panel (app.claims.jobs) ---------------------------------
+
+ATTENTION_DECLINED = "El proveedor no puede atenderlo"
+ATTENTION_SEND_FAILED = "No se le pudo avisar al proveedor"
+ATTENTION_NOT_TOLD = "Todavía no se le avisó al proveedor"
+ATTENTION_NO_ACK = "El proveedor no confirmó"
+ATTENTION_STALE = "Sin solucionar hace {days} días"
+ATTENTION_STALE_STUDIO = "Lo tiene el estudio hace {days} días"
+SCHEDULED_EVENT = "Se le va a mandar a {provider} {when} (fuera del horario de proveedores)"
+REMINDED_EVENT = "Recordatorio a {provider} por WhatsApp"
+
 # --- What the neighbors read when the provider answers ---------------------------------------
 
 NEIGHBOR_CONFIRMED = (
@@ -111,7 +127,7 @@ TEMPLATE_PREVIEWS = {
     "provider": (
         "Nuevo reclamo #{0} en {1} ({2}).\nProblema: {3}\nDetalle: {4}\nUnidad y contacto: {5}"
     ),
-    "reminder": "Recordatorio: el reclamo #{0} en {1} ({2}) sigue abierto.",
+    "reminder": "Recordatorio: el reclamo #{0} en {1} ({2}) sigue sin confirmar.",
     "confirmed": "La empresa confirmó que recibió tu reclamo #{0} ({1}).",
     "solved": "Tu reclamo #{0} ({1}) ya está solucionado.",
 }
@@ -143,3 +159,22 @@ MY_CLAIMS_LINE = "• *#{number}* {problem} ({building}): {status}"
 MY_CLAIMS_NONE = "No tenés reclamos abiertos ni cerrados en los últimos 30 días."
 CLAIM_STATUS = "Reclamo *#{number}* ({problem}, {building}), del {date}: {status}."
 CLAIM_NOT_FOUND = "No encontré un reclamo tuyo con ese número."
+
+
+def attention_text(claim: Claim, now: datetime, attention: object = None) -> str:
+    """Why the claim needs someone of the studio, in the panel's words (attention: the one
+    about to be raised; by default, the claim's)."""
+    status, attention = str(claim.status), str(attention or claim.attention or "")
+    if attention == "declined":
+        return ATTENTION_DECLINED
+    if attention == "send_failed":
+        return ATTENTION_SEND_FAILED
+    if attention == "no_ack":
+        return ATTENTION_NOT_TOLD if status == "pending_send" else ATTENTION_NO_ACK
+    if attention == "stale":
+        acknowledged = status == "acknowledged" and claim.acknowledged_at
+        since = (claim.acknowledged_at if acknowledged else claim.status_at) or now
+        days = max(1, (now - since).days)
+        template = ATTENTION_STALE_STUDIO if status == "studio" else ATTENTION_STALE
+        return template.format(days=days)
+    return ""

@@ -98,6 +98,7 @@ def _event(
     text: str | None = None,
     now: datetime | None = None,
     wa_message_id: int | None = None,
+    provider_id: int | None = None,
 ) -> None:
     session.add(
         ClaimEvent(
@@ -107,6 +108,7 @@ def _event(
             panel_user=user if actor == ClaimActor.PANEL else None,
             text=text,
             wa_message_id=wa_message_id,
+            provider_id=provider_id,
             created_at=_now(now),
         )
     )
@@ -120,12 +122,49 @@ def record_event(
     actor: ClaimActor = ClaimActor.SYSTEM,
     text: str | None = None,
     wa_message_id: int | None = None,
+    provider_id: int | None = None,
     now: datetime | None = None,
 ) -> None:
     """A line of the history that changes nothing else (a WhatsApp notice, what the provider
     wrote, a notice that could not go out)."""
-    _event(session, claim, kind, actor, None, text, now, wa_message_id)
+    _event(session, claim, kind, actor, None, text, now, wa_message_id, provider_id)
     session.flush()
+
+
+def schedule_send(
+    session: Session, claim: Claim, at: datetime, text: str, *, now: datetime
+) -> None:
+    """Out of the providers' hours: it goes at `at` (app.claims.jobs sends it)."""
+    claim.send_after = at
+    _event(
+        session, claim, ClaimEventKind.SCHEDULED, ClaimActor.SYSTEM, None, text, now,
+        provider_id=claim.provider_id,
+    )  # fmt: skip
+    session.flush()
+
+
+def mark_reminded(
+    session: Session, claim: Claim, text: str, *, wa_message_id: int | None, now: datetime
+) -> None:
+    """The provider got the reminder of an unconfirmed claim (once per send)."""
+    claim.reminded_at = now
+    _event(
+        session, claim, ClaimEventKind.REMINDED, ClaimActor.SYSTEM, None, text, now,
+        wa_message_id, claim.provider_id,
+    )  # fmt: skip
+    session.flush()
+
+
+def raise_attention(
+    session: Session, claim: Claim, attention: ClaimAttention, text: str, *, now: datetime
+) -> bool:
+    """The panel is told someone should look at it (once: False if it already was)."""
+    if claim.attention == attention:
+        return False
+    claim.attention = attention
+    _event(session, claim, ClaimEventKind.ALERT, ClaimActor.SYSTEM, None, text, now)
+    session.flush()
+    return True
 
 
 def _audit(
@@ -375,7 +414,12 @@ def mark_sent(
     _move(claim, ClaimStatus.SENT, now)
     claim.sent_at = now
     claim.attention = None
-    _event(session, claim, ClaimEventKind.SENT, actor, user, text, now, wa_message_id)
+    claim.send_after = None
+    claim.reminded_at = None
+    _event(
+        session, claim, ClaimEventKind.SENT, actor, user, text, now, wa_message_id,
+        claim.provider_id,
+    )  # fmt: skip
     action = "claim_sent_to_provider" if wa_message_id else "claim_marked_sent"
     _audit(session, actor, user, action, claim)
     session.flush()
@@ -388,15 +432,18 @@ def provider_declined(session: Session, claim: Claim, *, now: datetime | None = 
         raise InvalidTransition("El reclamo ya está cerrado: no se puede cambiar.")
     now = _now(now)
     name = claim.provider.name if claim.provider else "El proveedor"
+    provider_id = claim.provider_id
     if claim.status != ClaimStatus.STUDIO:
         _move(claim, ClaimStatus.STUDIO, now)
     claim.provider_id = None
     claim.sent_at = None
     claim.acknowledged_at = None
     claim.attention = ClaimAttention.DECLINED
+    claim.send_after = None
+    claim.reminded_at = None
     _event(
         session, claim, ClaimEventKind.DECLINED, ClaimActor.PROVIDER, None,
-        f"{name} dijo que no puede atenderlo", now,
+        f"{name} dijo que no puede atenderlo", now, provider_id=provider_id,
     )  # fmt: skip
     session.flush()
 
@@ -417,7 +464,12 @@ def mark_acknowledged(
     now = _now(now)
     _move(claim, ClaimStatus.ACKNOWLEDGED, now)
     claim.acknowledged_at = now
-    _event(session, claim, ClaimEventKind.ACKNOWLEDGED, actor, None, None, now)
+    if claim.attention == ClaimAttention.NO_ACK:
+        claim.attention = None
+    _event(
+        session, claim, ClaimEventKind.ACKNOWLEDGED, actor, None, None, now,
+        provider_id=claim.provider_id,
+    )  # fmt: skip
     session.flush()
 
 
@@ -441,9 +493,10 @@ def close_claim(
     _move(claim, status, now)
     claim.closed_at = now
     claim.attention = None
+    claim.send_after = None
     claim.close_reason = reason
     kind = ClaimEventKind.SOLVED if status == ClaimStatus.SOLVED else ClaimEventKind.CANCELLED
-    _event(session, claim, kind, actor, user, reason, now)
+    _event(session, claim, kind, actor, user, reason, now, provider_id=claim.provider_id)
     _audit(session, actor, user, f"claim_{status.value}", claim)
     session.flush()
 
@@ -476,6 +529,8 @@ def change_provider(
         claim.status_at = now
     claim.provider_id = provider.id if provider else None
     claim.attention = None
+    claim.send_after = None
+    claim.reminded_at = None
     claim.sent_at = None
     claim.acknowledged_at = None
     _event(

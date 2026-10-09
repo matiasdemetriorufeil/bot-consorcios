@@ -113,6 +113,9 @@ CLAIM_EVENT = {
     ClaimEventKind.NOTIFY_FAILED: "No se pudo avisar",
     ClaimEventKind.DECLINED: "El proveedor no puede atenderlo",
     ClaimEventKind.PROVIDER_MESSAGE: "El proveedor escribió",
+    ClaimEventKind.SCHEDULED: "Programado para el horario de proveedores",
+    ClaimEventKind.REMINDED: "Recordatorio al proveedor",
+    ClaimEventKind.ALERT: "Aviso al estudio",
 }
 # The delivery of a WhatsApp message (what the webhook reports), in a claim's history.
 MESSAGE_STATUS = {
@@ -124,6 +127,8 @@ MESSAGE_STATUS = {
 CLAIM_ATTENTION = {
     ClaimAttention.DECLINED: "El proveedor no puede atenderlo",
     ClaimAttention.SEND_FAILED: "No se le pudo avisar al proveedor",
+    ClaimAttention.NO_ACK: "El proveedor no confirmó",
+    ClaimAttention.STALE: "Sin solucionar",
 }
 
 # Handoff reasons: a short label (the inbox's tags) and the long text of
@@ -249,7 +254,10 @@ def claim_event(kind: ClaimEventKind | str, text: str | None) -> str:
     if str(kind) == ClaimEventKind.PROVIDER_CHANGED:
         return f"{title} {text}" if text else f"{title} el estudio"
     # Their text already says it all ("Avisado a X por WhatsApp", "X dijo que no puede...").
-    if str(kind) in (ClaimEventKind.NOTIFIED, ClaimEventKind.DECLINED) and text:
+    if str(kind) in (
+        ClaimEventKind.NOTIFIED, ClaimEventKind.DECLINED, ClaimEventKind.SCHEDULED,
+        ClaimEventKind.REMINDED,
+    ) and text:  # fmt: skip
         return text
     if str(kind) == ClaimEventKind.SENT and text:
         return text

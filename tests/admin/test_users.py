@@ -111,7 +111,10 @@ def test_an_operator_does_not_see_admin_sections_in_the_menu(operator: Panel) ->
     page = operator.client.get("/admin/conversations").text
 
     assert "Conversaciones" in page
-    for hidden in ("Usuarios", "Configuración del bot", "Plantillas de WhatsApp", "Métricas"):
+    for hidden in (
+        "Usuarios", "Configuración del bot", "Configuración de reclamos", "Plantillas de WhatsApp",
+        "Métricas",
+    ):  # fmt: skip
         assert hidden not in page
 
 

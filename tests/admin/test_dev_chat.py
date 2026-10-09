@@ -2,6 +2,7 @@
 as WhatsApp's, the conversation is one more in "Conversaciones", and what an operator answers
 from the inbox shows up in the chat without reaching Meta. Invented data only."""
 
+import html
 import secrets
 from collections.abc import Iterator
 from typing import Any
@@ -262,3 +263,48 @@ def test_speak_as_a_provider_and_close_the_circuit(circuit: DevPanel) -> None:
     assert circuit.session.scalar(select(Claim)).status == ClaimStatus.SOLVED
     assert circuit.real.sent == []  # nothing reached Meta
     assert circuit.script.requests == []
+
+
+def test_run_the_claim_jobs_as_if_it_were_later(circuit: DevPanel) -> None:
+    """NOW is a Wednesday at 11:00: the claim goes at once; "como si fueran las" 15:05 the
+    provider gets the reminder (4 hours of the providers' hours), at 19:05 the studio is told
+    (8 hours). Only once each."""
+    from app.db.models import Claim, ClaimAttention, ClaimEventKind, Provider
+
+    plumber = circuit.session.scalar(select(Provider))
+    circuit.client.post("/admin/dev-chat/provider", data={"provider_id": str(plumber.id)})
+    for text, tapped in [
+        ("Registrar reclamo", True), ("Humedad o filtración", True),
+        ("Mancha en el techo", False), ("Sin fotos", True), ("Sí, registrar", True),
+    ]:  # fmt: skip
+        circuit.send(text, tapped=tapped)
+    page = circuit.client.get("/admin/dev-chat").text
+    assert 'id="claim-jobs"' in page and "Correr tareas de reclamos ahora" in page
+
+    def run(at: str) -> str:
+        response = circuit.client.post(
+            "/admin/dev-chat/claim-jobs", data={"at": at, "phone": PROVIDER_PHONE},
+            follow_redirects=True,
+        )  # fmt: skip
+        return html.unescape(response.text)
+
+    assert "0 recordatorio(s)" in run("2026-09-30T14:55")
+    page = run("2026-09-30T15:05")
+    assert "como si fueran las 30/09/2026 15:05" in page and "1 recordatorio(s)" in page
+    assert "Recordatorio: el reclamo #" in circuit.poll(PROVIDER_PHONE)["html"]
+    assert "0 recordatorio(s)" in run("2026-09-30T15:10")  # only once
+    assert "1 aviso(s) al estudio" in run("2026-09-30T19:05")
+    assert "0 aviso(s) al estudio" in run("2026-09-30T19:10")
+
+    circuit.session.expire_all()
+    claim = circuit.session.scalar(select(Claim))
+    assert claim.attention == ClaimAttention.NO_ACK
+    kinds = [e.kind for e in claim.events]
+    assert kinds.count(ClaimEventKind.REMINDED) == 1 and kinds.count(ClaimEventKind.ALERT) == 1
+    assert circuit.real.sent == []  # nothing reached Meta
+    assert "no se entiende" in run("ayer a la tarde")
+
+
+def test_the_claim_jobs_button_only_in_development(logged_in: Panel) -> None:
+    response = logged_in.client.post("/admin/dev-chat/claim-jobs", data={})
+    assert response.status_code in (404, 405)

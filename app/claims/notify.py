@@ -8,6 +8,9 @@ app.claims.service.
   detail cut at DETAIL_LIMIT. The contact of the neighbor goes to the provider only for a kind
   of one unit (decision of 08/10); for the whole building, "Todo el edificio".
 - Every button carries a signed payload (app.claims.payloads): a made-up one does nothing.
+- dispatch() respects the providers' hours ("Configuración de reclamos"): out of them a normal
+  claim is scheduled for the next opening (app.claims.jobs sends it); an urgent one goes at
+  once if "urgentes a cualquier hora" is on. The jobs also send the reminder (remind()).
 - A neighbor whose 24-hour window is open gets free text; otherwise the template. A neighbor
   without a phone is not told (the history says so). The same phone is told once.
 - Every message is stored in the recipient's conversation (created if it did not exist); a
@@ -32,7 +35,15 @@ from sqlalchemy.orm import Session
 from app.bot.choices import Choice
 from app.bot.unit_search import display_building_name
 from app.claims import payloads, texts
-from app.claims.service import mark_sent, needs_attention, record_event
+from app.claims.claim_config import ClaimConfig, load_claim_config
+from app.claims.schedule import when_text
+from app.claims.service import (
+    mark_reminded,
+    mark_sent,
+    needs_attention,
+    record_event,
+    schedule_send,
+)
 from app.config import Settings
 from app.db.models import (
     BotEvent,
@@ -60,6 +71,15 @@ logger = logging.getLogger(__name__)
 
 DETAIL_LIMIT = 300
 EMPTY = "—"
+
+
+@dataclass(frozen=True)
+class Dispatched:
+    """What dispatch did: sent (how it went) or scheduled (when it goes, and how to say it)."""
+
+    sent: "Sent | None" = None
+    scheduled_at: datetime | None = None
+    when: str = ""
 
 
 @dataclass(frozen=True)
@@ -285,6 +305,70 @@ class Notifier:
 
     # --- The provider ---------------------------------------------------------------------------
 
+    def config(self, session: Session) -> ClaimConfig:
+        return load_claim_config(session, self.settings.timezone)
+
+    def must_wait(self, session: Session, claim: Claim) -> datetime | None:
+        """When it should go if not now (out of the providers' hours), else None."""
+        config = self.config(session)
+        now = self._now()
+        if (claim.urgent and config.urgent_any_time) or config.hours.is_open(now):
+            return None
+        return config.hours.next_opening(now)
+
+    def dispatch(
+        self, session: Session, claim: Claim, user: str | None = None, *, mode: str = "auto"
+    ) -> Dispatched:
+        """Sends the claim to its provider now, or schedules it for the next opening of the
+        providers' hours. mode: "auto" (the hours decide), "now" or "later" (the panel's
+        choice out of hours)."""
+        provider = claim.provider
+        if claim.status != ClaimStatus.PENDING_SEND or provider is None or not provider.active:
+            return Dispatched(sent=Sent(ok=False, error="no está para avisar"))
+        if not provider.whatsapp_e164:
+            return Dispatched(sent=Sent(ok=False, error="el proveedor no tiene WhatsApp cargado"))
+        opening = None if mode == "now" else self.must_wait(session, claim)
+        if opening is None:
+            return Dispatched(sent=self.notify_provider(session, claim, user))
+        when = when_text(opening, self._now(), self.settings.timezone)
+        schedule_send(
+            session, claim, opening,
+            texts.SCHEDULED_EVENT.format(provider=provider.name, when=when), now=self._now(),
+        )  # fmt: skip
+        return Dispatched(scheduled_at=opening, when=when)
+
+    def remind(self, session: Session, claim: Claim) -> Sent:
+        """reclamo_recordatorio_proveedor to the claim's provider (number, building, problem),
+        with "Recibido" and "Ya está solucionado"."""
+        provider = claim.provider
+        if provider is None or not provider.whatsapp_e164:
+            return Sent(ok=False, error="el proveedor no tiene WhatsApp cargado")
+        subject = payloads.provider_subject(provider.id)
+        buttons = [
+            self.button(claim, texts.ACK_BUTTON, "ack", subject),
+            self.button(claim, texts.SOLVED_BUTTON, "solved", subject),
+        ]
+        params = template_params(claim)[:2] + [flat(problem_text(claim))]
+        sent = self._template(
+            session, provider.whatsapp_e164, self.settings.claim_template_reminder,
+            texts.TEMPLATE_PREVIEWS["reminder"], params, buttons, provider=True,
+        )  # fmt: skip
+        if sent.ok:
+            mark_reminded(
+                session, claim, texts.REMINDED_EVENT.format(provider=provider.name),
+                wa_message_id=sent.message_id, now=self._now(),
+            )  # fmt: skip
+        else:
+            record_event(
+                session, claim, ClaimEventKind.NOTIFY_FAILED,
+                text=f"No se pudo mandar el recordatorio a {provider.name}: {sent.error}",
+                wa_message_id=sent.message_id, provider_id=provider.id, now=self._now(),
+            )  # fmt: skip
+            claim.reminded_at = self._now()  # once: the alert to the studio follows anyway
+        self._log(session, claim, "provider", "reminder", sent)
+        session.flush()
+        return sent
+
     def notify_provider(self, session: Session, claim: Claim, user: str | None = None) -> Sent:
         """Sends the claim to its provider (only pending_send, a provider with WhatsApp).
         Went: the claim is sent. Did not: it stays pending_send, with the error in its history
@@ -314,8 +398,9 @@ class Notifier:
             record_event(
                 session, claim, ClaimEventKind.NOTIFY_FAILED,
                 text=f"No se pudo avisar a {provider.name} por WhatsApp: {sent.error}",
-                wa_message_id=sent.message_id, now=self._now(),
+                wa_message_id=sent.message_id, provider_id=provider.id, now=self._now(),
             )  # fmt: skip
+            claim.send_after = None  # not tried again by itself: the panel shows the alert
             needs_attention(session, claim, ClaimAttention.SEND_FAILED)
         self._log(session, claim, "provider", "new_claim", sent)
         session.flush()

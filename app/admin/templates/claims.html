@@ -39,7 +39,8 @@
                   ('category', 'Problema', options.categories, f.category),
                   ('attends', 'Lo atiende', options.attends, f.attends),
                   ('status', 'Estado', options.statuses, f.status),
-                  ('urgent', 'Urgente', options.urgent, f.urgent)] %}
+                  ('urgent', 'Urgente', options.urgent, f.urgent),
+                  ('attention', 'Atención', options.attention, f.attention)] %}
               <div class="col-12 col-sm-6 col-lg">
                 <label class="form-label small" for="filter-{{ name }}">{{ label }}</label>
                 <select class="form-select" id="filter-{{ name }}" name="{{ name }}">
@@ -52,7 +53,7 @@
               {% endfor %}
               <div class="col-12 col-lg-auto d-flex align-items-end gap-2">
                 <button class="btn btn-primary" type="submit">Aplicar</button>
-                {% if f.any_filter %}<a class="btn btn-secondary" href="{{ link(building=None, category=None, attends=None, status=None, urgent=None, page=None) }}">Quitar filtros</a>{% endif %}
+                {% if f.any_filter %}<a class="btn btn-secondary" href="{{ link(building=None, category=None, attends=None, status=None, urgent=None, attention=None, page=None) }}">Quitar filtros</a>{% endif %}
               </div>
             </div>
           </details>
@@ -68,7 +69,7 @@
         </thead>
         <tbody>
           {% for row in result.rows %}
-          <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if row.urgent and row.group != 'closed' else '' }}">
+          <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if (row.urgent or row.attention) and row.group != 'closed' else '' }}">
             <td data-label="N.º" class="text-nowrap"><a class="fw-bold" href="{{ url_for('admin:view-claim', claim_id=row.id) }}">#{{ row.number }}</a>{% if row.urgent %} <span class="badge bg-red-lt">Urgente</span>{% endif %}</td>
             <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
             <td data-label="Edificio">{{ row.building }}</td>
@@ -79,6 +80,7 @@
             <td data-label="Estado">
               <span class="badge claim-status claim-{{ row.group }}">{{ row.status_label }}</span>
               <div class="small text-secondary text-nowrap">{{ row.ago }}</div>
+              {% if row.attention %}<div class="small text-warning claim-row-attention">{{ row.attention }}</div>{% endif %}
             </td>
           </tr>
           {% endfor %}

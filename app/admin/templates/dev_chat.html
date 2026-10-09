@@ -76,6 +76,25 @@
     </div>
     {% endif %}
 
+    <div class="card mb-3" id="claim-jobs">
+      <div class="card-header"><h3 class="card-title">Tareas de reclamos</h3></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin:view-dev-chat-claim-jobs') }}" class="row g-2">
+          <input type="hidden" name="phone" value="{{ phone or '' }}">
+          <div class="col-12 col-md-8">
+            <label class="form-label small" for="claim-jobs-at">Como si fueran las (hora de Córdoba; vacío: ahora)</label>
+            <input class="form-control" type="datetime-local" id="claim-jobs-at" name="at">
+          </div>
+          <div class="col-12 col-md-4 d-flex align-items-end"><button class="btn btn-primary w-100" type="submit"><i class="fa-solid fa-gears me-1"></i>Correr tareas de reclamos ahora</button></div>
+        </form>
+        <p class="text-muted small mt-2 mb-0">
+          Lo que hace cada 5 minutos el servidor: manda los reclamos programados para el horario
+          de proveedores, los recordatorios y los avisos al estudio. Con otra fecha y hora,
+          para probarlo sin esperar. Corre sobre todos los reclamos de esta base.
+        </p>
+      </div>
+    </div>
+
     <div class="card mb-3">
       <div class="card-header"><h3 class="card-title">Buscar una persona de la base</h3></div>
       <div class="card-body">

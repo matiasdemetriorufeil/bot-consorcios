@@ -67,4 +67,54 @@
     </table>
   </div>
 </div>
+
+<div class="col-12"><h2 class="page-title mt-3" id="claims-metrics">Reclamos del mes</h2>
+  <div class="text-muted">Desde el {{ c.month_start.strftime("%d/%m/%Y") }}: {{ c.total }} reclamo(s).</div>
+</div>
+{% for card_id, title, rows in [
+    ('claims-by-status', 'Por estado', c.by_status),
+    ('claims-by-building', 'Por edificio', c.by_building),
+    ('claims-by-category', 'Por problema', c.by_category)] %}
+<div class="col-md-6 col-lg-4">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">{{ title }}</h3></div>
+    <table class="table card-table table-vcenter" id="{{ card_id }}">
+      <tbody>
+        {% for name, count in rows %}
+        <tr><td>{{ name }}</td><td class="w-1 text-end">{{ count }}</td></tr>
+        {% else %}
+        <tr><td class="text-muted">Sin reclamos este mes.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Proveedores (mes)</h3></div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter rows-table" id="claims-by-provider">
+        <thead>
+          <tr><th>Proveedor</th><th class="text-end">Reclamos enviados</th><th class="text-end">Horas hasta «Recibido»</th><th class="text-end">Horas hasta solucionado</th><th class="text-end">No pudo atenderlo</th><th class="text-end">Necesitaron recordatorio</th></tr>
+        </thead>
+        <tbody>
+          {% for p in c.providers %}
+          <tr>
+            <td data-label="Proveedor">{{ p.name }}</td>
+            <td data-label="Reclamos enviados" class="text-end">{{ p.sent }}</td>
+            <td data-label="Horas hasta «Recibido»" class="text-end">{% if p.hours_to_ack is none %}–{% else %}{{ "%.1f" | format(p.hours_to_ack) }}{% endif %}</td>
+            <td data-label="Horas hasta solucionado" class="text-end">{% if p.hours_to_solve is none %}–{% else %}{{ "%.1f" | format(p.hours_to_solve) }}{% endif %}</td>
+            <td data-label="No pudo atenderlo" class="text-end">{{ p.declined }}</td>
+            <td data-label="Necesitaron recordatorio" class="text-end">{{ p.reminded }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-muted">Este mes no se le mandó ningún reclamo a un proveedor.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer small text-secondary">Horas reales promedio desde que se le mandó el reclamo. Si un reclamo pasó por varios proveedores, cuenta para cada uno.</div>
+  </div>
+</div>
 {% endblock %}

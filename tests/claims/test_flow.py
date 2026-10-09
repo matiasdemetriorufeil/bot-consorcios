@@ -20,6 +20,7 @@ from app.config import Settings
 from app.db.models import (
     BotEvent,
     Building,
+    BuildingClaimCategory,
     Claim,
     ClaimActor,
     ClaimCategory,
@@ -522,3 +523,39 @@ def test_a_new_claim_goes_to_the_provider_and_a_repeated_one_does_not(w: World) 
     reply = _report_lift(w, agent, BETO, "Sigue sin andar")
     assert reply.text == texts.JOINED.format(number=claim.number)
     assert [kind for kind, _, _ in fake.sent] == ["template"]  # nothing new to the provider
+
+
+def test_out_of_the_providers_hours_the_neighbor_is_told_when(w: World) -> None:
+    """A claim that is not urgent, a Friday at 21:00: it goes to the company on Saturday at
+    8:00 (app.claims.jobs) and the neighbor is told so."""
+    from app.claims.notify import Notifier
+    from tests.whatsapp.fakes import FakeWhatsApp
+
+    row = w.session.scalar(
+        select(BuildingClaimCategory).where(
+            BuildingClaimCategory.building_id == w.torre.id,
+            BuildingClaimCategory.category_id == w.damp.id,
+        )
+    )
+    row.provider_id = w.lifts.id
+    w.session.commit()
+    friday_night = datetime(2026, 10, 9, 21, 0, tzinfo=TZ)
+    fake = FakeWhatsApp()
+    settings = Settings(_env_file=None, claims_payload_secret="secreto-inventado")
+    provider, _ = scripted_provider("anthropic", [])
+    agent = Agent(
+        provider, settings=settings, refresh_debt=lambda uid: None, now=lambda: friday_night,
+        notifier=Notifier(fake, settings, now=lambda: friday_night),
+    )  # type: ignore[arg-type]  # fmt: skip
+
+    for text in ("Registrar reclamo", "Humedad o filtración", "Mancha en el techo", "Sin fotos"):
+        say(w, agent, ANA, text)
+    reply = say(w, agent, ANA, "Sí, registrar")
+    [claim] = _claims(w.session)
+    assert claim.status == ClaimStatus.PENDING_SEND
+    assert claim.send_after == datetime(2026, 10, 10, 8, 0, tzinfo=TZ)
+    assert reply.text == (
+        f"Listo, registramos tu reclamo *#{claim.number}* (Humedad o filtración). Le avisamos "
+        "a la empresa mañana a las 8:00."
+    )
+    assert fake.sent == []

@@ -24,6 +24,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from sqladmin import Admin, ModelView
@@ -39,7 +40,12 @@ from app.admin import formatting, help, i18n, labels
 from app.admin.amenities import AmenitiesView
 from app.admin.auth import AdminAuth, LoginLimiter
 from app.admin.claims import ClaimsView, urgent_open_count
-from app.admin.claims_setup import BuildingClaimsView, ClaimCategoryAdmin, ProviderAdmin
+from app.admin.claims_setup import (
+    BuildingClaimsView,
+    ClaimCategoryAdmin,
+    ClaimSettingsAdmin,
+    ProviderAdmin,
+)
 from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
 from app.admin.guide import GUIDE_FILES_DIR, GuideView
@@ -60,7 +66,7 @@ from app.admin.views import (
 from app.admin.wa_media import WaMediaView
 from app.claims.notify import Notifier
 from app.config import Settings
-from app.db.models import BotSettings
+from app.db.models import BotSettings, ClaimSettings
 from app.db.session import SessionLocal
 from app.whatsapp.bot import WhatsAppBot
 from app.whatsapp.client import WhatsAppError
@@ -70,6 +76,7 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_PATH = "/static"
 BOT_SETTINGS_IDENTITY = "bot-settings"
+CLAIM_SETTINGS_IDENTITY = "claim-settings"
 # In the menu's order: first what the operators use, then the admin-only ones (AdminOnly,
 # under "Administración"; the test chat goes last, in development). The rest is not in the menu.
 VIEWS = (
@@ -84,6 +91,7 @@ VIEWS = (
     ProviderAdmin,
     ClaimCategoryAdmin,
     BuildingClaimsView,
+    ClaimSettingsAdmin,
     BotSettingsAdmin,
     WaTemplateAdmin,
     QuickReplyAdmin,
@@ -117,9 +125,9 @@ def claims_notifier(
     """The claims' WhatsApp messages from the panel, with the inbox's client (None without
     WhatsApp)."""
 
-    def get() -> Notifier | None:
+    def get(now: Callable[[], datetime] | None = None) -> Notifier | None:
         client = sender()
-        return Notifier(client, settings) if client is not None else None
+        return Notifier(client, settings, now=now) if client is not None else None
 
     return get
 
@@ -135,16 +143,19 @@ async def _home(request: Request) -> Response:
     return RedirectResponse(request.url_for("admin:view-conversations"), status_code=302)
 
 
-def _bot_settings_form(session_maker: sessionmaker) -> Callable[[Request], Response]:
-    """The bot settings' list has a single row: the menu (and SQLAdmin's "Save" and "Cancel",
-    which go back to the list) open its form instead. The form checks login and role."""
+def _single_row_form(
+    session_maker: sessionmaker, model: Any, identity: str
+) -> Callable[[Request], Response]:
+    """A settings' list with a single row (the bot's, the claims'): the menu (and SQLAdmin's
+    "Save" and "Cancel", which go back to the list) open its form instead. The form checks
+    login and role."""
 
     def endpoint(request: Request) -> Response:
         with session_maker() as session:
-            settings_id = session.scalar(select(BotSettings.id).order_by(BotSettings.id).limit(1))
+            settings_id = session.scalar(select(model.id).order_by(model.id).limit(1))
         if settings_id is None:
             raise HTTPException(status_code=404)
-        url = request.url_for("admin:edit", identity=BOT_SETTINGS_IDENTITY, pk=settings_id)
+        url = request.url_for("admin:edit", identity=identity, pk=settings_id)
         return RedirectResponse(url, status_code=302)
 
     return endpoint
@@ -220,19 +231,21 @@ def setup_admin(
         "session_maker": session_maker,
         "sender_factory": staticmethod(sender),
     }
+    claims: dict[str, object] = {
+        "timezone": settings.timezone,
+        "session_maker": session_maker,
+        "notifier_factory": staticmethod(claims_notifier(sender, settings)),
+    }
     if clock is not None:
         conversations["clock"] = staticmethod(clock)
+        claims["clock"] = staticmethod(clock)
     extra: dict[type, dict[str, object]] = {
         ConversationsView: conversations,
         VerificationsView: {"timezone": settings.timezone, "session_maker": session_maker},
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},
-        ClaimsView: {
-            "timezone": settings.timezone,
-            "session_maker": session_maker,
-            "notifier_factory": staticmethod(claims_notifier(sender, settings)),
-        },
+        ClaimsView: claims,
         UsersView: {
             "timezone": settings.timezone,
             "session_maker": session_maker,
@@ -248,6 +261,7 @@ def setup_admin(
             "timezone": settings.timezone,
             "session_maker": session_maker,
             "bot_factory": staticmethod(bot_factory or _default_bot),
+            "notifier_factory": claims["notifier_factory"],
         }
         if clock is not None:
             dev_chat["clock"] = staticmethod(clock)
@@ -272,12 +286,16 @@ def setup_admin(
         0, Mount("/guide-files", StaticFiles(directory=GUIDE_FILES_DIR), name="guide-files")
     )
     # Before SQLAdmin's "/{identity}/list".
-    routes.insert(
-        1,
-        Route(
-            f"/{BOT_SETTINGS_IDENTITY}/list",
-            endpoint=_bot_settings_form(session_maker),
-            name="bot-settings-form",
-        ),
-    )
+    for identity, model in (
+        (BOT_SETTINGS_IDENTITY, BotSettings),
+        (CLAIM_SETTINGS_IDENTITY, ClaimSettings),
+    ):
+        routes.insert(
+            1,
+            Route(
+                f"/{identity}/list",
+                endpoint=_single_row_form(session_maker, model, identity),
+                name=f"{identity}-form",
+            ),
+        )
     return admin

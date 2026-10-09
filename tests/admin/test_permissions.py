@@ -33,6 +33,7 @@ from app.db.models import (
     BuildingInfoCategory,
     ClaimCategory,
     ClaimScope,
+    ClaimSettings,
     PanelRole,
     PanelUser,
     Provider,
@@ -76,6 +77,7 @@ ADMIN_SECTION = [
     "Proveedores",
     "Tipos de problema",
     "Reclamos por edificio",
+    "Configuración de reclamos",
     "Configuración del bot",
     "Plantillas de WhatsApp",
     "Respuestas rápidas",
@@ -213,6 +215,10 @@ def _menu(page: str) -> list[str]:
 # --- An operator against every admin page and action -------------------------------------------
 
 SETTINGS_FORM = {"welcome_message": "Cambio de la operadora", "save": "Save"}
+CLAIM_SETTINGS_FORM = {"provider_weekdays": "6", "provider_hours_start": "07:00",
+                       "provider_hours_end": "09:00", "reminder_hours": "1", "alert_hours": "2",
+                       "reminder_urgent_minutes": "1", "alert_urgent_minutes": "2",
+                       "stale_days": "1", "save": "Save"}  # fmt: skip
 BUILDING_FORM = {
     "name": "X", "address": "Cambio de la operadora", "claims_bot_enabled": "y", "save": "Save"
 }  # fmt: skip
@@ -265,6 +271,10 @@ ADMIN_ACTIONS: list[tuple[str, str, dict[str, str] | None]] = [
     ("get", "/admin/bot-settings/details/{settings}", None),
     ("get", "/admin/bot-settings/edit/{settings}", None),
     ("post", "/admin/bot-settings/edit/{settings}", SETTINGS_FORM),
+    # Claim settings (the list goes to the form: followed)
+    ("get", "/admin/claim-settings/list", None),
+    ("get", "/admin/claim-settings/edit/1", None),
+    ("post", "/admin/claim-settings/edit/1", CLAIM_SETTINGS_FORM),
     # WhatsApp templates and quick replies
     ("get", "/admin/wa-template/list", None),
     ("get", "/admin/wa-template/create", None),
@@ -293,6 +303,7 @@ ADMIN_ACTIONS: list[tuple[str, str, dict[str, str] | None]] = [
     ("get", "/admin/dev-chat/poll?phone=%2B5493515550000", None),
     ("post", "/admin/dev-chat/send", {"phone": "+5493515550000", "text": "hola"}),
     ("post", "/admin/dev-chat/restart", {"phone": "+5493515550000"}),
+    ("post", "/admin/dev-chat/claim-jobs", {"at": ""}),
     # The SUM's set-up
     ("post", "/admin/amenities/new", {"building_id": "{building_without_sum}"}),
     ("get", "/admin/amenities/{amenity}/config", None),
@@ -327,6 +338,10 @@ def _snapshot(session: Session) -> dict[str, Any]:
         ],
         "amenity": (amenity.name, amenity.min_advance_hours) if amenity else None,
         "welcome": settings.welcome_message if settings else None,
+        "claim_settings": [
+            (c.provider_weekdays, c.provider_hours_start, c.stale_days)
+            for c in session.scalars(select(ClaimSettings))
+        ],
         "buildings": [
             (b.name, b.address, b.claims_bot_enabled) for b in session.scalars(select(Building))
         ],
