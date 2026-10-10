@@ -339,14 +339,14 @@ class Notifier:
 
     def remind(self, session: Session, claim: Claim) -> Sent:
         """reclamo_recordatorio_proveedor to the claim's provider (number, building, problem),
-        with "Recibido" and "Ya está solucionado"."""
+        with "Recibido" and "Ya esta solucionado" (as approved in Meta)."""
         provider = claim.provider
         if provider is None or not provider.whatsapp_e164:
             return Sent(ok=False, error="el proveedor no tiene WhatsApp cargado")
         subject = payloads.provider_subject(provider.id)
         buttons = [
             self.button(claim, texts.ACK_BUTTON, "ack", subject),
-            self.button(claim, texts.SOLVED_BUTTON, "solved", subject),
+            self.button(claim, texts.REMINDER_SOLVED_BUTTON, "solved", subject),
         ]
         params = template_params(claim)[:2] + [flat(problem_text(claim))]
         sent = self._template(

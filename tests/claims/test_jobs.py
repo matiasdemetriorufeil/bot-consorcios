@@ -36,6 +36,7 @@ from app.db.models import (
     ClaimSource,
     ClaimStatus,
     Provider,
+    WaMessage,
 )
 from tests.bot import factories as f
 from tests.claims import factories as cf
@@ -223,7 +224,12 @@ def test_one_reminder_after_four_hours_of_the_hours(w: World) -> None:
         (LIFTS_WA[1:], "reclamo_nuevo_proveedor"),
         (LIFTS_WA[1:], "reclamo_recordatorio_proveedor"),
     ]
-    # Its buttons: "Recibido" and "Ya está solucionado", signed for this claim and provider.
+    # Its buttons: "Recibido" and "Ya esta solucionado" (as approved in Meta: no accent),
+    # signed for this claim and provider.
+    reminder = w.session.scalars(
+        select(WaMessage).where(WaMessage.message_type == "template").order_by(WaMessage.id.desc())
+    ).first()
+    assert reminder.choices == ["Recibido", "Ya esta solucionado"]
     secret = w.notifier.secret
     actions = []
     for payload in w.fake.payloads[-1]:
@@ -380,3 +386,18 @@ def test_a_run_waits_when_another_one_holds_the_lock(w: World, db_session: Sessi
             other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY})
     assert report.ran is False and report.sent == [] and w.fake.sent == []
     assert w.jobs(at(3, 8, 5)).sent == [claim.id]
+
+
+def test_check_templates_expects_what_the_code_sends(w: World) -> None:
+    """scripts/check_templates.py compares Meta against the same constants notify uses: the
+    reminder's "solved" button without the accent, every other message with it."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "check_templates.py"
+    spec = importlib.util.spec_from_file_location("check_templates", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.EXPECTED["claim_template_reminder"] == (3, ["Recibido", "Ya esta solucionado"])
+    assert module.EXPECTED["claim_template_provider"] == (6, ["Recibido", "No puedo atenderlo"])
+    assert texts.SOLVED_BUTTON == "Ya está solucionado"  # the messages that are not templates

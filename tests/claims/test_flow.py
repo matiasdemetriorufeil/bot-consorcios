@@ -443,6 +443,52 @@ def test_photos_with_the_limit(w: World) -> None:
     assert len(claim.attachments) == MAX_PHOTOS and claim.attachments[0].wa_message_id == first
 
 
+def test_a_photo_after_listo_joins_the_summary(w: World) -> None:
+    """The photo was still downloading when the person tapped *Listo*: it is processed with
+    the summary already shown, joins the claim and the summary comes again."""
+    agent, _ = _agent()
+    _until_description(w, agent)
+    say(w, agent, ANA, "Mancha en la pared")
+    reply = say(w, agent, ANA, "Sin fotos")
+    assert "*Fotos:* ninguna" in reply.text
+
+    reply = say(w, agent, ANA, "", (_photo(w),))
+    assert reply.text.startswith(texts.CONFIRM_PHOTO_ADDED + "\n\n")
+    assert "*Fotos:* 1" in reply.text
+    assert _titles(reply) == [texts.REGISTER, texts.DONT_REGISTER]
+    say(w, agent, ANA, "Sí, registrar")
+    [claim] = _claims(w.session)
+    assert len(claim.attachments) == 1
+
+
+def test_a_photo_in_the_summary_keeps_the_limit(w: World) -> None:
+    agent, _ = _agent()
+    _until_description(w, agent)
+    say(w, agent, ANA, "Mancha en la pared")
+    for _ in range(MAX_PHOTOS):
+        say(w, agent, ANA, "", (_photo(w),))
+    say(w, agent, ANA, "Listo")
+
+    reply = say(w, agent, ANA, "", (_photo(w),))
+    assert reply.text.startswith(texts.CONFIRM_PHOTO_LIMIT.format(limit=MAX_PHOTOS))
+    assert f"*Fotos:* {MAX_PHOTOS}" in reply.text
+    reply = say(w, agent, ANA, "", (_photo(w, stored=False),))
+    assert reply.text.startswith(texts.CONFIRM_PHOTO_LIMIT.format(limit=MAX_PHOTOS))
+    say(w, agent, ANA, "Sí, registrar")
+    [claim] = _claims(w.session)
+    assert len(claim.attachments) == MAX_PHOTOS
+
+
+def test_a_photo_in_the_summary_that_was_not_stored(w: World) -> None:
+    agent, _ = _agent()
+    _until_description(w, agent)
+    say(w, agent, ANA, "Mancha en la pared")
+    say(w, agent, ANA, "Sin fotos")
+    reply = say(w, agent, ANA, "", (_photo(w, stored=False),))
+    assert reply.text.startswith(texts.CONFIRM_PHOTO_NOT_SAVED)
+    assert "*Fotos:* ninguna" in reply.text
+
+
 # --- "Mis reclamos" and the status of one --------------------------------------------------------
 
 

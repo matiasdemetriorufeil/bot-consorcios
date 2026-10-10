@@ -84,6 +84,55 @@ def test_a_photo_without_a_claim_still_gets_the_fixed_reply(make_wa: MakeWa) -> 
     assert wa.llm_calls == 0 and len(fake.texts()) == 1
 
 
+def test_a_photo_processed_after_listo_reaches_the_provider(
+    make_wa: MakeWa, db_session: Session
+) -> None:
+    """Prueba 8.7: the photo arrived first but was still downloading when *Listo* was
+    processed. Processed after it (with the summary shown), it joins the claim and goes to the
+    provider when it confirms."""
+    fake = FakeWhatsApp()
+    fake.media[MEDIA_ID] = {"url": URL, "mime_type": "image/jpeg", "id": MEDIA_ID}
+    fake.files[URL] = b"\xff\xd8 foto inventada"
+    wa = make_wa(fake=fake)
+    _enable(db_session)
+    _post(wa, list_reply("Registrar reclamo", wa.now))
+    _post(wa, list_reply("Humedad o filtración", wa.now))
+    _post(wa, text_message("Mancha grande en el baño", wa.now))
+    _post(wa, button_reply("Listo", wa.now))  # processed before the photo
+    _post(wa, media_message("image", wa.now, media_id=MEDIA_ID))
+
+    kind, _, (text, titles) = fake.sent[-1]
+    assert kind == "choices" and text.startswith(texts.CONFIRM_PHOTO_ADDED)
+    assert "*Fotos:* 1" in text and titles == [texts.REGISTER, texts.DONT_REGISTER]
+    _post(wa, button_reply("Sí, registrar", wa.now))
+    db_session.expire_all()
+    claim = db_session.scalar(select(Claim))
+    assert len(claim.attachments) == 1
+
+    ack, _ = _template_payloads(wa)
+    fake.sent.clear()
+    _provider_says(wa, template_button("Recibido", ack, wa.now))
+    assert [kind for kind, to, _ in fake.sent if to == PROVIDER_PHONE[1:]].count("image") == 1
+    assert wa.llm_calls == 0
+
+
+def test_a_photo_after_registering_stays_in_the_conversation(
+    make_wa: MakeWa, db_session: Session
+) -> None:
+    """Approved: a photo processed after "Sí, registrar" is not added to the claim; it gets
+    the fixed reply, as any photo without a claim being reported."""
+    fake = FakeWhatsApp()
+    fake.media[MEDIA_ID] = {"url": URL, "mime_type": "image/jpeg", "id": MEDIA_ID}
+    fake.files[URL] = b"\xff\xd8 foto inventada"
+    wa = make_wa(fake=fake)
+    claim = _registered(wa, db_session)
+    fake.sent.clear()
+    _post(wa, media_message("image", wa.now, media_id=MEDIA_ID))
+    db_session.expire_all()
+    assert db_session.get(Claim, claim.id).attachments == []
+    assert len(fake.texts()) == 1 and wa.llm_calls == 0
+
+
 def test_the_menu_list_goes_to_the_flow(make_wa: MakeWa, db_session: Session) -> None:
     wa = make_wa()
     _enable(db_session)

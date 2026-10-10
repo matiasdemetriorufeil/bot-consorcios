@@ -31,6 +31,11 @@ PHOTOS = "Si querés, mandá fotos ahora. Cuando termines, tocá *Listo*."
 PHOTO_RECEIVED = "Recibí la foto ({count} de {limit}). Podés mandar otra o tocar *Listo*."
 PHOTO_LIMIT = "Ya tengo {limit} fotos, que es el máximo. Tocá *Listo* para seguir."
 PHOTO_NOT_SAVED = "No pude guardar esa foto. Probá mandarla de nuevo o tocá *Listo*."
+# A photo that arrives with the summary already shown (it was still downloading when the person
+# tapped *Listo*): it is added and the summary shown again.
+CONFIRM_PHOTO_ADDED = "Sumé la foto al reclamo."
+CONFIRM_PHOTO_LIMIT = "Ya tengo {limit} fotos, que es el máximo: esa no la sumé."
+CONFIRM_PHOTO_NOT_SAVED = "No pude guardar esa foto. Probá mandarla de nuevo."
 ADDED_TO_DESCRIPTION = "Lo sumé a la descripción. Si querés, mandá fotos o tocá *Listo*."
 DESCRIPTION_FULL = (
     "Eso ya no entra en la descripción (hasta {limit} caracteres). Mandá fotos o tocá *Listo*."
@@ -84,6 +89,9 @@ FAILED = "No pude registrar el reclamo: {reason}"
 ACK_BUTTON = "Recibido"
 DECLINE_BUTTON = "No puedo atenderlo"
 SOLVED_BUTTON = "Ya está solucionado"
+# The same button in the reclamo_recordatorio_proveedor template: written as Meta approved it
+# (without the accent). Only for that template; the other messages keep SOLVED_BUTTON.
+REMINDER_SOLVED_BUTTON = "Ya esta solucionado"
 REGISTER_BUTTON = "Registrar reclamo"
 PROVIDER_THANKS = (
     "Gracias, quedó registrado el reclamo #{number}. Cuando esté solucionado, tocá el botón."

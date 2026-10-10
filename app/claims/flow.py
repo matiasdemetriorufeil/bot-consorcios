@@ -67,7 +67,9 @@ NO_WORDS = frozenset({"no"})
 Step = ClaimDraftStep
 CHOICE_STEPS = (Step.CHOOSE_UNIT, Step.CONFIRM_CATEGORY, Step.CHOOSE_CATEGORY, Step.CONFIRM)
 FREE_TEXT_STEPS = (Step.FOLLOW_UP, Step.DESCRIPTION)
-PHOTO_STEPS = (Step.FOLLOW_UP, Step.DESCRIPTION, Step.PHOTOS)
+# A photo alone is taken in these steps. CONFIRM too: a photo still downloading when *Listo* is
+# tapped is processed after it, with the summary already shown.
+PHOTO_STEPS = (Step.FOLLOW_UP, Step.DESCRIPTION, Step.PHOTOS, Step.CONFIRM)
 
 
 @dataclass
@@ -541,7 +543,9 @@ def _ask_photos(draft: ClaimDraft, now: datetime, text: str = texts.PHOTOS) -> F
     return _offer(draft, Step.PHOTOS, text, choices, now)
 
 
-def _ask_confirmation(session: Session, draft: ClaimDraft, now: datetime) -> FlowReply:
+def _ask_confirmation(
+    session: Session, draft: ClaimDraft, now: datetime, note: str | None = None
+) -> FlowReply:
     unit = _unit(session, draft)
     category = _category(session, draft)
     building = session.get(Building, unit.building_id)
@@ -553,6 +557,8 @@ def _ask_confirmation(session: Session, draft: ClaimDraft, now: datetime) -> Flo
         description=draft.description or "",
         photos=photos or "ninguna",
     )
+    if note:
+        text = f"{note}\n\n{text}"
     choices = [Choice(texts.REGISTER, "yes"), Choice(texts.DONT_REGISTER, "no")]
     return _offer(draft, Step.CONFIRM, text, choices, now)
 
@@ -582,6 +588,16 @@ def _add_photos(session: Session, draft: ClaimDraft, photo_ids: Sequence[int]) -
             kept.append(message_id)
     draft.attachment_ids = kept
     return problem
+
+
+def _confirm_photo_note(session: Session, draft: ClaimDraft, photo_ids: Sequence[int]) -> str:
+    """A photo alone with the summary shown: kept (up to MAX_PHOTOS) and said so."""
+    problem = _add_photos(session, draft, photo_ids)
+    if problem is None:
+        return texts.CONFIRM_PHOTO_ADDED
+    if len(draft.attachment_ids or []) >= MAX_PHOTOS:
+        return texts.CONFIRM_PHOTO_LIMIT.format(limit=MAX_PHOTOS)
+    return texts.CONFIRM_PHOTO_NOT_SAVED
 
 
 def handle(
@@ -627,6 +643,9 @@ def _answer(
     notifier: Any = None,
 ) -> FlowReply:
     step = Step(draft.step)
+    if step == Step.CONFIRM and photo_ids and not text:
+        note = _confirm_photo_note(session, draft, photo_ids)
+        return _ask_confirmation(session, draft, now, note)
     if step in CHOICE_STEPS:
         value = _pick(draft, text)
         if value is None and not draft.reprompted:

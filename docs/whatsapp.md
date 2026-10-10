@@ -15,6 +15,13 @@ En internet se publica **solo** `/webhooks/whatsapp`. El panel nunca queda públ
 Todos los pasos en Meta se hacen **a mano**. Los tokens y claves van en `.env` y nunca se suben
 al repo.
 
+**Después de cambiar el `.env`, recreá la api y el scheduler** (el scheduler manda los
+reclamos programados y los recordatorios a los proveedores). Un `restart` no relee el `.env`:
+
+```powershell
+docker compose up -d --force-recreate --no-deps api scheduler
+```
+
 ## 0. Sin celular: el chat de prueba
 
 Para probar el bot y la bandeja no hace falta nada de lo que sigue. Con `APP_ENV=development`,

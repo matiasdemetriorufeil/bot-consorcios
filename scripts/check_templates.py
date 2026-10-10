@@ -13,15 +13,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.claims import texts  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.whatsapp.client import WhatsAppClient, WhatsAppError  # noqa: E402
 
 # name setting -> (variables, quick-reply buttons) app.claims.notify uses.
 EXPECTED = {
-    "claim_template_provider": (6, ["Recibido", "No puedo atenderlo"]),
-    "claim_template_reminder": (3, ["Recibido", "Ya está solucionado"]),
+    "claim_template_provider": (6, [texts.ACK_BUTTON, texts.DECLINE_BUTTON]),
+    "claim_template_reminder": (3, [texts.ACK_BUTTON, texts.REMINDER_SOLVED_BUTTON]),
     "claim_template_confirmed": (2, []),
-    "claim_template_solved": (2, ["Registrar reclamo"]),
+    "claim_template_solved": (2, [texts.REGISTER_BUTTON]),
 }
 
 
