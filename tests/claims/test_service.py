@@ -302,6 +302,26 @@ def test_no_previous_claim_of_another_kind_or_neighbor(db_session: Session, w: W
     assert _create(db_session, w.building, w.lift, ANA).claim.previous_claim_id is None
 
 
+def test_a_cancelled_claim_is_never_the_previous_one(db_session: Session, w: World) -> None:
+    """Only solved claims are linked: a cancelled one was not the problem coming back."""
+    solved = _closed(db_session, w, w.lift, 10)
+    cancelled = _create(db_session, w.building, w.lift, ANA, now=NOW - timedelta(days=3)).claim
+    close_claim(
+        db_session, cancelled, ClaimStatus.CANCELLED, "Estaba repetido", actor=ClaimActor.PANEL,
+        now=NOW - timedelta(days=2),
+    )  # fmt: skip
+    assert _create(db_session, w.building, w.lift, ANA).claim.previous_claim_id == solved.id
+
+
+def test_only_a_cancelled_claim_links_nothing(db_session: Session, w: World) -> None:
+    cancelled = _create(db_session, w.building, w.lift, ANA, now=NOW - timedelta(days=3)).claim
+    close_claim(
+        db_session, cancelled, ClaimStatus.CANCELLED, "Estaba repetido", actor=ClaimActor.PANEL,
+        now=NOW - timedelta(days=2),
+    )  # fmt: skip
+    assert _create(db_session, w.building, w.lift, ANA).claim.previous_claim_id is None
+
+
 def test_the_previous_claim_of_a_neighbor_who_joined(db_session: Session, w: World) -> None:
     old = _create(db_session, w.building, w.lift, ANA, now=NOW - timedelta(days=6)).claim
     _create(db_session, w.building, w.lift, BETO, now=NOW - timedelta(days=6))

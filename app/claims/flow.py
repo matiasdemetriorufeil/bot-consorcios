@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -41,6 +42,7 @@ from app.bot.unit_search import display_building_name
 from app.claims import payloads, texts
 from app.claims.service import ClaimProblem, Reporter, create_claim
 from app.claims.setup import enabled_categories, split_for_whatsapp
+from app.config import Settings
 from app.db.models import (
     BotEvent,
     Building,
@@ -712,6 +714,18 @@ def _choice(
     return _off_step(session, draft)
 
 
+def _previous_text(previous: Claim, notifier: Any = None) -> str:
+    """«…de tu reclamo #1001, que se había solucionado el 09/10.» (Córdoba date)."""
+    timezone = (
+        notifier.settings.timezone
+        if notifier is not None
+        else Settings.model_fields["timezone"].default
+    )
+    solved = previous.closed_at or previous.status_at
+    date = solved.astimezone(ZoneInfo(timezone)).strftime("%d/%m")
+    return texts.PREVIOUS.format(number=previous.number, date=date)
+
+
 def _register(
     session: Session, draft: ClaimDraft, now: datetime, notifier: Any = None
 ) -> FlowReply:
@@ -766,7 +780,7 @@ def _register(
             )
             text = template.format(number=claim.number, problem=category.list_title)
         if claim.previous is not None:
-            text += " " + texts.PREVIOUS.format(number=claim.previous.number)
+            text += " " + _previous_text(claim.previous, notifier)
     _log(
         session,
         draft,

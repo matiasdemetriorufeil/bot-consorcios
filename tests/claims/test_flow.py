@@ -280,7 +280,10 @@ def test_the_previous_claim_is_mentioned(w: World) -> None:
     say(w, agent, ANA, "Volvió la humedad")
     say(w, agent, ANA, "Sin fotos")
     reply = say(w, agent, ANA, "Sí, registrar")
-    assert reply.text.endswith(texts.PREVIOUS.format(number=old.number))
+    assert reply.text.endswith(
+        f"Tenemos en cuenta que es el mismo problema de tu reclamo #{old.number}, que se "
+        "había solucionado el 06/10."  # solved 2 days before NOW, Córdoba date
+    )
 
 
 def test_several_units_choose_first(w: World) -> None:

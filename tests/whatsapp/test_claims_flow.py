@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.claims import texts
-from app.db.models import Building, Claim, ClaimStatus
+from app.db.models import Building, Claim, ClaimStatus, WaMessage
 from tests.claims import factories as cf
 from tests.llm.fakes import Call
 from tests.whatsapp.conftest import MakeWa, Wa
@@ -206,6 +206,47 @@ def test_a_provider_never_reaches_the_agent(make_wa: MakeWa, db_session: Session
     assert wa.conversation(PROVIDER_PHONE[1:]).status == "provider"
 
 
+def _body_params(components: list) -> list[str]:
+    body = next(c for c in components if c["type"] == "body")
+    return [p["text"] for p in body["parameters"]]
+
+
+def test_the_provider_gets_nothing_of_the_previous_claim(
+    make_wa: MakeWa, db_session: Session
+) -> None:
+    """The link to a previous claim is only for the neighbor and the panel: the provider
+    gets the new claim as any other (its template, no word of the old one)."""
+    wa = make_wa()
+    old = _registered(wa, db_session)
+    ack, _ = _template_payloads(wa)
+    _provider_says(wa, template_button("Recibido", ack, wa.now))
+    [solved] = wa.fake.payloads[-1]
+    _provider_says(wa, button_reply("Ya está solucionado", wa.now, reply_id=solved))
+    wa.fake.sent.clear()
+    wa.fake.components.clear()
+
+    _post(wa, list_reply("Registrar reclamo", wa.now))
+    _post(wa, list_reply("Humedad o filtración", wa.now))
+    _post(wa, text_message("Volvió la mancha", wa.now))
+    _post(wa, button_reply("Sin fotos", wa.now))
+    _post(wa, button_reply("Sí, registrar", wa.now))
+    db_session.expire_all()
+    new = db_session.scalar(select(Claim).where(Claim.id != old.id))
+    assert new is not None and new.previous_claim_id == old.id
+
+    to_provider = [(kind, content) for kind, to, content in wa.fake.sent
+                   if to == PROVIDER_PHONE[1:]]  # fmt: skip
+    assert to_provider == [("template", ("reclamo_nuevo_proveedor", "es_AR"))]
+    [components] = wa.fake.components
+    params = _body_params(components)
+    assert params[0] == str(new.number)
+    assert not any(f"{old.number}" in p or "anterior" in p.lower() for p in params)
+    stored = db_session.scalars(
+        select(WaMessage).where(WaMessage.conversation_id == wa.conversation(PROVIDER_PHONE[1:]).id)
+    ).all()
+    assert not any("anterior" in (m.body or "").lower() for m in stored)
+
+
 def test_registrar_reclamo_from_the_notice_links_the_new_claim(
     make_wa: MakeWa, db_session: Session
 ) -> None:
@@ -227,4 +268,4 @@ def test_registrar_reclamo_from_the_notice_links_the_new_claim(
     db_session.expire_all()
     new = db_session.scalar(select(Claim).where(Claim.id != claim.id))
     assert new is not None and new.previous_claim_id == claim.id
-    assert texts.PREVIOUS.format(number=claim.number) in wa.fake.sent[-1][2]
+    assert texts.PREVIOUS.format(number=claim.number, date="30/09") in wa.fake.sent[-1][2]

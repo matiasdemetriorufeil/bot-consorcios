@@ -41,7 +41,8 @@ from app.db.models import (
     Unit,
 )
 
-# A claim of the same kind closed this recently is linked as the previous one.
+# A claim of the same kind solved this recently is linked as the previous one (a cancelled
+# one never: the problem was not there).
 PREVIOUS_WINDOW = timedelta(days=30)
 
 S = ClaimStatus
@@ -221,8 +222,8 @@ def _previous_claim(
     reporter: Reporter,
     now: datetime,
 ) -> Claim | None:
-    """The latest claim of the same kind closed in the last 30 days by the same neighbor (or,
-    for a kind of one unit, of the same unit)."""
+    """The latest claim of the same kind solved in the last 30 days by the same neighbor (or,
+    for a kind of one unit, of the same unit). Cancelled ones are not linked."""
     conditions = _reporter_condition(reporter)
     if category.scope == ClaimScope.UNIT and unit is not None:
         conditions.append(Claim.unit_id == unit.id)
@@ -233,7 +234,7 @@ def _previous_claim(
         .where(
             Claim.building_id == building_id,
             Claim.category_id == category.id,
-            Claim.status.in_(CLOSED_CLAIM_STATUSES),
+            Claim.status == ClaimStatus.SOLVED,
             Claim.closed_at >= now - PREVIOUS_WINDOW,
             or_(*conditions),
         )
@@ -243,12 +244,13 @@ def _previous_claim(
 
 
 def _own_closed_claim(session: Session, claim_id: int, reporter: Reporter) -> Claim | None:
+    """That claim, if this neighbor's and solved ("Registrar reclamo" in its notice)."""
     conditions = _reporter_condition(reporter)
     if not conditions:
         return None
     return session.scalars(
         select(Claim).where(
-            Claim.id == claim_id, Claim.status.in_(CLOSED_CLAIM_STATUSES), or_(*conditions)
+            Claim.id == claim_id, Claim.status == ClaimStatus.SOLVED, or_(*conditions)
         )
     ).first()
 

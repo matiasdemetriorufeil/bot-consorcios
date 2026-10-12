@@ -76,7 +76,10 @@ ALREADY_JOINED = (
     "Ya había un reclamo abierto por esto en el edificio (*#{number}*) y ya estabas sumado: te "
     "vamos a avisar cuando se solucione."
 )
-PREVIOUS = "Lo vinculamos con tu reclamo anterior #{number}."
+PREVIOUS = (
+    "Tenemos en cuenta que es el mismo problema de tu reclamo #{number}, que se había "
+    "solucionado el {date}."
+)
 NOT_REGISTERED = "Listo, no registré el reclamo. Si querés, empezamos de nuevo cuando quieras."
 CANCELLED = "Listo, dejé el reclamo sin registrar."
 REPROMPT = "No te entendí: elegí una de las opciones."
