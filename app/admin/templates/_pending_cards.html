@@ -1,0 +1,67 @@
+{#- The cards of «Pendientes» (the page and, redrawn, the panel's numbers): p is an
+    app.admin.pending.Pending. A card in zero is dimmed and says «Al día». No names, phones
+    nor units here. -#}
+{% macro card(key, number, href, detail="", urgent=False) %}
+{% set texts = pending_cards[key] %}
+<section class="card pending-card{% if not number %} pending-card-done{% elif urgent %} pending-card-urgent{% endif %}" data-card="{{ key }}">
+  <div class="card-body">
+    <div class="pending-head">
+      {% if number %}<span class="pending-number">{{ number }}</span>
+      {% else %}<span class="pending-done">{{ empty_texts['pending:card'] }}</span>{% endif %}
+      <h3 class="pending-title">{{ texts.title }}</h3>
+    </div>
+    <p class="pending-text">{{ texts.text }}</p>
+    {% if number and detail %}<p class="pending-detail">{{ detail }}</p>{% endif %}
+    <a class="btn {{ 'btn-primary' if number else 'btn-secondary' }} pending-button" href="{{ href }}">{{ texts.button }}</a>
+  </div>
+</section>
+{% endmacro %}
+{% if p.all_clear %}
+<div class="card all-clear mb-3" id="all-clear">
+  <div class="card-body">
+    <div class="all-clear-title"><i class="fa-solid fa-circle-check me-2"></i>Todo al día</div>
+    <p class="mb-0">{{ empty_texts['pending'] }}</p>
+  </div>
+</div>
+{% endif %}
+<div class="pending-grid">
+  {% set waiting_detail %}{% if p.waiting_urgent %}{{ p.waiting_urgent }} urgente{{ 's' if p.waiting_urgent != 1 }} · {% endif %}la más vieja espera {{ p.waiting_oldest }}{% endset %}
+  {{ card('waiting', p.waiting, url_for('admin:view-conversations') ~ '?tab=waiting', waiting_detail, p.waiting_urgent > 0) }}
+  {{ card('mine', p.mine, url_for('admin:view-conversations') ~ '?tab=mine') }}
+  {% set claims_detail %}{% if p.claims_urgent %}{{ p.claims_urgent }} urgente{{ 's' if p.claims_urgent != 1 }}{% endif %}{% endset %}
+  {{ card('claims', p.claims, url_for('admin:view-claims') ~ '?tab=open&attention=yes', claims_detail, p.claims_urgent > 0) }}
+  {{ card('phones', p.phones, url_for('admin:view-phones') ~ '?tab=review') }}
+  {{ card('verifications', p.verifications, url_for('admin:view-verifications'), 'la más vieja es del ' ~ p.verifications_oldest) }}
+  {% set sum_texts = pending_cards["sum"] %}
+  <section class="card pending-card pending-card-info" data-card="sum">
+    <div class="card-body">
+      <div class="pending-head">
+        <span class="pending-number pending-number-info">{{ p.sum_days | sum(attribute='total') }}</span>
+        <h3 class="pending-title">{{ sum_texts.title }}</h3>
+      </div>
+      <p class="pending-text">{{ sum_texts.text }}</p>
+      {% set any_sum = p.sum_days | selectattr('buildings') | list %}
+      {% if any_sum %}
+      <ul class="pending-sum">
+        {% for d in p.sum_days if d.buildings %}
+        <li><strong>{{ d.label }}:</strong>
+          {% for building, amenity_id, n in d.buildings %}<a href="{{ url_for('admin:view-amenity-week', amenity_id=amenity_id) }}?start={{ d.day.isoformat() }}&day={{ d.day.weekday() }}">{{ building }} ({{ n }})</a>{{ ' · ' if not loop.last }}{% endfor %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="pending-detail">{{ empty_texts['pending:sum'] }}</p>
+      {% endif %}
+      <a class="btn btn-secondary pending-button" href="{{ url_for('admin:view-amenities') }}">{{ sum_texts.button }}</a>
+    </div>
+  </section>
+</div>
+{% if p.admin %}
+{% set a = p.admin %}
+<div class="pending-admin" id="pending-admin">
+  <span class="pending-admin-title">Administración</span>
+  <a class="{{ 'text-danger fw-bold' if a.sync_problem }}" href="{{ url_for('admin:list', identity='sync-run') }}">Última sincronización: {{ a.sync_text }}</a>
+  <a class="{{ 'text-danger fw-bold' if a.providers_without_whatsapp }}" href="{{ url_for('admin:list', identity='provider') }}">Proveedores sin WhatsApp con edificios: {{ a.providers_without_whatsapp }}</a>
+  <a href="{{ url_for('admin:view-conversations') }}?reason=no_answer">Preguntas que el bot no supo responder esta semana: {{ a.no_answer_week }}</a>
+</div>
+{% endif %}

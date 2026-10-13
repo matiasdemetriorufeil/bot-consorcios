@@ -1,9 +1,65 @@
 /* The panel's own script, loaded after SQLAdmin's (templates/sqladmin/base.html): the few
-   texts SQLAdmin writes from its JavaScript, in Spanish, the folded filters, the one
-   confirmation dialog before what cannot be undone, and the tour of "Conversaciones".
+   texts SQLAdmin writes from its JavaScript, in Spanish, the folded filters, the panel's
+   numbers and alerts on every page (app.admin.pending), the one confirmation dialog before
+   what cannot be undone, and the tour of "Conversaciones".
    No libraries: everything here is plain DOM. */
 (function () {
   "use strict";
+  var root = typeof window !== "undefined" ? window : globalThis;
+
+  // --- Two decisions without the page, so they can be tested alone (tests/admin/test_panel_js.py)
+
+  // What to do with the answer of a poll: "ok" (use it), "retry" (a server error, an odd answer:
+  // the next poll), "reload" (the session is gone: the login) or "warn" (gone, but there is a
+  // message being written: say so instead of losing it). A network failure never gets here.
+  // url and loginUrl may be whole URLs or paths: only their paths are compared.
+  function pathOf(url) { return String(url || "").replace(/^[a-z]+:\/\/[^/]+/i, "").split(/[?#]/)[0]; }
+  root.panelSessionAction = function (status, url, isJson, hasDraft, loginUrl) {
+    var login = pathOf(loginUrl);
+    var gone = status === 401 || status === 403 || (!!login && pathOf(url) === login);
+    if (gone) return hasDraft ? "warn" : "reload";
+    return status >= 200 && status < 300 && isJson ? "ok" : "retry";
+  };
+
+  // Which alerts are new, given what this browser already alerted (stored: {key: when}, null the
+  // first time: then everything is taken as seen, without a sound). Keeps the current keys and
+  // the ones of the last maxAge milliseconds; older ones that no longer wait are dropped.
+  root.panelClaimAlerts = function (stored, keys, now, maxAge) {
+    var first = !stored, next = {}, fresh = [];
+    stored = stored || {};
+    Object.keys(stored).forEach(function (key) {
+      if (keys.indexOf(key) >= 0 || now - stored[key] < maxAge) next[key] = stored[key];
+    });
+    keys.forEach(function (key) {
+      if (Object.prototype.hasOwnProperty.call(stored, key)) return;
+      next[key] = now;
+      if (!first) fresh.push(key);
+    });
+    return { fresh: fresh, stored: next };
+  };
+
+  // The list of «Reclamos» when the panel's numbers arrive: "none" (no claim changed), "refresh"
+  // (redraw it) or "wait" (something changed, but she is typing in the search or has the
+  // filters open: later).
+  root.panelClaimsListAction = function (shownStamp, newStamp, busy) {
+    if (!newStamp || newStamp === shownStamp) return "none";
+    return busy ? "wait" : "refresh";
+  };
+
+  // fn, called only once the calls stop for `wait` ms (one request when she stops typing, not
+  // one per key). Timers can be given (the tests).
+  root.panelDebounce = function (fn, wait, setTimer, clearTimer) {
+    setTimer = setTimer || function (f, ms) { return root.setTimeout(f, ms); };
+    clearTimer = clearTimer || function (id) { root.clearTimeout(id); };
+    var timer = null;
+    return function () {
+      var args = arguments, self = this;
+      if (timer !== null) clearTimer(timer);
+      timer = setTimer(function () { timer = null; fn.apply(self, args); }, wait);
+    };
+  };
+
+  if (typeof document === "undefined") return;
 
   // "Number of characters: N" under each text area (SQLAdmin's main.js): ours runs after its own.
   document.querySelectorAll(".chars-count-label").forEach(function (label) {
@@ -49,13 +105,19 @@
     });
   }
 
-  // --- Alerts: a short beep (no sound file) and a browser notification --------------------------
-  // Used by "Conversaciones" (people waiting) and by the urgent claims (both "Conversaciones" and
-  // "Reclamos" poll them). A click on the "Avisos" button unlocks the sound for the visit.
+  // --- Alerts: a short beep (no sound file) and a browser notification -----------------------
+  // Browsers only play sound after a click or a key on the page: the first one unlocks it,
+  // without asking anything. The button of the bar asks for the notifications' permission.
   var audio = null;
-  function beep() {
+  function unlockSound() {
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+    } catch (e) { /* no sound */ }
+  }
+  function beep() {
+    try {
+      unlockSound();
       var osc = audio.createOscillator(), gain = audio.createGain();
       osc.frequency.value = 880;
       osc.connect(gain); gain.connect(audio.destination);
@@ -72,92 +134,329 @@
   }
   window.panelBeep = beep;
   window.panelNotify = notify;
+  function firstGesture() {
+    unlockSound();
+    document.removeEventListener("pointerdown", firstGesture, true);
+    document.removeEventListener("keydown", firstGesture, true);
+  }
+  document.addEventListener("pointerdown", firstGesture, true);
+  document.addEventListener("keydown", firstGesture, true);
+
+  var topbar = document.getElementById("panel-topbar");
   var alertsButton = document.getElementById("enable-alerts");
+  var alertsOff = document.getElementById("alerts-off");
+  function permission() { return "Notification" in window ? Notification.permission : "unsupported"; }
   function showAlertsState() {
-    if (!alertsButton) return;
-    var granted = "Notification" in window && Notification.permission === "granted";
-    alertsButton.textContent = granted ? "🔔 Avisos activos" : "🔔 Activar avisos";
+    var state = permission();
+    if (alertsButton) alertsButton.textContent = state === "granted" ? "🔔 Avisos activos" : "🔔 Activar avisos";
+    if (!alertsOff) return;
+    alertsOff.hidden = state !== "default" && state !== "denied";
+    // The notice has its own «Activar»: the bar's button, only once they are on.
+    if (alertsButton) alertsButton.hidden = !alertsOff.hidden;
+    alertsOff.querySelector('[data-alerts-text="off"]').hidden = state !== "default";
+    alertsOff.querySelector('[data-alerts-text="blocked"]').hidden = state !== "denied";
+    alertsOff.querySelector("[data-alerts-enable]").hidden = state !== "default";
   }
   showAlertsState();
-  if (alertsButton) {
-    alertsButton.addEventListener("click", function () {
+  document.querySelectorAll("[data-alerts-enable]").forEach(function (button) {
+    button.addEventListener("click", function () {
       beep();
-      if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission().then(showAlertsState);
-      }
+      if (permission() === "default") Notification.requestPermission().then(showAlertsState);
       showAlertsState();
     });
+  });
+
+  // --- A lost session: reload to the login, unless a message is being written ----------------
+  var sessionStopped = false;
+  function hasDraft() {
+    return Array.prototype.some.call(document.querySelectorAll("form textarea, form input"), function (el) {
+      var form = el.form;
+      if (!form || (form.getAttribute("method") || "get").toLowerCase() !== "post") return false;
+      if (el.tagName === "INPUT" && ["text", "search", "email", "tel", "number"].indexOf(el.type) < 0) return false;
+      return el.value !== el.defaultValue && el.value.trim() !== "";
+    });
+  }
+  // For every request of the panel's pages (the polls, the redrawn parts): "ok" when the answer
+  // can be used (JSON, or HTML with kind "html").
+  window.panelSessionCheck = function (response, kind) {
+    var login = topbar ? topbar.dataset.loginUrl : "";
+    var type = response.headers.get("content-type") || "";
+    var expected = type.indexOf(kind === "html" ? "html" : "json") >= 0;
+    var action = window.panelSessionAction(response.status, response.url, expected, hasDraft(), login);
+    if (action === "reload") window.location.reload();
+    if (action === "warn" && !sessionStopped) {
+      sessionStopped = true;
+      var notice = document.getElementById("session-gone");
+      if (notice) notice.hidden = false;
+    }
+    return action;
+  };
+  window.panelSessionStopped = function () { return sessionStopped; };
+
+  // --- The panel's numbers (app.admin.pending): one request for every page --------------------
+  // One tab asks (the one holding the "panel-poll" lock) and tells the others through a
+  // BroadcastChannel; a visible tab that heard nothing for a while asks itself (the asking tab
+  // may be in the background, where the browser slows it down). Old browsers: every tab asks.
+  var pendingUrl = topbar && topbar.dataset.pendingUrl;
+  var cardsBox = document.querySelector("[data-pending-cards]");
+  var EVERY = 5000, STALE = 12000, KEEP = 3 * 24 * 3600 * 1000;
+  var TITLE = "Panel · Estudio Diego Rufeil";
+  var channel = null;
+  try { channel = "BroadcastChannel" in window ? new BroadcastChannel("panel-numbers") : null; } catch (e) { channel = null; }
+  var shared = !!(channel && navigator.locks);
+  var leader = false, busy = false, heardAt = 0, cardsWantedAt = 0;
+
+  function setTitle(n) { document.title = (n ? "(" + n + ") " : "") + TITLE; }
+  if (topbar) setTitle(Number(topbar.dataset.titleCount) || 0);
+
+  function showCounters(counts) {
+    document.querySelectorAll("[data-counter]").forEach(function (badge) {
+      var key = badge.dataset.counter, n = counts[key] || 0, urgent = counts[key + "_urgent"] || 0;
+      badge.textContent = String(n);
+      badge.hidden = n === 0;
+      badge.classList.toggle("menu-badge-urgent", urgent > 0);
+      badge.classList.toggle("menu-badge-neutral", urgent === 0);
+    });
   }
 
-  // Urgent open claims: the menu's counter, and an alert for each new one (not for those that
-  // were already open when the page loaded).
-  var seenUrgent = null;
-  window.panelUrgentClaims = function (claims) {
-    if (!claims) return;
-    document.querySelectorAll("[data-urgent-claims]").forEach(function (badge) {
-      badge.textContent = String(claims.length);
-      badge.hidden = claims.length === 0;
+  // What was already alerted, shared by the tabs of this browser (localStorage), so an alert
+  // sounds once: changing pages or with two tabs open. Read and written under a lock.
+  var memory = null;
+  function readAlerted() {
+    try { var raw = window.localStorage.getItem("panel-alerted"); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return memory; }
+  }
+  function writeAlerted(value) {
+    memory = value;
+    try { window.localStorage.setItem("panel-alerted", JSON.stringify(value)); } catch (e) { /* memory only */ }
+  }
+  function watching(id) {
+    var app = document.getElementById("inbox-app");
+    return !!app && app.dataset.open === String(id) && document.visibilityState === "visible";
+  }
+  function announce(fresh, alerts) {
+    if (!fresh.length) return;
+    var isFresh = function (key) { return fresh.indexOf(key) >= 0; };
+    var waiting = fresh.filter(function (key) { return key.indexOf("conv:") === 0; }).length;
+    if (waiting) {
+      notify("Esperando persona", waiting === 1
+        ? "Entró una conversación que necesita a alguien del estudio."
+        : "Entraron " + waiting + " conversaciones que necesitan a alguien del estudio.");
+    }
+    var mine = (alerts.mine || []).filter(function (m) { return isFresh(m.key) && !watching(m.id); });
+    if (mine.length) notify("Mensaje nuevo", "Te escribieron en una conversación que tenés asignada.");
+    (alerts.claims || []).forEach(function (c) {
+      if (isFresh("claim:" + c.id)) notify(c.title || "Reclamo urgente #" + c.number, c.problem + " · " + c.building);
     });
-    var ids = claims.map(function (c) { return c.id; });
-    if (seenUrgent) {
-      claims.filter(function (c) { return seenUrgent.indexOf(c.id) < 0; }).forEach(function (c) {
-        notify(c.title || "Reclamo urgente #" + c.number, c.problem + " · " + c.building);
+  }
+  function handleAlerts(alerts) {
+    if (!alerts) return;
+    var keys = (alerts.waiting || []).concat(
+      (alerts.mine || []).map(function (m) { return m.key; }),
+      (alerts.claims || []).map(function (c) { return "claim:" + c.id; }));
+    var run = function () {
+      var result = window.panelClaimAlerts(readAlerted(), keys, Date.now(), KEEP);
+      writeAlerted(result.stored);
+      announce(result.fresh, alerts);
+    };
+    // A hidden tab waits a moment: the alert is better given by the visible one (its sound is
+    // more likely unlocked).
+    window.setTimeout(function () {
+      if (navigator.locks) navigator.locks.request("panel-alerts", run);
+      else run();
+    }, document.visibilityState === "visible" ? 0 : 1000);
+  }
+
+  function applyNumbers(data) {
+    heardAt = Date.now();
+    showCounters(data.counts || {});
+    setTitle(data.title_count || 0);
+    if (cardsBox && data.cards_html) cardsBox.innerHTML = data.cards_html;
+    handleAlerts(data.alerts);
+    // For the pages that follow them (the list of «Reclamos»).
+    document.dispatchEvent(new CustomEvent("panel:numbers", { detail: data }));
+  }
+
+  function askNumbers() {
+    if (!pendingUrl || busy || sessionStopped) return;
+    busy = true;
+    var cards = !!cardsBox || Date.now() - cardsWantedAt < STALE;
+    fetch(pendingUrl + (cards ? "?cards=1" : ""), { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (response) { return window.panelSessionCheck(response) === "ok" ? response.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        applyNumbers(data);
+        if (channel) channel.postMessage({ type: "numbers", data: data });
+      })
+      .catch(function () { /* offline for a moment: next time */ })
+      .finally(function () { busy = false; });
+  }
+
+  if (pendingUrl) {
+    if (channel) {
+      channel.onmessage = function (event) {
+        var message = event.data || {};
+        if (message.type === "numbers" && message.data) applyNumbers(message.data);
+        if (message.type === "want-cards") cardsWantedAt = Date.now();
+      };
+    }
+    if (shared) {
+      // Held while the page is open: the browser hands it to another tab when this one goes.
+      navigator.locks.request("panel-poll", function () {
+        leader = true;
+        askNumbers();
+        return new Promise(function () {});
       });
     }
-    seenUrgent = ids;
-  };
-  // Pages without their own polling ("Reclamos") ask for them every few seconds.
-  var urgentPoll = document.querySelector("[data-urgent-poll]");
-  if (urgentPoll) {
-    var urgentUrl = urgentPoll.dataset.urgentPoll;
-    var urgentEvery = (Number(urgentPoll.dataset.seconds) || 10) * 1000;
-    var askUrgent = function () {
-      fetch(urgentUrl, { credentials: "same-origin", headers: { Accept: "application/json" } })
-        .then(function (r) { return r.ok && (r.headers.get("content-type") || "").indexOf("json") >= 0 ? r.json() : null; })
-        .then(function (data) { if (data) window.panelUrgentClaims(data.urgent_claims); })
-        .catch(function () { /* offline for a moment: next time */ });
-    };
-    askUrgent();
-    setInterval(askUrgent, urgentEvery);
+    window.setInterval(function () {
+      if (cardsBox && channel) channel.postMessage({ type: "want-cards" });
+      var stale = document.visibilityState === "visible" && Date.now() - heardAt > STALE;
+      if (!shared || leader || stale) askNumbers();
+    }, EVERY);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") askNumbers();
+    });
+    askNumbers();
   }
 
-  // --- "Nuevo reclamo" (claim_new.html) ---------------------------------------------------------
-  // Only the fields of the chosen way of saying who reported, and only the people of the chosen
-  // unit. A help: the server checks both again.
-  var claimForm = document.getElementById("claim-form");
-  if (claimForm) {
-    var unitSelect = claimForm.querySelector("#unit_id");
-    var personSelect = claimForm.querySelector("#person");
-    var showReporter = function () {
-      var checked = claimForm.querySelector("input[name=reporter]:checked");
-      var mode = checked ? checked.value : "roster";
-      claimForm.querySelectorAll("[data-reporter]").forEach(function (block) {
-        block.hidden = block.dataset.reporter !== mode;
+  // --- The list of «Reclamos» (claims.html): redrawn when a claim changed ----------------------
+  // The panel's numbers carry claims_stamp (app.admin.pending): when it is not the one the list
+  // was drawn with, the same URL is asked again (&partial=1, only the list) and replaced: the
+  // tab, filters, search and page stay. Not while she types in the search, changed something
+  // not applied yet, or has the filters open: then when she is done.
+  var claimsList = document.querySelector("[data-claims-list]");
+  if (claimsList) {
+    var claimsSearch = document.getElementById("claim-search");
+    var claimsFilters = document.getElementById("claim-filters");
+    var claimsWaiting = null, claimsBusy = false;
+    var claimsUsed = function () {
+      if (claimsFilters && claimsFilters.open) return true;
+      if (!claimsSearch) return false;
+      if (claimsSearch.contains(document.activeElement) && document.activeElement.tagName === "INPUT") return true;
+      return Array.prototype.some.call(claimsSearch.querySelectorAll("input[type=search], select"), function (el) {
+        if (el.tagName === "SELECT") {
+          var initial = Array.prototype.filter.call(el.options, function (o) { return o.defaultSelected; })[0];
+          return el.value !== (initial ? initial.value : "");
+        }
+        return el.value !== el.defaultValue;
       });
     };
-    var filterPeople = function () {
-      if (!personSelect || !unitSelect) return;
-      var unit = unitSelect.value;
-      personSelect.querySelectorAll("optgroup").forEach(function (group) {
-        var shown = !unit || group.dataset.unit === unit;
-        group.hidden = !shown;
-        group.disabled = !shown;
-      });
-      var chosen = personSelect.selectedOptions[0];
-      if (chosen && chosen.parentElement.disabled) personSelect.value = "";
+    var redrawClaims = function (stamp) {
+      if (claimsBusy) return;
+      claimsBusy = true;
+      var url = new URL(window.location.href);
+      url.searchParams.set("partial", "1");
+      fetch(url.toString(), { credentials: "same-origin" })
+        .then(function (response) { return window.panelSessionCheck(response, "html") === "ok" ? response.text() : null; })
+        .then(function (html) {
+          if (html === null) return;
+          claimsList.innerHTML = html;
+          claimsList.dataset.claimsStamp = stamp;
+          claimsWaiting = null;
+        })
+        .catch(function () { /* next time */ })
+        .finally(function () { claimsBusy = false; });
     };
-    claimForm.querySelectorAll("input[name=reporter]").forEach(function (radio) {
-      radio.addEventListener("change", showReporter);
+    var considerClaims = function (stamp) {
+      var action = window.panelClaimsListAction(claimsList.dataset.claimsStamp, stamp, claimsUsed());
+      if (action === "refresh") redrawClaims(stamp);
+      if (action === "wait") claimsWaiting = stamp;
+    };
+    document.addEventListener("panel:numbers", function (event) {
+      if (event.detail && event.detail.claims_stamp) considerClaims(event.detail.claims_stamp);
     });
-    if (unitSelect) unitSelect.addEventListener("change", filterPeople);
-    showReporter();
-    filterPeople();
+    // Done with the search or the filters: what was waiting.
+    var claimsDone = function () { window.setTimeout(function () { if (claimsWaiting) considerClaims(claimsWaiting); }, 0); };
+    if (claimsFilters) claimsFilters.addEventListener("toggle", claimsDone);
+    if (claimsSearch) claimsSearch.addEventListener("focusout", claimsDone);
+  }
+
+  // --- "Nuevo reclamo" (claim_new.html): who reports, then the claim, without reloading -------
+  // «¿Quién reclama?» searches from 2 characters, once she stops typing; choosing a person (or a
+  // building, for «No está en el padrón») brings the rest of the form. The links and forms work
+  // without JavaScript too (they reload the page); the server checks everything again.
+  var claimNew = document.getElementById("claim-new");
+  if (claimNew) {
+    var who = document.getElementById("claim-who");
+    var other = document.getElementById("claim-other");
+    var step2 = document.getElementById("claim-step2");
+    var peopleBox = document.getElementById("claim-people");
+    var peopleInput = document.getElementById("claim-people-q");
+    var conversation = claimNew.dataset.conversation || "";
+    var asked = 0;
+    var fetchHtml = function (url) {
+      return fetch(url, { credentials: "same-origin" }).then(function (response) {
+        return window.panelSessionCheck(response, "html") === "ok" ? response.text() : null;
+      });
+    };
+    var withConversation = function (params) {
+      if (conversation) params.set("conversation", conversation);
+      return params;
+    };
+    var searchPeople = function () {
+      var q = peopleInput.value.trim();
+      var mine = ++asked;
+      if (q.length < 2) return;
+      var params = withConversation(new URLSearchParams({ q: q }));
+      fetchHtml(claimNew.dataset.peopleUrl + "?" + params.toString()).then(function (html) {
+        if (html !== null && mine === asked) peopleBox.innerHTML = html;  // only the latest answer
+      }).catch(function () { /* next key */ });
+    };
+    var showForm = function (params) {
+      fetchHtml(claimNew.dataset.formUrl + "?" + withConversation(params).toString()).then(function (html) {
+        if (html === null) return;
+        step2.innerHTML = html;
+        var first = step2.querySelector("select, input:not([type=hidden]), textarea");
+        if (first) first.focus();
+      }).catch(function () { /* stays as it is */ });
+    };
+    if (peopleInput) {
+      peopleInput.addEventListener("input", window.panelDebounce(searchPeople, 350));
+      document.getElementById("claim-people-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        searchPeople();
+      });
+    }
+    claimNew.addEventListener("click", function (event) {
+      var link = event.target.closest && event.target.closest("a[data-person-choice], a[data-claim-change], #claim-not-in-roster");
+      if (!link) return;
+      event.preventDefault();
+      if (link.hasAttribute("data-person-choice")) {
+        var url = new URL(link.href);
+        who.hidden = true;
+        showForm(new URLSearchParams({ person_id: url.searchParams.get("person_id"), unit_id: url.searchParams.get("unit_id") }));
+      } else if (link.id === "claim-not-in-roster") {
+        who.hidden = true;
+        other.hidden = false;
+        step2.innerHTML = "";
+        document.getElementById("claim-other-building").focus();
+      } else {
+        step2.innerHTML = "";
+        other.hidden = true;
+        who.hidden = false;
+        if (peopleInput) peopleInput.focus();
+      }
+    });
+    var buildingSelect = document.getElementById("claim-other-building");
+    if (buildingSelect) {
+      var pickBuilding = function () {
+        if (buildingSelect.value) showForm(new URLSearchParams({ reporter: "other", building_id: buildingSelect.value }));
+      };
+      buildingSelect.addEventListener("change", pickBuilding);
+      document.getElementById("claim-other-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        pickBuilding();
+      });
+    }
   }
 
   // --- Confirmations (app.admin.help.CONFIRM) ----------------------------------------------
   // A form with data-confirm-* is sent only after "ok" in the dialog. Listened on the document,
   // before anything else: forms the page redraws (the conversation's header) are covered too.
-  // Looked up when used: the dialog comes after this script in the page.
+  // Looked up when used: the dialog comes after this script in the page. The form's
+  // [data-confirm-fields] (a reason, a provider) are shown inside the dialog while it is open
+  // (still the form's fields: form="<its id>"); "ok" does nothing while a required one is empty.
+  function blank(el) { return el.required && !String(el.value || "").trim(); }
   document.addEventListener("submit", function (event) {
     var form = event.target;
     if (!form.dataset || !form.dataset.confirmText) return;
@@ -177,13 +476,36 @@
     var ok = document.getElementById("confirm-ok");
     ok.textContent = form.dataset.confirmButton || "Confirmar";
     ok.className = "btn " + (form.dataset.confirmKind === "primary" ? "btn-primary" : "btn-danger");
+    var box = document.getElementById("confirm-fields");
+    var fields = form.querySelector("[data-confirm-fields]");
+    var inputs = [];
+    if (fields && box && form.id) {
+      inputs = Array.prototype.slice.call(fields.querySelectorAll("input, select, textarea"));
+      inputs.forEach(function (el) { el.setAttribute("form", form.id); el.setCustomValidity(""); });
+      fields.hidden = false;
+      box.appendChild(fields);
+    }
+    ok.onclick = function (click) {
+      var empty = inputs.filter(blank)[0];
+      if (!empty) return;
+      click.preventDefault();
+      empty.setCustomValidity("Completá este campo.");
+      empty.reportValidity();
+      empty.addEventListener("input", function () { empty.setCustomValidity(""); }, { once: true });
+    };
     dialog.onclose = function () {
+      if (fields && box && fields.parentNode === box) {
+        fields.hidden = true;
+        form.appendChild(fields);
+      }
       if (dialog.returnValue !== "ok") return;
       form.dataset.confirmed = "1";
       form.requestSubmit();
     };
     dialog.returnValue = "";
     dialog.showModal();
+    var first = inputs.filter(function (el) { return el.type !== "radio" && el.type !== "hidden"; })[0];
+    if (first) first.focus();
   }, true);
 
   // --- The example of "Cómo usar" (app.admin.example) -----------------------------------------

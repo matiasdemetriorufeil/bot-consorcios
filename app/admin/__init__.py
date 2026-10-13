@@ -1,6 +1,7 @@
 """Admin panel (SQLAdmin) at /admin, for the studio's employees.
 
-The menu, for everyone: "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
+The menu, for everyone: "Pendientes" (what waits for someone of the studio: the first page,
+app.admin.pending_view), "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
 "Reclamos" (app.admin.claims), "Teléfonos" (app.admin.phones), "Verificaciones"
 (app.admin.verifications), "Reservas de SUM" (app.admin.amenities) and "Guía"
 (app.admin.guide). Then, under "Administración" and only for admins: buildings and their
@@ -8,7 +9,11 @@ information, the claims' set-up (providers, kinds of problem and who attends eac
 building: app.admin.claims_setup), the bot settings, the WhatsApp templates and quick replies of
 the inbox, the panel users (app.admin.users), metrics, sync runs (read only) and, in development
 only, the test chat (app.admin.dev_chat). Out of the menu: the attachments of WhatsApp messages
-(app.admin.wa_media). /admin/ goes to "Conversaciones".
+(app.admin.wa_media). /admin/ (and the login) go to "Pendientes".
+
+Every page asks for the panel's numbers every few seconds (app.admin.pending, panel.js): the
+menu's counters (next to Conversaciones, Reclamos, Teléfonos and Verificaciones: the views'
+menu_counter), the tab's title and the alerts with sound.
 
 Everything in Spanish and in one style: SQLAdmin's texts through app.admin.i18n, values
 through app.admin.labels and app.admin.formatting (also Jinja filters: phone, building, when,
@@ -36,10 +41,10 @@ from starlette.responses import RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app.admin import formatting, help, i18n, labels
+from app.admin import formatting, help, i18n, labels, pending
 from app.admin.amenities import AmenitiesView
 from app.admin.auth import AdminAuth, LoginLimiter
-from app.admin.claims import ClaimsView, urgent_open_count
+from app.admin.claims import ClaimsView, claim_links
 from app.admin.claims_setup import (
     BuildingClaimsView,
     ClaimCategoryAdmin,
@@ -50,6 +55,7 @@ from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
 from app.admin.guide import GUIDE_FILES_DIR, GuideView
 from app.admin.inbox import Sender
+from app.admin.pending_view import PendingView
 from app.admin.phones import PhonesView
 from app.admin.users import UsersView
 from app.admin.verifications import VerificationsView
@@ -80,6 +86,7 @@ CLAIM_SETTINGS_IDENTITY = "claim-settings"
 # In the menu's order: first what the operators use, then the admin-only ones (AdminOnly,
 # under "Administración"; the test chat goes last, in development). The rest is not in the menu.
 VIEWS = (
+    PendingView,
     ConversationsView,
     ClaimsView,
     PhonesView,
@@ -139,8 +146,8 @@ def _default_bot() -> WhatsAppBot:
 
 
 async def _home(request: Request) -> Response:
-    """The panel's empty home page: straight to the inbox (which asks for the login)."""
-    return RedirectResponse(request.url_for("admin:view-conversations"), status_code=302)
+    """The panel's empty home page: straight to «Pendientes» (which asks for the login)."""
+    return RedirectResponse(request.url_for("admin:view-pending"), status_code=302)
 
 
 def _single_row_form(
@@ -161,17 +168,22 @@ def _single_row_form(
     return endpoint
 
 
-def _urgent_claims_counter(session_maker: sessionmaker) -> Callable[[], int]:
-    """The menu's counter of urgent open claims ("Reclamos"); 0 if it cannot be read."""
+def _menu_counts(session_maker: sessionmaker) -> Callable[[Request], dict[str, int]]:
+    """The menu's counters as the page is drawn (app.admin.pending.counts), read once per
+    request; zeros if they cannot be read (panel.js keeps them up to date anyway)."""
 
-    def count() -> int:
-        try:
-            with session_maker() as session:
-                return urgent_open_count(session)
-        except Exception:
-            return 0
+    def get(request: Request) -> dict[str, int]:
+        cached = getattr(request.state, "menu_counts", None)
+        if cached is None:
+            try:
+                with session_maker() as session:
+                    cached = pending.counts(session)
+            except Exception:
+                cached = {}
+            request.state.menu_counts = cached
+        return cached
 
-    return count
+    return get
 
 
 def static_version() -> str:
@@ -193,6 +205,7 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["day"] = lambda value: formatting.day(value, timezone)
     filters["money"] = formatting.money
     filters["reason_short"] = lambda code: (labels.reason(code) or ("", ""))[0]
+    filters["claim_links"] = claim_links
     env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
     # In the style sheet's and script's URLs: a change reaches every browser (no stale cache).
     env.globals["static_version"] = static_version()  # type: ignore[attr-defined]
@@ -223,7 +236,7 @@ def setup_admin(
         authentication_backend=auth,
     )
     _install_texts(admin.templates.env, settings.timezone)
-    admin.templates.env.globals["urgent_claims_count"] = _urgent_claims_counter(session_maker)
+    admin.templates.env.globals["menu_counts"] = _menu_counts(session_maker)
     auth.templates = admin.templates
     sender = sender_factory or whatsapp_sender(settings)
     conversations: dict[str, object] = {
@@ -236,10 +249,16 @@ def setup_admin(
         "session_maker": session_maker,
         "notifier_factory": staticmethod(claims_notifier(sender, settings)),
     }
+    pending_view: dict[str, object] = {
+        "timezone": settings.timezone,
+        "session_maker": session_maker,
+    }
     if clock is not None:
         conversations["clock"] = staticmethod(clock)
         claims["clock"] = staticmethod(clock)
+        pending_view["clock"] = staticmethod(clock)
     extra: dict[type, dict[str, object]] = {
+        PendingView: pending_view,
         ConversationsView: conversations,
         VerificationsView: {"timezone": settings.timezone, "session_maker": session_maker},
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},

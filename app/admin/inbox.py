@@ -242,8 +242,12 @@ def list_conversations(
     *,
     query: str = "",
     names: dict[str, str] | None = None,
+    reason: str = "",
+    since: datetime | None = None,
 ) -> list[InboxRow]:
-    """The rows of a tab (or, with a query, of every state)."""
+    """The rows of a tab (or, with a query, of every state). With a handoff reason: the
+    conversations of every state whose last handoff was for it, since that moment (the newest
+    handoff first)."""
     last = _last_message().subquery()
     stmt = (
         select(WaConversation, WaContact, WaMessage)
@@ -255,6 +259,11 @@ def list_conversations(
     term = query.strip()
     if term:
         stmt = stmt.where(_search_condition(term)).order_by(last_at.desc())
+    elif reason:
+        stmt = stmt.where(WaConversation.handoff_reason == reason)
+        if since is not None:
+            stmt = stmt.where(WaConversation.handed_off_at >= since)
+        stmt = stmt.order_by(WaConversation.handed_off_at.desc().nulls_last(), last_at.desc())
     elif tab == "mine":
         stmt = stmt.where(
             WaConversation.status == WaConversationStatus.HUMAN,
@@ -343,33 +352,6 @@ def tab_counts(session: Session, user: str) -> dict[str, int]:
     return {"waiting": waiting or 0, "mine": mine or 0}
 
 
-def waiting_ids(session: Session) -> list[int]:
-    """Every conversation waiting for a person (the page beeps when a new one shows up)."""
-    return list(
-        session.scalars(
-            select(WaConversation.id)
-            .where(WaConversation.status == WaConversationStatus.WAITING_HUMAN)
-            .order_by(WaConversation.id)
-            .limit(500)
-        )
-    )
-
-
-def mine_last_inbound(session: Session, user: str) -> dict[int, int]:
-    """My conversations -> id of the contact's last message (the page beeps when it grows)."""
-    rows = session.execute(
-        select(WaMessage.conversation_id, func.max(WaMessage.id))
-        .join(WaConversation, WaConversation.id == WaMessage.conversation_id)
-        .where(
-            WaConversation.status == WaConversationStatus.HUMAN,
-            WaConversation.assigned_to == user,
-            WaMessage.direction == WaDirection.INBOUND,
-        )
-        .group_by(WaMessage.conversation_id)
-    ).all()
-    return {conversation_id: last for conversation_id, last in rows}
-
-
 def contact_name(contact: WaContact, who: Known | None) -> str:
     if who is not None:
         return who.full_name
@@ -414,8 +396,9 @@ class CardClaim:
     id: int
     number: int
     problem: str
-    status: str
+    status: str  # short
     group: str
+    status_long: str = ""
 
 
 @dataclass
@@ -508,8 +491,9 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
             id=c.id,
             number=c.number,
             problem=c.category.list_title,
-            status=labels.label(labels.CLAIM_STATUS, c.status),
+            status=labels.claim_status(c.status)[0],
             group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
+            status_long=labels.claim_status(c.status)[1],
         )
         for c in found
     ]

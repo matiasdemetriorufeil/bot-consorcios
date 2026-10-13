@@ -17,6 +17,10 @@ from starlette.requests import Request
 
 PAGE_HELP: dict[str, str] = {
     # What the operators use
+    "view-pending": (
+        "Todo lo que espera a alguien del estudio. Empezá el día acá: cada tarjeta te lleva a "
+        "su lista."
+    ),
     "view-conversations": (
         "Las charlas de WhatsApp. En «Esperando persona» están las que el bot no pudo "
         "resolver y necesitan a alguien del estudio. Para un repaso, tocá «Cómo usar»."
@@ -51,15 +55,15 @@ PAGE_HELP: dict[str, str] = {
     ),
     "view-claims": (
         "Los problemas que reportaron los vecinos y quién los atiende. En «Abiertos» están los "
-        "que todavía hay que resolver; los urgentes van primero."
+        "que todavía hay que resolver; los urgentes van primero. La lista se actualiza sola."
     ),
     "view-claim": (
         "Todo lo de este reclamo y lo que pasó con él. Cuando esté resuelto, cerralo como "
         "solucionado."
     ),
     "view-claim-new": (
-        "Para un reclamo que llegó por teléfono o en persona. Si ya había uno abierto del mismo "
-        "problema en el edificio, la persona se suma a ese."
+        "Para un reclamo que llegó por teléfono o en persona. Empezá por quién reclama. Si ya "
+        "había uno abierto del mismo problema en el edificio, la persona se suma a ese."
     ),
     "view-guide": "Cómo hacer las tareas de todos los días, paso a paso.",
     # Admins
@@ -169,6 +173,13 @@ EMPTY: dict[str, str] = {
         "Todavía no hay conversaciones con proveedores. Aparecen cuando se les manda un reclamo."
     ),
     "conversations:search": "No se encontró nada. Probá con otra parte del nombre o del número.",
+    "conversations:reason": "Esta semana no hubo preguntas que el bot no supiera contestar.",
+    "pending": (
+        "No hay nada esperando a nadie del estudio. Cuando entre algo, aparece acá y suena un "
+        "aviso."
+    ),
+    "pending:card": "Al día",
+    "pending:sum": "No hay reservas del SUM para hoy ni para mañana.",
     "phones:review": (
         "No hay teléfonos para revisar. Cuando aparezca un número que hay que confirmar, va a "
         "estar acá."
@@ -219,6 +230,13 @@ EMPTY: dict[str, str] = {
         "No se encontró ningún reclamo. Probá con otra parte del nombre, del número o de la "
         "unidad, y fijate que los filtros no estén limitando la búsqueda."
     ),
+    "claim-new:start": (
+        "Escribí el nombre, la unidad o el teléfono. Si no aparece, tocá «No está en el padrón»."
+    ),
+    "claim-new:people": (
+        "No se encontró a nadie. Probá con otra parte del nombre, la unidad (por ejemplo 02-B) o "
+        "el teléfono, o tocá «No está en el padrón»."
+    ),
     "claim-new:categories": (
         "En este edificio no hay problemas habilitados. Pedile a un admin que los habilite en "
         "«Reclamos por edificio»."
@@ -228,6 +246,53 @@ EMPTY: dict[str, str] = {
     ),
 }
 EMPTY_DEFAULT = "Todavía no hay nada acá."
+
+
+# --- «Pendientes»: a card per thing that waits -------------------------------------------------
+
+PENDING_CARDS: dict[str, dict[str, str]] = {
+    "waiting": {
+        "title": "Esperando persona",
+        "text": "Conversaciones que el bot no pudo resolver y necesitan a alguien del estudio.",
+        "button": "Ver conversaciones",
+    },
+    "mine": {
+        "title": "Mías sin responder",
+        "text": "Conversaciones que tomaste vos: te escribieron y todavía no contestaste.",
+        "button": "Ver mías",
+    },
+    "claims": {
+        "title": "Reclamos que necesitan atención",
+        "text": "Urgentes, o con algún problema con el proveedor o la demora.",
+        "button": "Ver reclamos",
+    },
+    "phones": {
+        "title": "Teléfonos a revisar",
+        "text": "Números que hay que confirmar antes de que el bot los reconozca.",
+        "button": "Revisar teléfonos",
+    },
+    "verifications": {
+        "title": "Verificaciones pendientes",
+        "text": "Personas que esperan que confirmes que son de la unidad.",
+        "button": "Ver verificaciones",
+    },
+    "sum": {
+        "title": "Reservas del SUM",
+        "text": "Turnos reservados para hoy y para mañana.",
+        "button": "Ver reservas",
+    },
+}
+
+# --- The panel's alerts (the bar on top of every page) -----------------------------------------
+
+ALERTS: dict[str, str] = {
+    "off": "Los avisos con sonido están apagados.",
+    "blocked": (
+        "Los avisos están bloqueados en este navegador. Para activarlos, tocá el candado al lado "
+        "de la dirección, después «Notificaciones» y elegí «Permitir»."
+    ),
+    "session": "Se cerró tu sesión: copiá tu mensaje y volvé a entrar.",
+}
 
 
 def empty_for(identity: str) -> str:
@@ -291,9 +356,8 @@ CONFIRM: dict[str, dict[str, str]] = {
     "cancel_claim": {
         "title": "¿Cancelar este reclamo?",
         "text": (
-            "El reclamo se cierra como cancelado y no se puede volver a abrir. Al vecino "
-            "todavía no se le avisa nada desde el panel: si querés que sepa, escribile desde "
-            "Conversaciones."
+            "Contá por qué. El reclamo se cierra como cancelado y no se puede volver a abrir. Al "
+            "vecino no se le avisa nada: si querés que sepa, escribile desde Conversaciones."
         ),
         "button": "Cancelar reclamo",
         "kind": "danger",
@@ -304,11 +368,57 @@ CONFIRM: dict[str, dict[str, str]] = {
         "button": "Reenviar",
         "kind": "primary",
     },
+    "send_claim_now": {
+        "title": "¿Mandar al proveedor ahora?",
+        "text": (
+            "Se le manda el reclamo por WhatsApp ahora, sin esperar a que empiece su horario. Al "
+            "vecino no le llega nada."
+        ),
+        "button": "Mandar ahora",
+        "kind": "primary",
+    },
+    "send_claim_choose": {
+        "title": "¿Mandar al proveedor?",
+        "text": (
+            "Ahora es fuera del horario de proveedores: elegí si se le manda el reclamo por "
+            "WhatsApp ahora o cuando empieza su horario. Al vecino no le llega nada."
+        ),
+        "button": "Mandar",
+        "kind": "primary",
+    },
+    "mark_sent": {
+        "title": "¿Marcar como avisado?",
+        "text": (
+            "Queda como avisado por teléfono. Al proveedor no se le manda nada por WhatsApp y "
+            "al vecino tampoco."
+        ),
+        "button": "Marcar como avisado",
+        "kind": "primary",
+    },
+    "close_claim": {
+        "title": "¿Cerrar como solucionado?",
+        "text": (
+            "Contá qué se hizo. A quien reclamó y a los vecinos que se sumaron se les avisa por "
+            "WhatsApp que está solucionado. Un reclamo cerrado no se vuelve a abrir."
+        ),
+        "button": "Cerrar como solucionado",
+        "kind": "primary",
+    },
+    "change_claim_provider_hours": {
+        "title": "¿Cambiar quién lo atiende?",
+        "text": (
+            "Ahora es fuera del horario de proveedores. Si el nuevo proveedor tiene WhatsApp, "
+            "elegí si se le manda el reclamo ahora o cuando empieza su horario. Al vecino no le "
+            "llega nada."
+        ),
+        "button": "Cambiar",
+        "kind": "primary",
+    },
     "change_claim_provider": {
         "title": "¿Cambiar quién lo atiende?",
         "text": (
-            "Si el nuevo proveedor tiene WhatsApp, se le manda el reclamo por WhatsApp en el "
-            "momento. Al vecino no le llega nada."
+            "Elegí quién lo atiende. Si es un proveedor con WhatsApp, se le manda el reclamo por "
+            "WhatsApp en el momento. Al vecino no le llega nada."
         ),
         "button": "Cambiar",
         "kind": "primary",
@@ -419,5 +529,7 @@ def globals_for_templates() -> dict[str, Any]:
         "empty_for": empty_for,
         "confirm_attrs": confirm_attrs,
         "empty_texts": EMPTY,
+        "pending_cards": PENDING_CARDS,
+        "alert_texts": ALERTS,
         "scope_help": SCOPE_HELP,
     }

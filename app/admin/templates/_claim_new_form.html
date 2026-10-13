@@ -1,0 +1,66 @@
+{#- The claim in the chosen building (the page and GET /admin/claims/new/form): who reports
+    (the person chosen in the roster, or a name and a phone), the problem, the unit and what is
+    going on. -#}
+{% macro value(name, default='') %}{{ form.get(name, default) if form else default }}{% endmacro %}
+{% set conversation_id = conversation.conversation_id if conversation else '' %}
+<form class="card" method="POST" id="claim-form" action="{{ url_for('admin:view-claim-new') }}">
+  <input type="hidden" name="building_id" value="{{ building.id }}">
+  <input type="hidden" name="reporter" value="{{ mode }}">
+  {% if conversation_id %}<input type="hidden" name="conversation" value="{{ conversation_id }}">{% endif %}
+  <div class="card-header"><h3 class="card-title">El reclamo en {{ building_name }}</h3></div>
+  <div class="card-body">
+    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+    {% if mode == 'roster' and chosen %}
+    <input type="hidden" name="person" value="{{ chosen.value }}">
+    <input type="hidden" name="unit_id" value="{{ chosen.unit_id }}">
+    <div class="claim-chosen mb-3" id="claim-chosen">
+      <div><span class="text-secondary">Quién reclama:</span> <strong>{{ chosen.name }}</strong></div>
+      <div class="text-secondary">{{ chosen.place }} ({{ chosen.role }})</div>
+      <a class="small" href="{{ url_for('admin:view-claim-new') }}{% if conversation_id %}?conversation={{ conversation_id }}{% endif %}" data-claim-change>Cambiar</a>
+    </div>
+    {% else %}
+    <div class="row g-2 mb-3" id="claim-other-person">
+      <div class="col-12 col-sm-6">
+        <label class="form-label" for="name">Nombre</label>
+        <input class="form-control" id="name" name="name" maxlength="200" required value="{{ value('name', conversation.name if conversation else '') }}">
+      </div>
+      <div class="col-12 col-sm-6">
+        <label class="form-label" for="phone">Teléfono (opcional)</label>
+        <input class="form-control" id="phone" name="phone" inputmode="tel" value="{{ value('phone', conversation.phone if conversation else '') }}" placeholder="351 555-0101">
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="unit_id">Unidad</label>
+        <select class="form-select" id="unit_id" name="unit_id">
+          <option value="">Ninguna en particular</option>
+          {% for unit in units %}
+          <option value="{{ unit.id }}" {% if value('unit_id') == unit.id | string %}selected{% endif %}>{{ unit.label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-hint">Obligatoria si el problema es de una unidad.</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if not categories %}
+    <p class="empty-help mb-0">{{ empty_texts['claim-new:categories'] }}</p>
+    {% else %}
+    <div class="mb-3">
+      <label class="form-label" for="category_id">Problema</label>
+      <select class="form-select" id="category_id" name="category_id" required>
+        <option value="">Elegí el problema…</option>
+        {% for cat in categories %}
+        <option value="{{ cat.id }}" {% if value('category_id') == cat.id | string %}selected{% endif %}>{{ cat.list_title }} ({{ scope_labels[cat.scope] | lower }}){% if cat.urgent %} · urgente{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-1">
+      <label class="form-label" for="description">Qué pasa</label>
+      <textarea class="form-control" id="description" name="description" rows="4" required placeholder="Lo que contó la persona">{{ value('description') }}</textarea>
+    </div>
+    {% endif %}
+  </div>
+  {% if categories %}
+  <div class="card-footer text-end">
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Cargar reclamo</button>
+  </div>
+  {% endif %}
+</form>

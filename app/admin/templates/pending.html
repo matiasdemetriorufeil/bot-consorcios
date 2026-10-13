@@ -1,0 +1,11 @@
+{#- «Pendientes» (app.admin.pending_view): the greeting and the cards, which panel.js redraws
+    with the panel's numbers every few seconds (data-pending-cards). -#}
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <p class="pending-greeting mb-0" id="pending-greeting">{{ greeting }} · {{ today }}</p>
+</div>
+<div class="col-12 pending-cards" id="pending-cards" data-pending-cards>
+  {% include "_pending_cards.html" %}
+</div>
+{% endblock %}

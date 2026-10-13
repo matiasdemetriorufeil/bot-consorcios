@@ -61,16 +61,20 @@
     <span class="nav-link disabled text-uppercase small fw-bold opacity-75">Administración</span>
   </li>
   {% endif %}
-  {% if item.view.menu_badge is defined and item.is_visible(request) and item.is_accessible(request) %}
-  {#- "Reclamos": the urgent open claims next to its name (panel.js keeps it up to date). -#}
-  {% set count = urgent_claims_count() %}
+  {% if item.view.menu_counter is defined and item.is_visible(request) and item.is_accessible(request) %}
+  {#- Conversaciones, Reclamos, Teléfonos, Verificaciones: how many wait (app.admin.pending),
+      red when some are urgent. panel.js keeps them up to date on every page. -#}
+  {% set key = item.view.menu_counter %}
+  {% set counts = menu_counts(request) %}
+  {% set count = counts.get(key, 0) %}
+  {% set urgent = counts.get(key ~ '_urgent', 0) %}
   <li class="nav-item">
     <a class="nav-link {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
       <span class="nav-link-icon d-md-none d-lg-inline-block">
         {% if item.icon %}<i class="{{ item.icon }}"></i>{% endif %}
       </span>
       <span class="nav-link-title">{{ item.display_name }}</span>
-      <span class="badge bg-red text-white ms-2 menu-badge" data-urgent-claims title="Reclamos urgentes abiertos" {% if not count %}hidden{% endif %}>{{ count }}</span>
+      <span class="badge ms-2 menu-badge {{ 'menu-badge-urgent' if urgent else 'menu-badge-neutral' }}" data-counter="{{ key }}" {% if not count %}hidden{% endif %}>{{ count }}</span>
     </a>
   </li>
   {% else %}

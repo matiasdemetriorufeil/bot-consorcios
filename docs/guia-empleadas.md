@@ -11,6 +11,32 @@ título: dice para qué sirve.
 
 ![El recorrido, sobre la conversación de ejemplo](guia-empleadas/09-recorrido.png)
 
+## Empezá el día en Pendientes
+
+Al entrar al panel se abre **Pendientes**: una tarjeta por cada cosa que espera a alguien del
+estudio, con cuántas son. Tocá el botón de la tarjeta y vas directo a esa lista.
+
+- **Esperando persona**: conversaciones que el bot no pudo resolver. Dice cuántas son urgentes y
+  hace cuánto espera la más vieja.
+- **Mías sin responder**: conversaciones que tomaste vos, donde te escribieron y todavía no
+  contestaste.
+- **Reclamos que necesitan atención**: los urgentes y los que tienen un problema con el
+  proveedor o la demora.
+- **Teléfonos a revisar** y **Verificaciones pendientes**.
+- **Reservas del SUM** de hoy y de mañana, para saber qué turnos hay.
+
+Una tarjeta gris que dice **Al día** no tiene nada pendiente. Si todas están así, arriba dice
+**Todo al día**. Los números se actualizan solos, y también se ven en el menú, al lado de
+Conversaciones, Reclamos, Teléfonos y Verificaciones (en rojo si hay algo urgente).
+
+**Avisos con sonido:** arriba de todas las pantallas está el botón **🔔 Activar avisos**. Tocalo
+una vez y aceptá cuando el navegador pregunte. Desde ahí, en cualquier pantalla del panel suena
+y aparece un aviso cuando entra una conversación a «Esperando persona», un reclamo urgente o un
+reclamo que necesita atención. Si los avisos están apagados, una franja arriba te lo recuerda.
+El navegador solo deja sonar después de que tocaste algo en la página: al cambiar de pantalla,
+con el primer clic ya queda listo. El número entre paréntesis en la pestaña del navegador
+(«(3) Panel…») te dice cuántas cosas esperan aunque estés en otra pestaña.
+
 ## 1. Atender una conversación que necesita a alguien
 
 El bot contesta solo la mayoría de los mensajes. Cuando no puede (la persona pide hablar con
@@ -112,10 +138,10 @@ al vecino le llega un aviso; cuando toca «Ya está solucionado», el reclamo se
 avisa a todos los vecinos que reclamaron. En la historia del reclamo ves cada aviso y si llegó
 (enviado, entregado, leído).
 
-- **No le llegó (o no tiene WhatsApp):** el reclamo queda en «Falta avisar al proveedor». Tocá
-  **Reenviar al proveedor** o, si le avisaste por teléfono, **Marcar como avisado**.
-- **Dijo que no puede:** el reclamo pasa a «Lo atiende el estudio» y el panel avisa. Elegí otro
-  proveedor con **Cambiar quién lo atiende**: se le manda en el momento.
+- **No le llegó (o no tiene WhatsApp):** el reclamo queda en «Falta avisar». Tocá **Reenviar al
+  proveedor** o, si le avisaste por teléfono, **Marcar como avisado** (en **Otras acciones**).
+- **Dijo que no puede:** el reclamo pasa a «Lo tiene el estudio» y el panel avisa. Tocá **Elegir
+  proveedor**: si tiene WhatsApp, se le manda en el momento.
 - **Lo solucionaron y el proveedor no avisó:** **Cerrar como solucionado** también les avisa a
   los vecinos. **Cancelar reclamo**, en cambio, no le avisa a nadie.
 - Los proveedores aparecen en **Conversaciones**, pestaña **Proveedores**. El bot no les
@@ -133,40 +159,77 @@ sola vez (a las 4 horas de su horario; a los 30 minutos si es urgente). Si sigue
 el panel avisa con sonido: «El proveedor no confirmó». También avisa cuando un reclamo confirmado
 sigue sin solucionar a los 3 días, cuando lo tiene el estudio hace 3 días, o cuando todavía no se
 le avisó al proveedor. El aviso se va solo cuando alguien hace algo (confirma, se cambia el
-proveedor, se cierra). En la lista, el filtro **Atención → Necesitan atención** muestra solo
-esos.
+proveedor, se cierra). En la lista, el filtro **Atención → Necesitan atención** muestra esos y
+los urgentes abiertos.
 
 **Reclamos urgentes:** cuando entra uno (por ejemplo, olor a gas), el panel suena y muestra un
 aviso, igual que «Esperando persona», y al lado de **Reclamos** en el menú aparece un número
-rojo con los urgentes abiertos. Para que suene, tocá **🔔 Avisos** una vez en Conversaciones o
-en Reclamos. La conversación sigue con el bot: si hace falta, tomala vos.
+rojo. Para que suene, activá los avisos con **🔔 Activar avisos**, arriba de cualquier pantalla.
+La conversación sigue con el bot: si hace falta, tomala vos.
 
 **Ver un reclamo**
 
 1. Entrá a **Reclamos**. En **Abiertos** están los que hay que resolver; los urgentes van
-   primero, con una raya roja.
-2. Tocá el número (por ejemplo **#1003**). Vas a ver qué pasa, quién reclamó y de qué unidad,
+   primero, con una raya roja. La lista se actualiza sola (no mientras escribís en el buscador
+   o tenés los filtros abiertos).
+2. Cada renglón dice el edificio y la unidad, el problema, quién reclamó, quién lo atiende y
+   el estado en pocas palabras: **Falta avisar**, **Avisado**, **Confirmado**, **Lo tiene el
+   estudio**, **Solucionado** o **Cancelado**. Si pasás el mouse por el estado, ves el texto
+   completo. Debajo, hace cuánto está así y, si hace falta, por qué hay que mirarlo.
+3. Tocá el número (por ejemplo **#1003**). Vas a ver qué pasa, quién reclamó y de qué unidad,
    los vecinos que se sumaron, quién lo atiende y la historia de todo lo que pasó.
-3. Para buscar uno, escribí el número, la unidad, el nombre o parte del teléfono.
+4. Para buscar uno, escribí el número, la unidad, el nombre o parte del teléfono.
+
+![La lista de reclamos](guia-empleadas/10-reclamos-lista.png)
+
+**Qué hacer con un reclamo**
+
+En la ficha, **Qué hacer** muestra un botón azul con lo que toca según el estado, y lo demás en
+**Otras acciones**:
+
+- **Falta avisar:** **Reenviar al proveedor** (fuera de horario, **Mandar al proveedor** te
+  pregunta si ahora o en el próximo horario). Si el proveedor no tiene WhatsApp: **Marcar como
+  avisado**, después de llamarlo.
+- **Avisado:** no hay botón azul: falta que el proveedor confirme. Arriba dice desde cuándo
+  está esperando.
+- **Confirmado:** **Cerrar como solucionado**, cuando el problema está resuelto.
+- **Lo tiene el estudio:** si el proveedor dijo que no puede, **Elegir proveedor**. Si en ese
+  edificio ese problema lo resuelve el estudio, **Cerrar como solucionado**.
+
+Antes de hacer algo, el panel te dice qué va a pasar y a quién se le avisa, y ahí mismo te pide
+lo que haga falta: el motivo para cerrar o cancelar (es obligatorio), o el proveedor.
+
+![Qué hacer, con Otras acciones abierto](guia-empleadas/11-reclamo-que-hacer.png)
 
 **Cargar uno que llegó por teléfono o en persona**
 
-1. En **Reclamos**, tocá **Nuevo reclamo** y elegí el edificio.
-2. Elegí el problema. Si es de una unidad (por ejemplo, humedad), elegí la unidad.
-3. Contá qué pasa y elegí quién reclamó: una persona del padrón o, si no está, escribí su
+1. En **Reclamos**, tocá **Nuevo reclamo**.
+2. En **¿Quién reclama?**, escribí el nombre, la unidad (por ejemplo 02-B) o el teléfono, y
+   tocá a la persona. El edificio y la unidad quedan elegidos.
+3. Si no está en el padrón, tocá **No está en el padrón**: elegí el edificio y escribí su
    nombre y su teléfono.
-4. Tocá **Cargar reclamo**. Si ya había un reclamo abierto del mismo problema en el edificio,
+4. Elegí el problema y contá qué pasa.
+5. Tocá **Cargar reclamo**. Si ya había un reclamo abierto del mismo problema en el edificio,
    no se carga otro: la persona se suma a ese y el panel te lo abre.
+
+**Desde una conversación:** en la ficha del contacto (en el celular, en **Ficha del
+contacto**), tocá **Cargar reclamo**. La persona ya viene elegida (si tiene varias unidades,
+elegís cuál) o, si el número no es de nadie, el teléfono ya viene cargado. El reclamo queda
+unido a la conversación y en ella aparece la nota «Se cargó el reclamo #N», con el link.
+
+Al vecino no le llega nada cuando lo cargás. Después, igual que con los que llegan por
+WhatsApp, le llega un aviso cuando el proveedor confirma y cuando se cierra como solucionado.
+
+![Nuevo reclamo, buscando a la persona](guia-empleadas/12-nuevo-reclamo.png)
 
 **Cerrarlo o cancelarlo**
 
-- Cuando el problema está resuelto, escribí qué se hizo y tocá **Cerrar como solucionado**.
-- Si no corresponde (por ejemplo, estaba repetido), escribí el motivo y tocá **Cancelar
-  reclamo**. El panel pide confirmación.
+- **Cerrar como solucionado:** contá qué se hizo. A quien reclamó y a los vecinos que se
+  sumaron les llega por WhatsApp que está solucionado.
+- **Cancelar reclamo** (en **Otras acciones**): contá por qué (por ejemplo, estaba repetido).
+  Al vecino no le llega nada: si querés que sepa, escribile desde **Conversaciones**.
 - Un reclamo cerrado no se vuelve a abrir. Si el problema vuelve, cargá uno nuevo: el panel lo
   une con el anterior.
-- Al vecino no le llega ningún aviso desde el panel: si querés que sepa, escribile desde
-  **Conversaciones**.
 - Con **Nota interna** dejás algo anotado que solo ve el estudio.
 
 ## 7. Si algo sale raro

@@ -143,6 +143,7 @@ def context(now: datetime, timezone: str, tab: str) -> dict[str, Any]:
         "tab": inbox.DEFAULT_TAB,
         "tabs": inbox.TABS,
         "query": "",
+        "reason_filter": "",
         "counts": {"waiting": 2, "mine": 0},
         "names": {},
         # The open conversation

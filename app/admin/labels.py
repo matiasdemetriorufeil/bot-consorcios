@@ -76,14 +76,18 @@ CLAIM_SCOPE = {ClaimScope.BUILDING: "Todo el edificio", ClaimScope.UNIT: "Una un
 # "¿Quién lo atiende?" without a provider.
 STUDIO = "Lo atiende el estudio"
 STUDIO_SHORT = "El estudio"
-CLAIM_STATUS = {
-    ClaimStatus.PENDING_SEND: "Falta avisar al proveedor",
-    ClaimStatus.SENT: "Avisado al proveedor",
-    ClaimStatus.ACKNOWLEDGED: "El proveedor lo confirmó",
-    ClaimStatus.STUDIO: "Lo atiende el estudio",
-    ClaimStatus.SOLVED: "Solucionado",
-    ClaimStatus.CANCELLED: "Cancelado",
+# A claim's status: (short, for the badges; long, on hover, in the claim's page, the filters
+# and the history). The only place for both.
+CLAIM_STATUS_TEXT = {
+    ClaimStatus.PENDING_SEND: ("Falta avisar", "Falta avisar al proveedor"),
+    ClaimStatus.SENT: ("Avisado", "Avisado al proveedor"),
+    ClaimStatus.ACKNOWLEDGED: ("Confirmado", "El proveedor lo confirmó"),
+    ClaimStatus.STUDIO: ("Lo tiene el estudio", "Lo atiende el estudio"),
+    ClaimStatus.SOLVED: ("Solucionado", "Solucionado"),
+    ClaimStatus.CANCELLED: ("Cancelado", "Cancelado"),
 }
+CLAIM_STATUS = {status: long for status, (_, long) in CLAIM_STATUS_TEXT.items()}
+CLAIM_STATUS_SHORT = {status: short for status, (short, _) in CLAIM_STATUS_TEXT.items()}
 # The status' color in the panel: open (nobody is on it yet), in progress, closed.
 CLAIM_STATUS_GROUP = {
     ClaimStatus.PENDING_SEND: "open",
@@ -146,6 +150,9 @@ REASON_SHORT = {
     "non_pilot": "Fuera del piloto",
     "window_closed": "Ventana cerrada",
 }
+
+# Conversaciones filtered by a handoff reason (from «Pendientes»): only these reasons, this week.
+REASON_FILTER = {"no_answer": "Que el bot no supo responder esta semana"}
 
 # The bot's tools (app.bot), for the metrics.
 TOOLS = {
@@ -243,6 +250,11 @@ def reason(code: str | None) -> tuple[str, str] | None:
         return None
     long = REASONS.get(code, REASONS["other"])[1]
     return REASON_SHORT.get(code, REASON_SHORT["other"]), long
+
+
+def claim_status(status: ClaimStatus | str) -> tuple[str, str]:
+    """(short, long) text of a claim's status."""
+    return CLAIM_STATUS_TEXT[ClaimStatus(status)]
 
 
 def claim_event(kind: ClaimEventKind | str, text: str | None) -> str:

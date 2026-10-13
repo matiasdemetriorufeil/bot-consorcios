@@ -2,9 +2,6 @@
 
 - GET  /admin/claims                      the list: tabs Abiertos / Cerrados / Todos, filters,
                                           search (urgent open ones first, then the newest)
-- GET  /admin/claims/poll                 the urgent open claims (JSON): the menu's counter and
-                                          the alert of a new one (panel.js; "Conversaciones"
-                                          gets them in its own poll)
 - GET  /admin/claims/new                  "Nuevo reclamo" (by phone or in person): first the
 - POST /admin/claims/new                  building, then the form
 - GET  /admin/claims/{id}                 the claim: data, who reported, photos, history
@@ -29,16 +26,19 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar
 from urllib.parse import urlencode
 
+from markupsafe import Markup, escape
 from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
 from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from app.admin import formatting, labels
 from app.admin.auth import admin_user, display_names
+from app.admin.inbox import add_note as add_conversation_note
+from app.admin.phones import search_condition as phone_search
 from app.bot.identity import to_e164
 from app.claims import texts
 from app.claims.notify import Notifier
@@ -58,32 +58,42 @@ from app.db.models import (
     CLOSED_CLAIM_STATUSES,
     OPEN_CLAIM_STATUSES,
     Building,
+    BuildingClaimCategory,
     Claim,
     ClaimActor,
     ClaimAttachment,
+    ClaimAttention,
     ClaimCategory,
     ClaimEvent,
+    ClaimEventKind,
     ClaimReporter,
     ClaimSource,
     ClaimStatus,
+    Person,
     Phone,
     Provider,
     Unit,
     UnitPerson,
     WaContact,
     WaConversation,
+    WaConversationStatus,
 )
 from app.whatsapp.media import INLINE_TYPES, base_mime
 
 PAGE_SIZE = 50
-# How often the claims' pages ask for new urgent claims (seconds).
-POLL_SECONDS = 10
 TABS = {"open": "Abiertos", "closed": "Cerrados", "all": "Todos"}
 TAB_STATUSES = {"open": OPEN_CLAIM_STATUSES, "closed": CLOSED_CLAIM_STATUSES}
 STUDIO_FILTER = "studio"
 URGENT_FILTER = {"yes": "Urgentes", "no": "No urgentes"}
-ATTENTION_FILTER = {"yes": "Necesitan atención"}
+ATTENTION_FILTER = {"yes": "Necesitan atención (incluye urgentes)"}
 WHOLE_BUILDING = "Todo el edificio"
+# Open claims someone of the studio should look at now (the filter «Necesitan atención», the
+# menu's counter and «Pendientes»): urgent, or with an alert (the
+# provider cannot attend it, it could not be sent, the provider did not confirm, it has been
+# open too long: app.claims.jobs).
+NEEDS_SOMEONE = Claim.status.in_(OPEN_CLAIM_STATUSES) & (
+    Claim.urgent.is_(True) | Claim.attention.is_not(None)
+)
 
 
 def _int(value: Any) -> int | None:
@@ -105,7 +115,7 @@ class Filters:
     attends: str = ""  # "" | "studio" | a provider's id
     status: str = ""
     urgent: str = ""
-    attention: str = ""  # "yes": only the ones that need attention
+    attention: str = ""  # "yes": only the open ones that need someone (NEEDS_SOMEONE)
     page: int = 1
 
     @property
@@ -189,7 +199,7 @@ def _filtered(filters: Filters) -> Select:
     if filters.urgent:
         stmt = stmt.where(Claim.urgent.is_(filters.urgent == "yes"))
     if filters.attention:
-        stmt = stmt.where(Claim.attention.is_not(None))
+        stmt = stmt.where(NEEDS_SOMEONE)
     return stmt
 
 
@@ -204,11 +214,18 @@ class ClaimRow:
     reporter: str
     others: int
     attends: str
-    status_label: str
+    status_label: str  # short (the badge)
+    status_long: str  # on hover
     group: str
     ago: str
     urgent: bool
     attention: str = ""  # why someone of the studio should look at it ("" if nothing)
+
+    @property
+    def place(self) -> str:
+        """ "TORRE EJEMPLO · 02-B" / "TORRE EJEMPLO · todo el edificio"."""
+        unit = self.unit if self.unit != WHOLE_BUILDING else WHOLE_BUILDING.lower()
+        return f"{self.building} · {unit}"
 
 
 @dataclass(frozen=True)
@@ -272,7 +289,8 @@ def list_claims(session: Session, filters: Filters, now: datetime, timezone: str
             reporter=reporter_text(c),
             others=len(c.reporters),
             attends=attends_text(c),
-            status_label=labels.label(labels.CLAIM_STATUS, c.status),
+            status_label=labels.claim_status(c.status)[0],
+            status_long=labels.claim_status(c.status)[1],
             group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
             ago=formatting.ago(c.status_at, now),
             urgent=c.urgent,
@@ -304,12 +322,13 @@ def filter_options(session: Session) -> dict[str, list[tuple[str, str]]]:
     }
 
 
-# Open claims someone of the studio should look at now: urgent, or with an alert (the
-# provider cannot attend it, it could not be sent, the provider did not confirm, it has been
-# open too long: app.claims.jobs).
-NEEDS_SOMEONE = Claim.status.in_(OPEN_CLAIM_STATUSES) & (
-    Claim.urgent.is_(True) | Claim.attention.is_not(None)
-)
+def claims_stamp(session: Session) -> str:
+    """Something that changes with every change of a claim: its last update and its last
+    event (a neighbor who joins leaves only an event). No data of anybody: the panel's numbers
+    carry it and the list redraws itself when it changes (app.admin.pending, panel.js)."""
+    updated = session.scalar(select(func.max(Claim.updated_at)))
+    event = session.scalar(select(func.max(ClaimEvent.id)))
+    return f"{int(updated.timestamp() * 1000) if updated else 0}:{event or 0}"
 
 
 def _alert_title(claim: Claim, now: datetime) -> str:
@@ -339,10 +358,6 @@ def urgent_open_claims(session: Session, now: datetime | None = None) -> list[di
         }
         for c in claims
     ]
-
-
-def urgent_open_count(session: Session) -> int:
-    return session.scalar(select(func.count()).select_from(Claim).where(NEEDS_SOMEONE)) or 0
 
 
 # --- The claim ------------------------------------------------------------------------------
@@ -379,7 +394,8 @@ class ClaimPage:
     claim: Claim
     building: str
     unit: str
-    status_label: str
+    status_label: str  # short (the badge)
+    status_long: str
     group: str
     attends: str
     reporter: PersonLine
@@ -389,6 +405,8 @@ class ClaimPage:
     attention: str = ""  # why someone of the studio should look at it
     scheduled: str = ""  # when it goes to the provider (out of the providers' hours)
     reminded: str = ""  # when the provider got the reminder
+    sent_ago: str = ""  # since when the provider was told ("hace 2 h"), while not confirmed
+    had_provider: bool = False  # see had_provider()
 
 
 def load_claim(session: Session, claim_id: int) -> Claim | None:
@@ -438,7 +456,8 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
         claim=claim,
         building=formatting.building(claim.building.name),
         unit=unit_text(claim),
-        status_label=labels.label(labels.CLAIM_STATUS, claim.status),
+        status_label=labels.claim_status(claim.status)[0],
+        status_long=labels.claim_status(claim.status)[1],
         group=labels.CLAIM_STATUS_GROUP[ClaimStatus(claim.status)],
         attends=attends_text(claim),
         reporter=person(reporter_text(claim), claim.reporter_phone_e164, claim.reporter_unit),
@@ -449,6 +468,10 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
         reminded=formatting.when(claim.reminded_at, now, timezone)
         if claim.reminded_at and claim.status == ClaimStatus.SENT
         else "",
+        sent_ago=formatting.ago(claim.sent_at, now)
+        if claim.sent_at and claim.status == ClaimStatus.SENT
+        else "",
+        had_provider=had_provider(session, claim),
     )
     for r in claim.reporters:
         line = person(r.name, r.phone_e164, r.unit)
@@ -485,35 +508,233 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
     return page
 
 
-# --- "Nuevo reclamo" ------------------------------------------------------------------------
+# --- «Qué hacer»: one main button for the status, the rest in «Otras acciones» ----------------
 
 
 @dataclass(frozen=True)
-class RosterPerson:
-    value: str  # "<unit id>-<person id>"
+class Action:
+    """A button of «Qué hacer». key: resend (now, or the page's choice out of hours), send_now
+    (a scheduled one), mark_sent, provider, close, cancel."""
+
+    key: str
+    label: str
+
+
+RESEND = Action("resend", "Reenviar al proveedor")
+SEND_CHOOSE = Action("resend", "Mandar al proveedor")
+SEND_NOW = Action("send_now", "Mandar ahora")
+MARK_SENT = Action("mark_sent", "Marcar como avisado")
+CHANGE_PROVIDER = Action("provider", "Cambiar quién lo atiende")
+CHOOSE_PROVIDER = Action("provider", "Elegir proveedor")
+CLOSE = Action("close", "Cerrar como solucionado")
+CANCEL = Action("cancel", "Cancelar reclamo")
+
+
+def had_provider(session: Session, claim: Claim) -> bool:
+    """Whether a claim the studio has was (or should have been) a provider's: the provider said
+    it cannot attend it, it was ever told or changed, or in its building the problem has a
+    provider. Otherwise the studio attends it by design (no provider for it there)."""
+    if claim.attention == ClaimAttention.DECLINED:
+        return True
+    if any(e.provider_id or e.kind == ClaimEventKind.PROVIDER_CHANGED for e in claim.events):
+        return True
+    assigned = session.scalar(
+        select(BuildingClaimCategory.provider_id).where(
+            BuildingClaimCategory.building_id == claim.building_id,
+            BuildingClaimCategory.category_id == claim.category_id,
+        )
+    )
+    return assigned is not None
+
+
+def claim_actions(
+    claim: Claim, *, scheduled: bool, wait_when: str, had_provider: bool
+) -> tuple[Action | None, list[Action]]:
+    """(the main button, «Otras acciones») for the claim's status, only what app.claims.service
+    and this view allow. «Avisado» has no main one: the provider still has to confirm."""
+    status = ClaimStatus(claim.status)
+    if status in CLOSED_CLAIM_STATUSES:
+        return None, []
+    if status == ClaimStatus.PENDING_SEND and claim.provider is not None:
+        if not claim.provider.whatsapp_e164:
+            return MARK_SENT, [CHANGE_PROVIDER, CLOSE, CANCEL]
+        main = SEND_NOW if scheduled else SEND_CHOOSE if wait_when else RESEND
+        return main, [MARK_SENT, CHANGE_PROVIDER, CLOSE, CANCEL]
+    if status == ClaimStatus.SENT:
+        return None, [CLOSE, CHANGE_PROVIDER, CANCEL]
+    if status == ClaimStatus.ACKNOWLEDGED:
+        return CLOSE, [CHANGE_PROVIDER, CANCEL]
+    # The studio has it.
+    if had_provider:
+        return CHOOSE_PROVIDER, [CLOSE, CANCEL]
+    return CLOSE, [CHOOSE_PROVIDER, CANCEL]
+
+
+# --- "Nuevo reclamo" ------------------------------------------------------------------------
+# It starts with the person: «¿Quién reclama?» searches the roster (GET /claims/people) and,
+# once chosen, the rest of the form comes for that building (GET /claims/new/form), without
+# reloading. «No está en el padrón»: the building, then the name and the phone. From a
+# conversation (?conversation=<id>) the person, or the phone, comes already chosen.
+
+PEOPLE_LIMIT = 20
+PEOPLE_MIN_CHARS = 2
+
+
+@dataclass(frozen=True)
+class PersonChoice:
+    """A person of the roster in one of their active units."""
+
+    person_id: int
     name: str
+    unit_id: int
+    unit: str
+    building_id: int
+    building: str
     role: str
 
+    @property
+    def value(self) -> str:
+        """The form's "person" ("<unit id>-<person id>", as reporter_from_form reads it)."""
+        return f"{self.unit_id}-{self.person_id}"
 
-def roster(session: Session, building_id: int) -> list[tuple[Unit, list[RosterPerson]]]:
-    """The active units of the building with their people (for "Del padrón")."""
-    units = session.scalars(
-        select(Unit)
-        .where(Unit.building_id == building_id, Unit.active.is_(True))
-        .options(selectinload(Unit.people).selectinload(UnitPerson.person))
+    @property
+    def place(self) -> str:
+        return f"{self.building} · {self.unit}"
+
+
+def _choices(session: Session, condition: Any) -> list[PersonChoice]:
+    rows = session.execute(
+        select(
+            UnitPerson.person_id,
+            Person.full_name,
+            Unit.id,
+            Unit.label,
+            Building.id,
+            Building.name,
+            UnitPerson.role,
+        )  # fmt: skip
+        .join(Person, Person.id == UnitPerson.person_id)
+        .join(Unit, Unit.id == UnitPerson.unit_id)
+        .join(Building, Building.id == Unit.building_id)
+        .where(Unit.active.is_(True), Building.active.is_(True), condition)
+        .order_by(Person.full_name, Building.name, Unit.label)
+        .limit(PEOPLE_LIMIT)
     ).all()
-    result = []
-    for unit in sorted(units, key=lambda u: u.label):
-        people = [
-            RosterPerson(
-                value=f"{unit.id}-{link.person_id}",
-                name=link.person.full_name,
-                role=labels.label(labels.PERSON_ROLE, link.role),
-            )
-            for link in sorted(unit.people, key=lambda link: (link.role, link.person.full_name))
-        ]
-        result.append((unit, people))
+    return [
+        PersonChoice(
+            person_id=person_id,
+            name=name,
+            unit_id=unit_id,
+            unit=label,
+            building_id=building_id,
+            building=formatting.building(building),
+            role=labels.label(labels.PERSON_ROLE, role),
+        )
+        for person_id, name, unit_id, label, building_id, building, role in rows
+    ]
+
+
+def search_people(session: Session, term: str) -> list[PersonChoice]:
+    """The roster by name, unit or phone (the formats «Teléfonos» understands: "351 555-0301",
+    "0351 5550301", "+54 9 351…"), in active units of active buildings. From 2 characters; a
+    phone from 4 digits (fewer would match almost every number)."""
+    term = term.strip()
+    if len(term) < PEOPLE_MIN_CHARS:
+        return []
+    like = f"%{term}%"
+    digits = re.sub(r"\D", "", term).lstrip("0")
+    by_person = Person.full_name.ilike(like)
+    if len(digits) >= 4:
+        by_person = Person.id.in_(
+            select(Person.id)
+            .outerjoin(Phone, Phone.person_id == Person.id)
+            .where(phone_search(term))
+        )
+    return _choices(session, or_(by_person, Unit.label.ilike(like)))
+
+
+def person_choice(
+    session: Session, person_id: int | None, unit_id: int | None
+) -> PersonChoice | None:
+    if person_id is None or unit_id is None:
+        return None
+    found = _choices(session, (UnitPerson.person_id == person_id) & (Unit.id == unit_id))
+    return found[0] if found else None
+
+
+@dataclass
+class FromConversation:
+    """What «Cargar reclamo» from a conversation brings: the person in each of their units
+    (several: she picks one), or, when the number is nobody's, its phone and WhatsApp name."""
+
+    conversation_id: int
+    choices: list[PersonChoice] = field(default_factory=list)
+    phone: str = ""
+    name: str = ""
+
+
+def from_conversation(session: Session, conversation_id: int | None) -> FromConversation | None:
+    """None: no such conversation, or a provider's (their claims are not theirs to report)."""
+    if conversation_id is None:
+        return None
+    row = session.execute(
+        select(WaConversation, WaContact)
+        .join(WaContact, WaContact.id == WaConversation.contact_id)
+        .where(WaConversation.id == conversation_id)
+    ).first()
+    if row is None:
+        return None
+    conversation, contact = row
+    provider = session.scalar(
+        select(Provider.id).where(
+            Provider.whatsapp_e164 == contact.phone_e164, Provider.active.is_(True)
+        )
+    )
+    if conversation.status == WaConversationStatus.PROVIDER or provider is not None:
+        return None
+    result = FromConversation(conversation.id)
+    person_id = session.scalar(
+        select(Phone.person_id).where(Phone.e164 == contact.phone_e164, Phone.conflict.is_(False))
+    )
+    if person_id is not None:
+        result.choices = _choices(session, UnitPerson.person_id == person_id)
+    if not result.choices:
+        result.phone = formatting.phone(contact.phone_e164)
+        result.name = contact.profile_name or ""
     return result
+
+
+def building_units(session: Session, building_id: int) -> list[Unit]:
+    """The building's active units (the unit of «No está en el padrón», optional)."""
+    units = session.scalars(
+        select(Unit).where(Unit.building_id == building_id, Unit.active.is_(True))
+    ).all()
+    return sorted(units, key=lambda u: u.label)
+
+
+# «… reclamo #1003» in an internal note: a link to that claim (by its number).
+_CLAIM_REFERENCE = re.compile(r"reclamo #(\d{1,9})")
+CLAIM_NUMBER_PATH = "/admin/claims/number/{}"
+
+
+def claim_links(text: str | None) -> Markup:
+    """An internal note's text, escaped, with «reclamo #N» as a link to the claim (Jinja filter
+    of the conversation's internal notes: only the studio writes those)."""
+    text = text or ""
+    parts, last = [], 0
+    for match in _CLAIM_REFERENCE.finditer(text):
+        number = match.group(1)
+        parts.append(escape(text[last : match.start()]))
+        link = Markup('reclamo <a href="{}">#{}</a>')
+        parts.append(link.format(CLAIM_NUMBER_PATH.format(number), number))
+        last = match.end()
+    parts.append(escape(text[last:]))
+    return Markup("").join(parts)
+
+
+def claim_number_note(number: int, repeated: bool) -> str:
+    """The internal note left in the conversation the claim was loaded from."""
+    return f"Se sumó al reclamo #{number}." if repeated else f"Se cargó el reclamo #{number}."
 
 
 def _person_phone(session: Session, person_id: int) -> str | None:
@@ -590,8 +811,8 @@ NOT_CONFIGURED = "WhatsApp no está configurado en este servidor: no se mandó n
 class ClaimsView(BaseView):
     name = "Reclamos"
     icon = "fa-solid fa-screwdriver-wrench"
-    # The menu shows the urgent open claims next to its name (templates/sqladmin/_macros.html).
-    menu_badge = "urgent_claims"
+    # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
+    menu_counter = "claims"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
     # Builds the claims' WhatsApp messages (setup_admin; None in a server without WhatsApp).
@@ -616,95 +837,102 @@ class ClaimsView(BaseView):
         with self.session_maker() as session:
             result = list_claims(session, filters, self.now(), self.timezone)
             options = filter_options(session)
+            stamp = claims_stamp(session)
         current = result.filters
 
         def link(**changes: Any) -> str:
             return "?" + urlencode(current.params(**changes))
 
+        context = {"result": result, "tabs": TABS, "link": link}
+        if request.query_params.get("partial") == "1":
+            # Only the list, redrawn by panel.js when a claim changed.
+            template = self.templates.env.get_template("_claims_list.html")
+            html = await template.render_async({"request": request, **context})
+            return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+        fields = [
+            ("building", "Edificio", options["buildings"], current.building),
+            ("category", "Problema", options["categories"], current.category),
+            ("attends", "Lo atiende", options["attends"], current.attends),
+            ("status", "Estado", options["statuses"], current.status),
+            ("urgent", "Urgente", options["urgent"], current.urgent),
+            ("attention", "Atención", options["attention"], current.attention),
+        ]
         return await self._page(
             request,
             "claims.html",
             "Reclamos",
-            result=result,
-            tabs=TABS,
-            options=options,
-            link=link,
-            poll_seconds=POLL_SECONDS,
+            **context,
+            filter_fields=fields,
+            applied_filters=[label for _, label, _, value in fields if value],
+            claims_stamp=stamp,
         )
 
-    @expose("/claims/poll", methods=["GET"], identity="claims-poll")
-    async def claims_poll(self, request: Request) -> Response:
-        with self.session_maker() as session:
-            urgent = urgent_open_claims(session, self.now())
-        return JSONResponse({"urgent_claims": urgent}, headers={"Cache-Control": "no-store"})
-
-    @expose("/claims/new", methods=["GET", "POST"], identity="claim-new")
-    async def claim_new(self, request: Request) -> Response:
-        form: FormData | None = await request.form() if request.method == "POST" else None
-        source = form if form is not None else request.query_params
-        building_id = _int(source.get("building_id"))
-        error = None
-        with self.session_maker() as session:
-            building = session.get(Building, building_id) if building_id else None
-            if form is not None and building is not None:
-                try:
-                    unit_id = _int(form.get("unit_id"))
-                    category_id = _int(form.get("category_id"))
-                    if category_id is None:
-                        raise ClaimProblem("Elegí el problema.")
-                    result = create_claim(
-                        session,
-                        building_id=building.id,
-                        category_id=category_id,
-                        unit_id=unit_id,
-                        description=str(form.get("description", "")),
-                        reporter=reporter_from_form(session, form, building.id, unit_id),
-                        source=ClaimSource.PANEL,
-                        user=admin_user(request),
-                        now=self.now(),
-                    )
-                except ClaimProblem as exc:
-                    session.rollback()
-                    error = str(exc)
-                else:
-                    sent = None
-                    if not result.repeated:
-                        sent = self._send_to_provider(session, result.claim, admin_user(request))
-                    session.commit()
-                    if isinstance(sent, tuple):
-                        (Flash.success if sent[0] else Flash.warning)(request, sent[1])
-                    number = result.claim.number
-                    if result.already_reporter:
-                        Flash.info(
-                            request,
-                            f"Ya había un reclamo abierto (#{number}) y esa persona ya estaba en "
-                            "ese: no se cargó otro.",
-                        )
-                    elif result.repeated:
-                        Flash.info(
-                            request, f"Ya había un reclamo abierto (#{number}): se sumó a ese."
-                        )
-                    else:
-                        Flash.success(request, f"Reclamo #{number} cargado.")
-                    return _redirect(request, "claim", claim_id=result.claim.id)
-            buildings = sorted(
+    def _new_context(
+        self, session: Session, source: Any, error: str | None = None, form: Any = None
+    ) -> dict[str, Any]:
+        """What «Nuevo reclamo» shows for the choices in source (the query, or the form sent
+        back with an error): who reports, then the building's form."""
+        conversation = from_conversation(session, _int(source.get("conversation")))
+        mode = "other" if source.get("reporter") == "other" else "roster"
+        chosen = None
+        if mode == "roster":
+            person = str(source.get("person", ""))
+            unit_part, _, person_part = person.partition("-")
+            unit_id = _int(source.get("unit_id")) if not person else _int(unit_part)
+            person_id = _int(source.get("person_id")) if not person else _int(person_part)
+            chosen = person_choice(session, person_id, unit_id)
+            if chosen is None and conversation and len(conversation.choices) == 1:
+                chosen = conversation.choices[0]
+            if chosen is None and conversation and not conversation.choices:
+                mode = "other"
+            if chosen is None and source.get("building_id"):
+                mode = "other"  # a building without a person: «No está en el padrón»
+        building_id = chosen.building_id if chosen else _int(source.get("building_id"))
+        building = session.get(Building, building_id) if building_id else None
+        if building is not None and not building.active:
+            building = None
+        query = str(source.get("q", "")).strip()
+        people = search_people(session, query) if query and not chosen else []
+        if not chosen and not query and conversation and len(conversation.choices) > 1:
+            people = conversation.choices
+        context: dict[str, Any] = {
+            "buildings": sorted(
                 (
                     (b.id, formatting.building(b.name))
                     for b in session.scalars(select(Building).where(Building.active.is_(True)))
                 ),
                 key=lambda o: o[1],
+            ),
+            "mode": mode,
+            "chosen": chosen,
+            "building": building,
+            "building_name": formatting.building(building.name) if building else "",
+            "query": query,
+            "people": people,
+            "searched": bool(query) and not chosen,
+            "conversation": conversation,
+            "error": error,
+            "form": form,
+            "scope_labels": labels.CLAIM_SCOPE,
+        }
+        if building is not None:
+            context["categories"] = enabled_categories(session, building.id)
+            context["units"] = building_units(session, building.id)
+        return context
+
+    @expose("/claims/new", methods=["GET", "POST"], identity="claim-new")
+    async def claim_new(self, request: Request) -> Response:
+        form: FormData | None = await request.form() if request.method == "POST" else None
+        error = None
+        with self.session_maker() as session:
+            if form is not None:
+                created = self._create(session, request, form)
+                if isinstance(created, Response):
+                    return created
+                error = created
+            context = self._new_context(
+                session, form if form is not None else request.query_params, error, form
             )
-            context: dict[str, Any] = {
-                "buildings": buildings,
-                "building": building,
-                "building_name": formatting.building(building.name) if building else "",
-                "error": error,
-                "form": form,
-                "scope_labels": labels.CLAIM_SCOPE,
-            }
-            if building is not None:
-                context["categories"] = enabled_categories(session, building.id)
-                context["roster"] = roster(session, building.id)
             return await self._page(
                 request,
                 "claim_new.html",
@@ -712,6 +940,95 @@ class ClaimsView(BaseView):
                 status_code=400 if error else 200,
                 **context,
             )
+
+    def _create(self, session: Session, request: Request, form: FormData) -> Response | str:
+        """Load the claim (the redirect to it) or say why not (the page again, with it)."""
+        user = admin_user(request)
+        building = session.get(Building, _int(form.get("building_id")) or 0)
+        conversation = from_conversation(session, _int(form.get("conversation")))
+        try:
+            if building is None:
+                raise ClaimProblem("Elegí quién reclama o el edificio.")
+            unit_id = _int(form.get("unit_id"))
+            category_id = _int(form.get("category_id"))
+            if category_id is None:
+                raise ClaimProblem("Elegí el problema.")
+            result = create_claim(
+                session,
+                building_id=building.id,
+                category_id=category_id,
+                unit_id=unit_id,
+                description=str(form.get("description", "")),
+                reporter=reporter_from_form(session, form, building.id, unit_id),
+                source=ClaimSource.PANEL,
+                user=user,
+                wa_conversation_id=conversation.conversation_id if conversation else None,
+                now=self.now(),
+            )
+        except ClaimProblem as exc:
+            session.rollback()
+            return str(exc)
+        sent = None
+        if not result.repeated:
+            sent = self._send_to_provider(session, result.claim, user)
+        number = result.claim.number
+        if conversation is not None:
+            # Commits it all: the claim and the note in the conversation it came from.
+            add_conversation_note(
+                session, conversation.conversation_id, user,
+                claim_number_note(number, result.repeated),
+            )  # fmt: skip
+        session.commit()
+        if isinstance(sent, tuple):
+            (Flash.success if sent[0] else Flash.warning)(request, sent[1])
+        if result.already_reporter:
+            Flash.info(
+                request,
+                f"Ya había un reclamo abierto (#{number}) y esa persona ya estaba en ese: no se "
+                "cargó otro.",
+            )
+        elif result.repeated:
+            Flash.info(request, f"Ya había un reclamo abierto (#{number}): se sumó a ese.")
+        else:
+            Flash.success(request, f"Reclamo #{number} cargado.")
+        return _redirect(request, "claim", claim_id=result.claim.id)
+
+    @expose("/claims/people", methods=["GET"], identity="claims-people")
+    async def claims_people(self, request: Request) -> Response:
+        """«¿Quién reclama?»: the people found (a list of links to choose one)."""
+        with self.session_maker() as session:
+            query = request.query_params.get("q", "").strip()
+            context = {
+                "people": search_people(session, query),
+                "searched": len(query) >= PEOPLE_MIN_CHARS,
+                "conversation": from_conversation(
+                    session, _int(request.query_params.get("conversation"))
+                ),
+            }
+            return await self._fragment(request, "_claim_people.html", context)
+
+    @expose("/claims/new/form", methods=["GET"], identity="claim-new-form")
+    async def claim_new_form(self, request: Request) -> Response:
+        """The rest of the form, for the chosen person or building (no reload)."""
+        with self.session_maker() as session:
+            context = self._new_context(session, request.query_params)
+            return await self._fragment(request, "_claim_new_form.html", context)
+
+    @expose("/claims/number/{number:int}", methods=["GET"], identity="claim-number")
+    async def claim_by_number(self, request: Request) -> Response:
+        """A claim by its number (the link of the notes «Se cargó el reclamo #N»)."""
+        with self.session_maker() as session:
+            claim_id = session.scalar(
+                select(Claim.id).where(Claim.number == request.path_params["number"])
+            )
+        if claim_id is None:
+            return Response("Reclamo inexistente", status_code=404)
+        return _redirect(request, "claim", claim_id=claim_id)
+
+    async def _fragment(self, request: Request, name: str, context: dict[str, Any]) -> Response:
+        template = self.templates.env.get_template(name)
+        html = await template.render_async({"request": request, **context})
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     @expose("/claims/{claim_id:int}", methods=["GET"], identity="claim")
     async def claim_detail(self, request: Request) -> Response:
@@ -723,16 +1040,25 @@ class ClaimsView(BaseView):
             providers = session.scalars(
                 select(Provider).where(Provider.active.is_(True)).order_by(Provider.name)
             ).all()
+            wait_when = self._wait_when(session, claim)
+            main, others = claim_actions(
+                claim,
+                scheduled=bool(page.scheduled),
+                wait_when=wait_when,
+                had_provider=page.had_provider,
+            )
             return await self._page(
                 request,
                 "claim.html",
                 f"Reclamo #{claim.number}",
                 page=page,
+                main_action=main,
+                other_actions=others,
                 providers=providers,
                 studio_label=labels.STUDIO,
                 scope_labels=labels.CLAIM_SCOPE,
                 source_label=labels.label(labels.CLAIM_SOURCE, claim.source),
-                wait_when=self._wait_when(session, claim),
+                wait_when=wait_when,
                 previous_status=labels.label(labels.CLAIM_STATUS, claim.previous.status)
                 if claim.previous
                 else "",

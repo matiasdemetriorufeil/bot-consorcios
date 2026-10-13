@@ -9,7 +9,7 @@
   {% for c in card.claims %}
   <div class="small contact-claim">
     <a href="{{ url_for('admin:view-claim', claim_id=c.id) }}">#{{ c.number }} · {{ c.problem }}</a>
-    <span class="badge claim-status claim-{{ c.group }}">{{ c.status }}</span>
+    <span class="badge claim-status claim-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
   </div>
   {% else %}
   <div class="small text-secondary">No tiene reclamos abiertos.</div>
@@ -52,14 +52,17 @@
     Número no identificado: no figura en ConsorPlus ni lo verificó el bot.
   </div>
   {% endif %}
-  {% if card.claims %}
   <div class="contact-section">Reclamos</div>
   {% for c in card.claims %}
   <div class="small contact-claim">
     <a href="{{ url_for('admin:view-claim', claim_id=c.id) }}">#{{ c.number }} · {{ c.problem }}</a>
-    <span class="badge claim-status claim-{{ c.group }}">{{ c.status }}</span>
+    <span class="badge claim-status claim-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
   </div>
   {% endfor %}
-  {% endif %}
+  {#- With who reports already chosen (its unit, or its phone if nobody's), linked to this
+      conversation, where a note says «Se cargó el reclamo #N». -#}
+  <a class="btn btn-sm btn-secondary mt-2 contact-new-claim" data-tour="new-claim"
+     href="{% if example %}#{% else %}{{ url_for('admin:view-claim-new') }}?conversation={{ conversation.id }}{% endif %}"
+     {% if example %}data-example-note="{{ example_notes.link }}"{% endif %}><i class="fa-solid fa-screwdriver-wrench me-1"></i>Cargar reclamo</a>
   {% endif %}
 </div>

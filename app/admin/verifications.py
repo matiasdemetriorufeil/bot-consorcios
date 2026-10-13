@@ -106,6 +106,8 @@ def reject(session: Session, request_id: int, user: str) -> None:
 class VerificationsView(BaseView):
     name = "Verificaciones"
     icon = "fa-solid fa-user-check"
+    # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
+    menu_counter = "verifications"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
 

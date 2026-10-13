@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.admin import help
+from app.admin import help, labels
 from app.claims.service import Reporter, close_claim, create_claim, mark_sent
 from app.db.models import (
     Building,
@@ -24,8 +24,12 @@ from app.db.models import (
     ClaimScope,
     ClaimSource,
     ClaimStatus,
+    DataSource,
+    PersonRole,
     Provider,
     Unit,
+    UnitPerson,
+    WaConversationStatus,
     WaMediaStatus,
     WaMessage,
 )
@@ -164,10 +168,11 @@ def test_the_columns(logged_in: Panel, w: World) -> None:
     row = row.split("</tr>")[0]
     assert f"#{claim.number}" in row and "Urgente" in row
     assert "TORRE INVENTADA" in row and "001 TORRE" not in row
-    assert "Todo el edificio" in row and "Ascensor" in row
+    assert "TORRE INVENTADA · todo el edificio" in row and "Ascensor" in row
     assert "Ana Inventada" in row and "+1" in row
     assert "Ascensores Ficticios SRL" in row
-    assert "Falta avisar al proveedor" in row and "claim-open" in row
+    # The short status, the long one on hover.
+    assert 'title="Falta avisar al proveedor">Falta avisar</span>' in row and "claim-open" in row
     assert "hace 3 h" in row
 
 
@@ -379,11 +384,15 @@ def _new(panel: Panel, w: World, **values: str) -> Any:
 
 def test_the_form_shows_only_the_building_s_problems(logged_in: Panel, w: World) -> None:
     page = _text(logged_in.client.get("/admin/claims/new").text)
-    assert help.PAGE_HELP["view-claim-new"] in page and "Elegí el edificio" in page
-    page = _text(logged_in.client.get(f"/admin/claims/new?building_id={w.building.id}").text)
+    assert help.PAGE_HELP["view-claim-new"] in page and "¿Quién reclama?" in page
+    page = _text(
+        logged_in.client.get(f"/admin/claims/new?reporter=other&building_id={w.building.id}").text
+    )
     assert "Ascensor (todo el edificio)" in page and "Humedad (una unidad)" in page
     assert "Portón" not in page  # enabled only in the other building
-    assert "Ana Inventada (propietario)" in page and 'label="Unidad 02-B"' in page
+    assert '<option value="' + str(w.unit_b.id) + '" >02-B</option>' in page
+    # No long list of the building's people any more: «¿Quién reclama?» searches them.
+    assert "Ana Inventada" not in page and 'name="person"' not in page
 
 
 def test_new_claim_for_a_person_of_the_roster(logged_in: Panel, w: World) -> None:
@@ -511,8 +520,8 @@ def test_urgent_open_claims_for_the_alerts_and_the_menu(logged_in: Panel, w: Wor
     close_claim(s, closed, ClaimStatus.SOLVED, "Listo", actor=ClaimActor.BOT)
     s.commit()
 
-    data = logged_in.client.get("/admin/claims/poll").json()
-    assert data["urgent_claims"] == [
+    data = logged_in.client.get("/admin/pending/numbers").json()
+    assert data["alerts"]["claims"] == [
         {
             "id": f"{lift.id}:urgent",
             "number": lift.number,
@@ -521,22 +530,38 @@ def test_urgent_open_claims_for_the_alerts_and_the_menu(logged_in: Panel, w: Wor
             "building": "TORRE INVENTADA",
         }
     ]
-    polled = logged_in.client.get("/admin/conversations/poll").json()
-    assert polled["urgent_claims"] == data["urgent_claims"]
+    assert data["counts"]["claims"] == data["counts"]["claims_urgent"] == 1
 
     page = logged_in.client.get("/admin/claims").text
-    badge = re.search(r"<span[^>]*data-urgent-claims[^>]*>(\d+)</span>", page)
+    badge = re.search(r'<span[^>]*data-counter="claims"[^>]*>(\d+)</span>', page)
     assert badge and badge.group(1) == "1" and "hidden" not in badge.group(0)
-    assert "data-urgent-poll" in page and 'id="enable-alerts"' in page
+    assert "menu-badge-urgent" in badge.group(0)
     # Elsewhere too (the menu is on every page).
     other = logged_in.client.get("/admin/phones").text
-    assert re.search(r"data-urgent-claims[^>]*>1</span>", other)
+    assert re.search(r'data-counter="claims"[^>]*>1</span>', other)
 
 
 def test_no_urgent_claims_hides_the_counter(logged_in: Panel, w: World) -> None:
     page = logged_in.client.get("/admin/claims").text
-    badge = re.search(r"<span[^>]*data-urgent-claims[^>]*>", page)
+    badge = re.search(r'<span[^>]*data-counter="claims"[^>]*>', page)
     assert badge and "hidden" in badge.group(0)
+
+
+def test_needs_attention_includes_the_urgent_open_ones(logged_in: Panel, w: World) -> None:
+    """The filter «Necesitan atención» lists what «Pendientes» and the menu count: an urgent
+    open claim without an alert too, never a closed one."""
+    s = logged_in.session
+    lift = _claim(s, w.building, w.lift)  # urgent, no alert
+    _claim(s, w.building, w.damp, unit=w.unit)  # neither
+    closed = _claim(s, w.other, w.gate, "Carla Inventada", None)
+    closed.urgent = True
+    close_claim(s, closed, ClaimStatus.SOLVED, "Listo", actor=ClaimActor.BOT)
+    s.commit()
+
+    listed = _text(logged_in.client.get("/admin/claims?tab=open&attention=yes").text)
+    assert _numbers(listed) == [lift.number]
+    counts = logged_in.client.get("/admin/pending/numbers").json()["counts"]
+    assert counts["claims"] == len(_numbers(listed))
 
 
 def test_what_reaches_whatsapp(logged_in: Panel, w: World) -> None:
@@ -596,7 +621,7 @@ def test_a_failed_resend_leaves_it_pending_with_an_alert(logged_in: Panel, w: Wo
     assert "No se le pudo mandar a Ascensores Ficticios SRL" in _text(response.text)
     claim = _reload(logged_in.session, claim)
     assert claim.status == ClaimStatus.PENDING_SEND and claim.attention == "send_failed"
-    [alert] = logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+    [alert] = logged_in.client.get("/admin/pending/numbers").json()["alerts"]["claims"]
     assert alert["title"] == f"No se le pudo avisar al proveedor · #{claim.number}"
     page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
     assert 'id="claim-attention"' in page
@@ -670,9 +695,10 @@ def test_out_of_hours_the_page_asks_now_or_later(logged_in: Panel, w: World) -> 
 
     logged_in.now[0] = FRIDAY_NIGHT
     page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
-    assert "Mandar ahora" in page
+    # The main button asks «Ahora» or «En el próximo horario» in the dialog.
+    assert 'id="claim-main">Mandar al proveedor' in page
     assert "En el próximo horario (mañana a las 8:00)" in page
-    assert "Cambiar y mandar en el próximo horario (mañana a las 8:00)" in page
+    assert "Mandárselo en el próximo horario (mañana a las 8:00)" in page
 
     response = logged_in.client.post(
         f"/admin/claims/{claim.id}/resend", data={"when": "later"}, follow_redirects=True
@@ -745,13 +771,14 @@ def test_reminder_and_attention_on_the_page_and_the_list(logged_in: Panel, w: Wo
     assert "Recordatorio enviado" in page
     assert '<div class="alert alert-warning" id="claim-attention">El proveedor no confirmó.' in page
 
+    # «Necesitan atención»: the ones with an alert and the urgent open ones (first).
     listed = _text(logged_in.client.get("/admin/claims?attention=yes").text)
-    assert _numbers(listed) == [claim.number] and other.number not in _numbers(listed)
-    assert "El proveedor no confirmó" in listed and "(aplicados)" in listed
+    assert _numbers(listed) == [other.number, claim.number]
+    assert "El proveedor no confirmó" in listed and "Filtros: Atención" in listed
 
     [alert] = [
         a
-        for a in logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+        for a in logged_in.client.get("/admin/pending/numbers").json()["alerts"]["claims"]
         if a["number"] == claim.number
     ]
     assert alert == {
@@ -777,5 +804,454 @@ def test_the_alert_texts(logged_in: Panel, w: World, status: ClaimStatus, text: 
     claim.status_at = claim.acknowledged_at = NOW - timedelta(days=4)
     claim.attention = "no_ack" if status == ClaimStatus.PENDING_SEND else "stale"
     logged_in.session.commit()
-    [alert] = logged_in.client.get("/admin/claims/poll").json()["urgent_claims"]
+    [alert] = logged_in.client.get("/admin/pending/numbers").json()["alerts"]["claims"]
     assert alert["title"] == f"{text} · #{claim.number}"
+
+
+# --- 5e.2: statuses with a short and a long text ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "short", "long"),
+    [
+        (ClaimStatus.PENDING_SEND, "Falta avisar", "Falta avisar al proveedor"),
+        (ClaimStatus.SENT, "Avisado", "Avisado al proveedor"),
+        (ClaimStatus.ACKNOWLEDGED, "Confirmado", "El proveedor lo confirmó"),
+        (ClaimStatus.STUDIO, "Lo tiene el estudio", "Lo atiende el estudio"),
+        (ClaimStatus.SOLVED, "Solucionado", "Solucionado"),
+        (ClaimStatus.CANCELLED, "Cancelado", "Cancelado"),
+    ],
+)
+def test_each_status_short_and_long(
+    logged_in: Panel, w: World, status: ClaimStatus, short: str, long: str
+) -> None:
+    assert labels.claim_status(status) == (short, long)
+    assert labels.CLAIM_STATUS[status] == long and labels.CLAIM_STATUS_SHORT[status] == short
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    claim.status = status
+    claim.provider_id = w.lifts.id if status != ClaimStatus.STUDIO else None
+    logged_in.session.commit()
+
+    listed = _text(logged_in.client.get("/admin/claims?tab=all").text)
+    assert f'title="{long}">{short}</span>' in listed
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert f'id="claim-status" title="{long}">{short}</span>' in page
+    if long != short:
+        assert f'<span class="text-secondary" id="claim-status-long">{long}</span>' in page
+
+
+# --- 5e.2: «Qué hacer», a main button and «Otras acciones» ----------------------------------
+
+
+def _actions(page: str) -> tuple[str | None, list[str]]:
+    main = re.search(r'id="claim-main">([^<]+)<', page)
+    others = re.findall(r'data-action="\w+">([^<]+)<', page)
+    return (main.group(1) if main else None), others
+
+
+OTHERS_PENDING = [
+    "Marcar como avisado", "Cambiar quién lo atiende", "Cerrar como solucionado",
+    "Cancelar reclamo",
+]  # fmt: skip
+
+
+def test_pending_send_inside_the_providers_hours(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == ("Reenviar al proveedor", OTHERS_PENDING)
+    # The boxes are not shown until the button is touched: inside the dialog.
+    assert 'id="close-reason"' in page and "<div data-confirm-fields hidden>" in page
+    # The browser must not refuse the hidden required reason before the dialog opens.
+    assert 'novalidate id="act-close"' in page and 'novalidate id="act-cancel"' in page
+
+
+def test_pending_send_out_of_hours_and_scheduled(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    logged_in.now[0] = FRIDAY_NIGHT
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == ("Mandar al proveedor", OTHERS_PENDING)
+    claim.send_after = datetime(2026, 10, 3, 8, 0, tzinfo=NOW.tzinfo)
+    logged_in.session.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == ("Mandar ahora", OTHERS_PENDING)
+
+
+def test_pending_send_to_a_provider_without_whatsapp(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    claim.provider_id = w.plumber.id
+    logged_in.session.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == (
+        "Marcar como avisado",
+        ["Cambiar quién lo atiende", "Cerrar como solucionado", "Cancelar reclamo"],
+    )
+    assert 'id="claim-no-whatsapp"' in page
+
+
+def test_sent_has_no_main_button_it_waits_for_the_provider(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    claim = _pending(logged_in, w)
+    mark_sent(s, claim, text="Avisado", actor=ClaimActor.BOT, now=NOW - timedelta(hours=2))
+    claim.reminded_at = NOW - timedelta(hours=1)
+    s.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == (
+        None,
+        ["Cerrar como solucionado", "Cambiar quién lo atiende", "Cancelar reclamo"],
+    )
+    assert "Esperando que Ascensores Ficticios SRL confirme · avisado hace 2 h." in page
+    assert 'id="claim-reminded"' in page
+
+
+def test_acknowledged_closes_as_solved(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    claim.status = ClaimStatus.ACKNOWLEDGED
+    logged_in.session.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == (
+        "Cerrar como solucionado",
+        ["Cambiar quién lo atiende", "Cancelar reclamo"],
+    )
+
+
+def test_the_studio_by_design_closes_it(logged_in: Panel, w: World) -> None:
+    """Humedad has no provider in this building and never had one: the studio solves it."""
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    assert claim.status == ClaimStatus.STUDIO
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert _actions(page) == ("Cerrar como solucionado", ["Elegir proveedor", "Cancelar reclamo"])
+
+
+def test_the_studio_after_a_provider_chooses_another(logged_in: Panel, w: World) -> None:
+    """The provider said it cannot, or it was taken off: «Elegir proveedor» first."""
+    s = logged_in.session
+    declined = _claim(s, w.building, w.lift)
+    declined.status = ClaimStatus.STUDIO
+    declined.provider_id = None
+    declined.attention = "declined"
+    taken_off = _claim(s, w.building, w.damp, unit=w.unit)
+    s.commit()
+    logged_in.client.post(
+        f"/admin/claims/{taken_off.id}/provider", data={"provider_id": str(w.plumber.id)}
+    )
+    logged_in.client.post(f"/admin/claims/{taken_off.id}/provider", data={"provider_id": ""})
+    assert _reload(s, taken_off).status == ClaimStatus.STUDIO
+    for claim in (declined, taken_off):
+        page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+        assert _actions(page) == (
+            "Elegir proveedor",
+            ["Cerrar como solucionado", "Cancelar reclamo"],
+        ), claim.number
+
+
+def test_a_closed_claim_has_no_actions(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    claim = _claim(s, w.building, w.damp, unit=w.unit)
+    close_claim(s, claim, ClaimStatus.SOLVED, "Listo", actor=ClaimActor.BOT)
+    s.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert 'id="claim-actions"' not in page and _actions(page) == (None, [])
+    assert 'id="note-text"' in page
+
+
+@pytest.mark.parametrize("action", ["close", "cancel"])
+def test_the_reason_is_still_required_by_the_server(
+    logged_in: Panel, w: World, action: str
+) -> None:
+    claim = _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    response = logged_in.client.post(
+        f"/admin/claims/{claim.id}/{action}", data={"reason": "   "}, follow_redirects=True
+    )
+    assert "Contá el motivo." in _text(response.text)
+    assert _reload(logged_in.session, claim).status == ClaimStatus.STUDIO
+
+
+def test_the_confirmations_say_who_is_told(logged_in: Panel, w: World) -> None:
+    claim = _pending(logged_in, w)
+    page = _text(logged_in.client.get(f"/admin/claims/{claim.id}").text)
+    assert help.CONFIRM["close_claim"]["text"] in page
+    assert "se les avisa por WhatsApp que está solucionado" in help.CONFIRM["close_claim"]["text"]
+    assert "Al vecino no se le avisa nada" in help.CONFIRM["cancel_claim"]["text"]
+    assert "Al proveedor no se le manda nada" in help.CONFIRM["mark_sent"]["text"]
+    assert "Se le va a mandar el reclamo por WhatsApp a Ascensores Ficticios SRL." in page
+
+
+# --- 5e.2: the list redraws itself ------------------------------------------------------------
+
+
+def test_the_stamp_changes_with_every_change(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    claim = _pending(logged_in, w)
+
+    def stamp() -> str:
+        return logged_in.client.get("/admin/pending/numbers").json()["claims_stamp"]
+
+    first = stamp()
+    page = logged_in.client.get("/admin/claims").text
+    assert f'data-claims-stamp="{first}"' in page
+    mark_sent(s, claim, text="Avisado", actor=ClaimActor.BOT)
+    s.commit()
+    second = stamp()
+    assert second != first
+    lift = _claim(s, w.building, w.lift)
+    third = stamp()
+    _claim(s, w.building, w.lift, "Beto Ficticio", WA_BETO)  # joins the lift's one
+    assert lift.number and stamp() != third
+
+
+def test_the_partial_list_keeps_the_filters(logged_in: Panel, w: World) -> None:
+    _claim(logged_in.session, w.building, w.damp, unit=w.unit)
+    response = logged_in.client.get(
+        "/admin/claims", params={"tab": "all", "q": "Ana", "attends": "studio", "partial": "1"}
+    )
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    part = _text(response.text)
+    assert "<html" not in part and 'id="claim-tabs"' in part and 'id="claim-search"' not in part
+    assert "?tab=open&amp;q=Ana&amp;attends=studio" in response.text
+    assert len(_numbers(part)) == 1
+
+
+def test_the_filters_are_always_folded(logged_in: Panel, w: World) -> None:
+    page = _text(logged_in.client.get("/admin/claims?status=studio&urgent=no").text)
+    assert '<details class="list-filters" id="claim-filters">' in page
+    assert "Filtros: Estado, Urgente" in page
+
+
+# --- 5e.2: «Cargar reclamo» from a conversation -----------------------------------------------
+
+
+def test_the_contact_card_offers_to_load_a_claim(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    ana = conversation(s, WA_ANA[1:], status=WaConversationStatus.HUMAN)
+    provider = conversation(s, WA_LIFTS[1:], status=WaConversationStatus.PROVIDER)
+    s.commit()
+    page = logged_in.client.get(f"/admin/conversations/{ana.id}").text
+    assert f"/admin/claims/new?conversation={ana.id}" in page and "Cargar reclamo" in page
+    page = logged_in.client.get(f"/admin/conversations/{provider.id}").text
+    assert "Cargar reclamo" not in page
+
+
+def test_from_a_conversation_with_one_unit(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    conv = conversation(s, WA_ANA[1:], status=WaConversationStatus.HUMAN)
+    s.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/new?conversation={conv.id}").text)
+    assert 'id="claim-from-conversation"' in page
+    assert f'name="person" value="{w.unit.id}-{w.ana_id}"' in page
+    chosen = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", page.split('id="claim-chosen"')[1]))
+    assert "Quién reclama: Ana Inventada" in chosen
+    assert "TORRE INVENTADA · 01-A (propietario)" in page
+
+    response = logged_in.client.post(
+        "/admin/claims/new",
+        data={
+            "building_id": str(w.building.id),
+            "reporter": "roster",
+            "person": f"{w.unit.id}-{w.ana_id}",
+            "unit_id": str(w.unit.id),
+            "category_id": str(w.damp.id),
+            "description": "Me llamó por la humedad",
+            "conversation": str(conv.id),
+        },  # fmt: skip
+        follow_redirects=True,
+    )
+    claim = s.scalar(select(Claim))
+    assert claim is not None and f"Reclamo #{claim.number} cargado." in _text(response.text)
+    assert claim.wa_conversation_id == conv.id
+    [note] = s.scalars(select(WaMessage).where(WaMessage.conversation_id == conv.id)).all()
+    assert note.is_internal_note and note.body == f"Se cargó el reclamo #{claim.number}."
+    assert note.operator == "operadora"
+    # The note links to the claim.
+    thread = logged_in.client.get(f"/admin/conversations/{conv.id}").text
+    link = f'reclamo <a href="/admin/claims/number/{claim.number}">#{claim.number}</a>'
+    assert link in thread
+    to = logged_in.client.get(f"/admin/claims/number/{claim.number}", follow_redirects=False)
+    assert to.headers["location"].endswith(f"/admin/claims/{claim.id}")
+    assert logged_in.client.get("/admin/claims/number/999999").status_code == 404
+    actions = [e["action"] for e in logged_in.admin_events()]
+    assert actions == ["claim_created", "conversation_note_added"]
+
+
+def test_from_a_conversation_with_several_units(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    s.add(UnitPerson(unit_id=w.unit_b.id, person_id=w.ana_id, role=PersonRole.TENANT,
+                     source=DataSource.CONSORPLUS))  # fmt: skip
+    conv = conversation(s, WA_ANA[1:], status=WaConversationStatus.HUMAN)
+    s.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/new?conversation={conv.id}").text)
+    assert 'id="claim-form"' not in page  # she picks the unit first
+    assert "TORRE INVENTADA · 01-A (propietario)" in page
+    assert "TORRE INVENTADA · 02-B (inquilino)" in page
+    assert f"person_id={w.ana_id}&unit_id={w.unit_b.id}&conversation={conv.id}" in page
+
+
+def test_from_a_conversation_of_nobody(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    conv = conversation(s, "5493515550199", profile_name="Contacto Inventado")
+    s.commit()
+    page = _text(logged_in.client.get(f"/admin/claims/new?conversation={conv.id}").text)
+    assert '<div class="card" id="claim-other" >' in page and 'id="claim-who" hidden' in page
+    page = _text(
+        logged_in.client.get(
+            f"/admin/claims/new?conversation={conv.id}&reporter=other&building_id={w.building.id}"
+        ).text
+    )
+    assert 'value="351 555-0199"' in page and 'value="Contacto Inventado"' in page
+    logged_in.client.post(
+        "/admin/claims/new",
+        data={
+            "building_id": str(w.building.id),
+            "reporter": "other",
+            "name": "Contacto Inventado",
+            "phone": "351 555-0199",
+            "category_id": str(w.lift.id),
+            "description": "No anda",
+            "conversation": str(conv.id),
+        },  # fmt: skip
+    )
+    claim = s.scalar(select(Claim))
+    assert claim is not None and claim.reporter_phone_e164 == "+5493515550199"
+    assert claim.wa_conversation_id == conv.id
+
+
+def test_from_a_conversation_joining_an_open_claim(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    existing = _claim(s, w.building, w.lift)
+    conv = conversation(s, WA_BETO[1:], status=WaConversationStatus.HUMAN)
+    s.commit()
+    logged_in.client.post(
+        "/admin/claims/new",
+        data={
+            "building_id": str(w.building.id),
+            "reporter": "other",
+            "name": "Beto Ficticio",
+            "phone": "351 555-0102",
+            "category_id": str(w.lift.id),
+            "description": "Igual",
+            "conversation": str(conv.id),
+        },  # fmt: skip
+    )
+    assert _reload(s, existing).wa_conversation_id is None
+    note = s.scalar(select(WaMessage).where(WaMessage.conversation_id == conv.id))
+    assert note is not None and note.body == f"Se sumó al reclamo #{existing.number}."
+
+
+def test_a_provider_s_conversation_is_never_linked(logged_in: Panel, w: World) -> None:
+    s = logged_in.session
+    conv = conversation(s, WA_LIFTS[1:], status=WaConversationStatus.PROVIDER)
+    s.commit()
+    logged_in.client.post(
+        "/admin/claims/new",
+        data={
+            "building_id": str(w.building.id),
+            "reporter": "other",
+            "name": "Alguien",
+            "category_id": str(w.lift.id),
+            "description": "No anda",
+            "conversation": str(conv.id),
+        },  # fmt: skip
+    )
+    claim = s.scalar(select(Claim))
+    assert claim is not None and claim.wa_conversation_id is None
+    notes = select(func.count()).where(WaMessage.is_internal_note.is_(True))
+    assert s.scalar(notes) == 0
+
+
+# --- 5e.2: «¿Quién reclama?» -------------------------------------------------------------------
+
+
+def _people(panel: Panel, q: str) -> str:
+    response = panel.client.get("/admin/claims/people", params={"q": q})
+    assert response.status_code == 200
+    return _text(response.text)
+
+
+@pytest.mark.parametrize(
+    ("q", "found"),
+    [
+        ("ana inv", "Ana Inventada"),  # by name
+        ("02-B", "Beto Ficticio"),  # by unit
+        ("351 555-0101", "Ana Inventada"),  # by phone, as people say it
+        ("0351 5550101", "Ana Inventada"),
+        ("+54 9 351 555 0102", "Beto Ficticio"),
+    ],
+)
+def test_who_reports_is_found_by_name_unit_or_phone(
+    logged_in: Panel, w: World, q: str, found: str
+) -> None:
+    listed = _people(logged_in, q)
+    names = re.findall(r"<strong>([^<]+)</strong>", listed)
+    assert names == [found]
+    assert "data-person-choice" in listed
+
+
+def test_who_reports_without_results_and_too_short(logged_in: Panel, w: World) -> None:
+    assert help.EMPTY["claim-new:people"] in _people(logged_in, "Zzz Ficticia")
+    short = _people(logged_in, "A")
+    assert "<strong>" not in short and help.EMPTY["claim-new:start"] in short
+
+
+def test_who_reports_only_in_active_units_and_buildings(logged_in: Panel, w: World) -> None:
+    w.unit_b.active = False
+    logged_in.session.commit()
+    assert "Beto Ficticio" not in _people(logged_in, "Beto")
+    w.unit_b.active = True
+    w.building.active = False
+    logged_in.session.commit()
+    assert "Ana Inventada" not in _people(logged_in, "Ana")
+
+
+def test_choosing_the_person_brings_the_form(logged_in: Panel, w: World) -> None:
+    response = logged_in.client.get(
+        "/admin/claims/new/form", params={"person_id": w.ana_id, "unit_id": w.unit.id}
+    )
+    form = _text(response.text)
+    assert "<html" not in form and 'id="claim-form"' in form
+    assert "Ascensor (todo el edificio)" in form and "Portón" not in form
+    assert f'name="person" value="{w.unit.id}-{w.ana_id}"' in form
+    other = _text(
+        logged_in.client.get(
+            "/admin/claims/new/form", params={"reporter": "other", "building_id": w.other.id}
+        ).text
+    )
+    assert "Portón" in other and "Ascensor" not in other and 'id="name"' in other
+    # Without JavaScript: the search reloads the page with the results.
+    page = _text(logged_in.client.get("/admin/claims/new", params={"q": "Ana"}).text)
+    assert "TORRE INVENTADA · 01-A (propietario)" in page
+
+
+def test_a_person_of_another_building_is_refused(logged_in: Panel, w: World) -> None:
+    response = logged_in.client.post(
+        "/admin/claims/new",
+        data={
+            "building_id": str(w.other.id),
+            "reporter": "roster",
+            "person": f"{w.unit.id}-{w.ana_id}",
+            "category_id": str(w.gate.id),
+            "description": "No anda",
+        },  # fmt: skip
+    )
+    assert response.status_code == 400
+    assert "Esa persona no es de este edificio." in _text(response.text)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/admin/claims/people?q=Ana",
+        "/admin/claims/new/form?building_id=1",
+        "/admin/claims/number/1",
+    ],
+)
+def test_the_new_routes_need_login(panel: Panel, url: str) -> None:
+    response = panel.client.get(url, follow_redirects=False)
+    assert response.status_code in (302, 303)
+    assert response.headers["location"].endswith("/admin/login")
+
+
+def test_an_operator_loads_claims_too(operator: Panel, w: World) -> None:
+    assert "Ana Inventada" in _people(operator, "Ana")
+    form = operator.client.get(
+        "/admin/claims/new/form", params={"person_id": w.ana_id, "unit_id": w.unit.id}
+    )
+    assert form.status_code == 200

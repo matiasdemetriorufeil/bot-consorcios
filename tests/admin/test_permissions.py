@@ -64,6 +64,7 @@ FRIDAY = date(2026, 10, 9)
 ONLY_ADMINS = "Esta sección es solo para administradores."
 
 OPERATOR_MENU = [
+    "Pendientes",
     "Conversaciones",
     "Reclamos",
     "Teléfonos",

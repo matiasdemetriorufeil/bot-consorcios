@@ -24,7 +24,10 @@ JARGON = [
 NOT_PAGES = {
     "view-conversations-poll",
     "view-dev-chat-poll",
-    "view-claims-poll",
+    "view-pending-numbers",
+    "view-claims-people",
+    "view-claim-new-form",
+    "view-claim-number",
     "view-wa-media",
 }
 
@@ -32,6 +35,8 @@ NOT_PAGES = {
 def _all_texts() -> list[str]:
     texts = [*help.PAGE_HELP.values(), *help.EMPTY.values(), help.EMPTY_DEFAULT, help.TOUR_MISSING]
     texts += [t for item in help.CONFIRM.values() for t in (item["title"], item["text"])]
+    texts += [t for card in help.PENDING_CARDS.values() for t in card.values()]
+    texts += list(help.ALERTS.values())
     for step in help.TOUR:
         texts += [step["title"], step["text"], step.get("missing", "")]
     return texts

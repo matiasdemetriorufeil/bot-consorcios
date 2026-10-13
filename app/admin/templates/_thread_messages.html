@@ -1,5 +1,6 @@
 {# Messages of a conversation (page and poll). Bodies, file names and errors are autoescaped
-   text; line breaks come from CSS (white-space: pre-wrap), never from |safe. #}
+   text; line breaks come from CSS (white-space: pre-wrap), never from |safe. The studio's
+   internal notes go through claim_links (escaped too): «reclamo #N» is a link. #}
 {% for m in messages %}
 {% if show_first_day and (loop.first or loop.previtem.day != m.day) %}
 <div class="msg-day" data-day="{{ m.day }}"><span>{{ m.day }}</span></div>
@@ -23,7 +24,7 @@
   {% elif m.media_problem %}
   <div class="msg-problem">{{ m.media_problem }}{% if m.media_filename %} ({{ m.media_filename }}){% endif %}</div>
   {% endif %}
-  {% if m.body %}<div class="msg-body">{{ m.body }}</div>{% endif %}
+  {% if m.body %}<div class="msg-body">{% if m.side == 'note' and not m.is_handoff_note %}{{ m.body | claim_links }}{% else %}{{ m.body }}{% endif %}</div>{% endif %}
   {% if m.choices %}<div class="msg-choices">{% for c in m.choices %}<span class="msg-choice">{{ c }}</span>{% endfor %}</div>{% endif %}
   <div class="msg-meta">{{ m.time }}{% if m.side == 'out' %} <span class="msg-status" data-status="{{ m.status }}"></span>{% endif %}</div>
   {% if m.status == 'failed' %}<div class="msg-problem">No se entregó{% if m.error_text %}: {{ m.error_text }}{% endif %}</div>{% endif %}

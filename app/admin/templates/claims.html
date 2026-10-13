@@ -1,27 +1,17 @@
-{#- "Reclamos": every claim, in tabs (app.admin.claims). On a phone each row is a card. -#}
+{#- "Reclamos": every claim, in tabs (app.admin.claims). The tabs, the table and the footer
+    (_claims_list.html) redraw themselves when the panel's numbers say a claim changed
+    (panel.js, data-claims-list), except while the search or the filters are being used. On a
+    phone each row is a card. -#}
 {% extends "sqladmin/layout.html" %}
 {% block content %}
 {% set f = result.filters %}
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
     <a class="btn btn-primary" href="{{ url_for('admin:view-claim-new') }}"><i class="fa-solid fa-plus me-2"></i>Nuevo reclamo</a>
-    <button type="button" class="btn btn-secondary ms-auto" id="enable-alerts" title="Sonido y notificación del navegador cuando entra un reclamo urgente">🔔 Avisos</button>
   </div>
-  <div hidden data-urgent-poll="{{ url_for('admin:view-claims-poll') }}" data-seconds="{{ poll_seconds }}"></div>
 </div>
 <div class="col-12">
-  <div class="card">
-    <div class="card-header">
-      <ul class="nav nav-tabs card-header-tabs" id="claim-tabs">
-        {% for key, label in tabs.items() %}
-        <li class="nav-item">
-          <a class="nav-link {% if key == f.tab %}active{% endif %}" href="{{ link(tab=key, page=None) }}">
-            {{ label }} <span class="badge {{ 'bg-orange text-white' if key == 'open' and result.counts[key] else 'bg-secondary-lt' }} ms-1">{{ result.counts[key] }}</span>
-          </a>
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
+  <div class="card" id="claims-card">
     <div class="card-body border-bottom py-3">
       <form method="GET" class="row g-2" id="claim-search">
         <input type="hidden" name="tab" value="{{ f.tab }}">
@@ -31,16 +21,11 @@
         </div>
         <div class="col-12 col-md-auto"><button class="btn btn-primary w-100" type="submit"><i class="fa-solid fa-magnifying-glass me-1"></i>Buscar</button></div>
         <div class="col-12">
-          <details class="list-filters" {% if f.any_filter %}open{% endif %}>
-            <summary class="small text-secondary">Filtros{% if f.any_filter %} (aplicados){% endif %}</summary>
+          {#- Always folded: the list does not redraw itself while they are open. -#}
+          <details class="list-filters" id="claim-filters">
+            <summary class="small text-secondary">Filtros{% if applied_filters %}: {{ applied_filters | join(', ') }}{% endif %}</summary>
             <div class="row g-2 mt-1">
-              {% for name, label, values, current in [
-                  ('building', 'Edificio', options.buildings, f.building),
-                  ('category', 'Problema', options.categories, f.category),
-                  ('attends', 'Lo atiende', options.attends, f.attends),
-                  ('status', 'Estado', options.statuses, f.status),
-                  ('urgent', 'Urgente', options.urgent, f.urgent),
-                  ('attention', 'Atención', options.attention, f.attention)] %}
+              {% for name, label, values, current in filter_fields %}
               <div class="col-12 col-sm-6 col-lg">
                 <label class="form-label small" for="filter-{{ name }}">{{ label }}</label>
                 <select class="form-select" id="filter-{{ name }}" name="{{ name }}">
@@ -60,47 +45,8 @@
         </div>
       </form>
     </div>
-
-    {% if result.rows %}
-    <div class="table-responsive">
-      <table class="table table-vcenter card-table rows-table" id="claims">
-        <thead>
-          <tr><th>N.º</th><th>Fecha</th><th>Edificio</th><th>Unidad</th><th>Problema</th><th>Quién reclamó</th><th>Lo atiende</th><th>Estado</th></tr>
-        </thead>
-        <tbody>
-          {% for row in result.rows %}
-          <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if (row.urgent or row.attention) and row.group != 'closed' else '' }}">
-            <td data-label="N.º" class="text-nowrap"><a class="fw-bold" href="{{ url_for('admin:view-claim', claim_id=row.id) }}">#{{ row.number }}</a>{% if row.urgent %} <span class="badge bg-red-lt">Urgente</span>{% endif %}</td>
-            <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
-            <td data-label="Edificio">{{ row.building }}</td>
-            <td data-label="Unidad">{{ row.unit }}</td>
-            <td data-label="Problema">{{ row.problem }}</td>
-            <td data-label="Quién reclamó">{{ row.reporter }}{% if row.others %} <span class="badge bg-secondary-lt" title="Vecinos que se sumaron">+{{ row.others }}</span>{% endif %}</td>
-            <td data-label="Lo atiende">{{ row.attends }}</td>
-            <td data-label="Estado">
-              <span class="badge claim-status claim-{{ row.group }}">{{ row.status_label }}</span>
-              <div class="small text-secondary text-nowrap">{{ row.ago }}</div>
-              {% if row.attention %}<div class="small text-warning claim-row-attention">{{ row.attention }}</div>{% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <div class="card-body text-secondary">
-      <p class="empty-help mb-0">{% if f.query or f.any_filter %}{{ empty_texts['claims:search'] }}{% else %}{{ empty_texts['claims:' ~ f.tab] }}{% endif %}</p>
-    </div>
-    {% endif %}
-
-    <div class="card-footer d-flex flex-wrap align-items-center gap-2">
-      <span class="small text-secondary">{{ result.total }} reclamo(s){% if result.pages > 1 %} · página {{ f.page }} de {{ result.pages }}{% endif %}</span>
-      {% if result.pages > 1 %}
-      <div class="ms-auto btn-group">
-        <a class="btn btn-sm btn-secondary {% if f.page <= 1 %}disabled{% endif %}" href="{{ link(page=f.page - 1) }}">Anterior</a>
-        <a class="btn btn-sm btn-secondary {% if f.page >= result.pages %}disabled{% endif %}" href="{{ link(page=f.page + 1) }}">Siguiente</a>
-      </div>
-      {% endif %}
+    <div id="claims-list" data-claims-list data-claims-stamp="{{ claims_stamp }}">
+      {% include "_claims_list.html" %}
     </div>
   </div>
 </div>

@@ -168,15 +168,15 @@ def test_there_is_no_test_chat_in_production(logged_in: Panel) -> None:
     assert "Chat de prueba" not in logged_in.client.get("/admin/conversations").text
 
 
-def test_the_home_page_goes_to_conversations(panel: Panel) -> None:
+def test_the_home_page_goes_to_pending(panel: Panel) -> None:
     anonymous = panel.client.get("/admin/", follow_redirects=False)
     assert anonymous.status_code == 302
-    assert anonymous.headers["location"].endswith("/admin/conversations")
+    assert anonymous.headers["location"].endswith("/admin/pending")
 
     panel.login()
     page = panel.client.get("/admin/")
     assert page.status_code == 200
-    assert str(page.url).endswith("/admin/conversations")
+    assert str(page.url).endswith("/admin/pending")
 
 
 # --- The whole claims circuit, without a phone ---------------------------------------------------

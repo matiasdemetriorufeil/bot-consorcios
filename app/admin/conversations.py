@@ -1,10 +1,12 @@
 """Panel page "Conversaciones": the WhatsApp inbox (app.admin.inbox) for every panel user.
 
-- GET  /admin/conversations                      the list (tabs, search)
+- GET  /admin/conversations                      the list (tabs, search; ?reason=no_answer: the
+                                                 ones the bot could not answer this week)
 - GET  /admin/conversations/{id}                 the list + the conversation + the contact card
                                                  (on a phone: only the conversation)
-- GET  /admin/conversations/poll                 JSON every few seconds: the list, new messages
-                                                 of the open one and what makes the page beep
+- GET  /admin/conversations/poll                 JSON every few seconds: the list and the new
+                                                 messages of the open one (the counters and the
+                                                 alerts come from app.admin.pending, every page)
 - POST /admin/conversations/{id}/action          take, return, resolve, note, reply, template
 - GET  /admin/conversations/example?tab=        "Cómo usar": a made-up inbox (app.admin.example)
                                                  with the tour (app.admin.help.TOUR) over it
@@ -33,9 +35,8 @@ from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
-from app.admin import example, inbox
+from app.admin import example, formatting, inbox, labels
 from app.admin.auth import admin_user, current_user_id, display_names
-from app.admin.claims import urgent_open_claims
 from app.config import Settings
 from app.db.models import PanelUser, QuickReply, WaConversationStatus
 
@@ -57,6 +58,12 @@ def _int(value: Any, default: int = 0) -> int:
 def _tab(request: Request) -> str:
     tab = request.query_params.get("tab", inbox.DEFAULT_TAB)
     return tab if tab in inbox.TABS else inbox.DEFAULT_TAB
+
+
+def _reason(request: Request) -> str:
+    """The handoff reason the list is filtered by ("" if none, or not one of REASON_FILTER)."""
+    reason = request.query_params.get("reason", "")
+    return reason if reason in labels.REASON_FILTER else ""
 
 
 def new_form_token() -> str:
@@ -102,6 +109,8 @@ def mark_tour_seen(session: Any, request: Request, now: datetime) -> None:
 class ConversationsView(BaseView):
     name = "Conversaciones"
     icon = "fa-solid fa-comments"
+    # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
+    menu_counter = "waiting"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
     # Set by setup_admin (staticmethods): the WhatsApp client (None if not configured) and
@@ -115,12 +124,19 @@ class ConversationsView(BaseView):
         names = display_names(session)
         query = request.query_params.get("q", "").strip()
         tab = _tab(request)
-        rows = inbox.list_conversations(session, tab, user, self.clock(), query=query, names=names)
+        reason = "" if query else _reason(request)
+        now = self.clock()
+        rows = inbox.list_conversations(
+            session, tab, user, now, query=query, names=names,
+            reason=reason, since=formatting.week_start(now, self.timezone) if reason else None,
+        )  # fmt: skip
         return {
             "rows": rows,
             "tab": tab,
             "tabs": inbox.TABS,
             "query": query,
+            "reason_filter": reason,
+            "reason_filter_text": labels.REASON_FILTER.get(reason, ""),
             "counts": inbox.tab_counts(session, user),
             "names": names,
         }
@@ -231,14 +247,10 @@ class ConversationsView(BaseView):
                 inbox.mark_read(session, open_id)  # she is looking at it
             context = self._list_context(session, request, user)
             data: dict[str, Any] = {
-                "counts": context["counts"],
-                "waiting_ids": inbox.waiting_ids(session),
-                "mine_last": {str(k): v for k, v in inbox.mine_last_inbound(session, user).items()},
-                "urgent_claims": urgent_open_claims(session),
+                "inbox_html": await self._fragment(
+                    request, "_inbox_list.html", {**context, "open_id": open_id}
+                )
             }
-            data["inbox_html"] = await self._fragment(
-                request, "_inbox_list.html", {**context, "open_id": open_id}
-            )
             if open_id:
                 found = inbox.conversation_with_contact(session, open_id)
                 if found is not None:

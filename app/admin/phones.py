@@ -213,6 +213,8 @@ def back_query(raw: str) -> str:
 class PhonesView(BaseView):
     name = "Teléfonos"
     icon = "fa-solid fa-address-book"
+    # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
+    menu_counter = "phones"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
 

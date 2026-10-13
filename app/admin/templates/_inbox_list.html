@@ -2,16 +2,17 @@
 {% set list_base = url_for('admin:view-conversation', conversation_id=open_id) if open_id and not example else url_for('admin:view-conversations') %}
 <nav class="inbox-tabs" aria-label="Pestañas de la bandeja">
   {% for key, label in tabs.items() %}
-  <a class="inbox-tab {% if key == tab and not query %}active{% endif %}" href="{% if example %}#{% else %}{{ list_base }}?{{ {'tab': key}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}{% if key == 'waiting' %} data-tour="waiting"{% endif %}>
+  <a class="inbox-tab {% if key == tab and not query and not reason_filter %}active{% endif %}" href="{% if example %}#{% else %}{{ list_base }}?{{ {'tab': key}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}{% if key == 'waiting' %} data-tour="waiting"{% endif %}>
     {{ label }}{% if key in counts and counts[key] %} <span class="badge {{ 'bg-red text-white' if key == 'waiting' else 'bg-blue-lt' }}">{{ counts[key] }}</span>{% endif %}
   </a>
   {% endfor %}
 </nav>
-{% if query %}<div class="inbox-searching">Resultados para «{{ query }}» en todas las pestañas</div>{% endif %}
+{% if query %}<div class="inbox-searching">Resultados para «{{ query }}» en todas las pestañas</div>
+{% elif reason_filter %}<div class="inbox-searching">{{ reason_filter_text }} · <a href="{{ url_for('admin:view-conversations') }}?{{ {'tab': tab}|urlencode }}">Quitar filtro</a></div>{% endif %}
 <div class="inbox-rows">
   {% for r in rows %}
   <a class="inbox-row{% if r.id == open_id %} active{% endif %}{% if r.urgent %} urgent{% endif %}{% if r.unread %} unread{% endif %}"
-     href="{% if example %}#{% else %}{{ url_for('admin:view-conversation', conversation_id=r.id) }}?{{ {'tab': tab, 'q': query}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}>
+     href="{% if example %}#{% else %}{{ url_for('admin:view-conversation', conversation_id=r.id) }}?{{ {'tab': tab, 'q': query, 'reason': reason_filter}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}>
     <div class="inbox-line">
       <span class="inbox-name">{{ r.name }}</span>
       <span class="inbox-ago">{{ r.ago }}</span>
@@ -27,7 +28,7 @@
       {% if r.provider %}<span class="badge bg-teal-lt inbox-provider">Proveedor · {{ r.provider }}</span>{% endif %}
       {% if r.urgent %}<span class="badge bg-red text-white">URGENTE</span>{% endif %}
       {% if r.reason %}<span class="badge bg-orange-lt inbox-reason" title="{{ r.reason[1] }}">{{ r.reason[0] }}</span>{% endif %}
-      {% if query %}<span class="badge bg-secondary-lt">{{ r.status_label }}</span>{% endif %}
+      {% if query or reason_filter %}<span class="badge bg-secondary-lt">{{ r.status_label }}</span>{% endif %}
       {% if r.status.value == 'human' %}
         {% if r.from_phone_app %}<span class="badge bg-purple-lt">Desde el celular</span>
         {% elif r.assigned_to %}<span class="badge bg-azure-lt">La tiene {{ r.assigned_to }}</span>{% endif %}
@@ -35,6 +36,6 @@
     </div>
   </a>
   {% else %}
-  <div class="inbox-empty-list empty-help">{{ empty_texts['conversations:search'] if query else empty_texts['conversations:' ~ tab] }}</div>
+  <div class="inbox-empty-list empty-help">{{ empty_texts['conversations:search'] if query else empty_texts['conversations:reason'] if reason_filter else empty_texts['conversations:' ~ tab] }}</div>
   {% endfor %}
 </div>

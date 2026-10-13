@@ -20,7 +20,7 @@
   <div id="inbox-app" class="inbox{% if open_id %} has-open{% endif %}{% if example %} inbox-example{% endif %}"
        {% if example %}data-example="true" data-example-back="{{ back_url }}" data-example-done="{{ example_done }}"
        {% else %}data-poll-url="{{ url_for('admin:view-conversations-poll') }}"{% endif %}
-       data-tab="{{ tab }}" data-q="{{ query }}" data-open="{{ open_id or '' }}"
+       data-tab="{{ tab }}" data-q="{{ query }}" data-reason="{{ reason_filter }}" data-open="{{ open_id or '' }}"
        data-last="{{ last_id or 0 }}" data-window="{{ '1' if window_open else '0' }}"
        data-seconds="{{ poll_seconds }}"
        data-tour-auto="{{ 'true' if tour_auto else 'false' }}" data-tour-seen-url="{{ url_for('admin:view-tour-seen') }}">
@@ -30,14 +30,13 @@
         <input type="hidden" name="tab" value="{{ tab }}">
         <input class="form-control form-control-sm" type="search" name="q" value="{{ query }}"
                placeholder="Nombre, teléfono o unidad" aria-label="Buscar conversaciones">
-        <button type="button" class="btn btn-sm btn-secondary" id="enable-alerts" title="Sonido y notificación del navegador">🔔 Avisos</button>
       </form>
       <div id="inbox-list">{% include "_inbox_list.html" %}</div>
     </section>
     {% if open_id %}
     <section class="card inbox-chat">
       <div class="chat-top">
-        <a class="btn btn-sm btn-secondary d-lg-none" href="{% if example %}#{% else %}{{ url_for('admin:view-conversations') }}?{{ {'tab': tab, 'q': query}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}><i class="fa-solid fa-arrow-left me-1"></i>Volver</a>
+        <a class="btn btn-sm btn-secondary d-lg-none" href="{% if example %}#{% else %}{{ url_for('admin:view-conversations') }}?{{ {'tab': tab, 'q': query, 'reason': reason_filter}|urlencode }}{% endif %}"{% if example %} data-example-note="{{ example_notes.link }}"{% endif %}><i class="fa-solid fa-arrow-left me-1"></i>Volver</a>
         <div class="chat-title"><strong>{{ card.name }}</strong> <span class="text-secondary small">{{ contact.phone_e164 | phone }}</span></div>
       </div>
       <div id="chat-header">{% include "_conversation_header.html" %}</div>
@@ -131,29 +130,28 @@
   var thread = document.getElementById("chat-thread");
   var list = document.getElementById("inbox-list");
   var header = document.getElementById("chat-header");
-  var seenWaiting = null, seenMine = null, busy = false;
-  var baseTitle = document.title;
+  var busy = false, stopped = false;
 
   function toBottom() { if (thread) thread.scrollTop = thread.scrollHeight; }
   toBottom();
 
-  // --- Alerts: the panel's beep and browser notification (panel.js) ----------------------
-  // panel.js loads after this script: looked up when used.
-  function notify(title, body) { window.panelNotify(title, body); }
-
-  // --- Polling --------------------------------------------------------------------------
+  // --- Polling: the list and the open conversation. The counters, the tab's title and the
+  // alerts are panel.js's (one request for every page). A lost session reloads (or warns, with
+  // a message being written) only when the answer is the login: panel.js decides.
   function poll() {
-    if (busy) return;
+    if (busy || stopped) return;
     busy = true;
     var params = new URLSearchParams({
-      tab: tab, q: query, open: openId || "", after: String(lastId),
-      visible: document.visibilityState === "visible" ? "1" : "0"
+      tab: tab, q: query, reason: app.dataset.reason || "", open: openId || "",
+      after: String(lastId), visible: document.visibilityState === "visible" ? "1" : "0"
     });
     fetch(pollUrl + "?" + params.toString(), { credentials: "same-origin", headers: { Accept: "application/json" } })
       .then(function (response) {
-        var type = response.headers.get("content-type") || "";
-        if (response.redirected || type.indexOf("json") < 0) { window.location.reload(); return null; }
-        return response.ok ? response.json() : null;
+        if (window.panelSessionCheck && window.panelSessionCheck(response) !== "ok") {
+          if (window.panelSessionStopped && window.panelSessionStopped()) stopped = true;
+          return null;
+        }
+        return response.json();
       })
       .then(function (data) { if (data) apply(data); })
       .catch(function () { /* offline for a moment: next poll */ })
@@ -162,30 +160,6 @@
 
   function apply(data) {
     list.innerHTML = data.inbox_html;
-    var waiting = data.counts.waiting || 0;
-    document.title = (waiting ? "(" + waiting + ") " : "") + baseTitle;
-
-    if (seenWaiting) {
-      var fresh = data.waiting_ids.filter(function (id) { return seenWaiting.indexOf(id) < 0; });
-      if (fresh.length) {
-        notify("Esperando persona", fresh.length === 1
-          ? "Entró una conversación que necesita a alguien del estudio."
-          : "Entraron " + fresh.length + " conversaciones que necesitan a alguien del estudio.");
-      }
-    }
-    seenWaiting = data.waiting_ids;
-    window.panelUrgentClaims(data.urgent_claims);
-
-    if (seenMine) {
-      Object.keys(data.mine_last).forEach(function (id) {
-        var before = seenMine[id];
-        var watching = id === String(openId) && document.visibilityState === "visible";
-        if (before !== undefined && data.mine_last[id] > before && !watching) {
-          notify("Mensaje nuevo", "Te escribieron en una conversación que tenés asignada.");
-        }
-      });
-    }
-    seenMine = data.mine_last;
 
     var c = data.conversation;
     if (c && String(c.id) === String(openId) && thread) {

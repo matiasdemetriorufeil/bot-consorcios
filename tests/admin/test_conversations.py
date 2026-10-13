@@ -352,8 +352,8 @@ def test_without_whatsapp_configured(db_session: Session) -> None:
 # --- Poll -------------------------------------------------------------------------------------
 
 
-def test_poll_brings_new_messages_and_what_makes_it_beep(operator: Panel) -> None:
-    waiting = conversation(
+def test_poll_brings_the_list_and_new_messages(operator: Panel) -> None:
+    conversation(
         operator.session,
         "5493515550201",
         status=WaConversationStatus.WAITING_HUMAN,
@@ -374,9 +374,9 @@ def test_poll_brings_new_messages_and_what_makes_it_beep(operator: Panel) -> Non
         params={"open": mine.id, "after": first.id, "tab": "mine", "visible": "1"},
     ).json()
 
-    assert data["waiting_ids"] == [waiting.id]
-    assert data["mine_last"] == {str(mine.id): new.id}
-    assert data["counts"] == {"waiting": 1, "mine": 1}
+    # The numbers and the alerts come from app.admin.pending (one request for every page).
+    assert not {"waiting_ids", "mine_last", "counts", "urgent_claims"} & set(data)
+    assert 'Esperando persona <span class="badge' in data["inbox_html"]
     c = data["conversation"]
     assert c["last_id"] == new.id and "segundo" in c["new_html"] and "primero" not in c["new_html"]
     assert c["status"] == "human" and c["window_open"] is True
@@ -409,10 +409,10 @@ def test_the_page_has_the_alerts_and_double_click_guard(operator: Panel) -> None
 
     page = _page(operator, conv)
 
-    # The beep and the browser notification are panel.js's (shared with "Reclamos").
-    assert 'id="enable-alerts"' in page and "window.panelNotify" in page
+    # The beep, the browser notification and their button are the panel's (every page).
+    assert page.count('id="enable-alerts"') == 1 and "data-pending-url" in page
     script = operator.client.get("/admin/static/panel.js").text
-    assert "new Notification" in script and "panelUrgentClaims" in script
+    assert "new Notification" in script and "panelSessionCheck" in page
     assert 'class="js-once"' in page and "Enviando…" in page
     assert "|safe" not in page
 

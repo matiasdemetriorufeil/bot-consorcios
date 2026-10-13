@@ -51,7 +51,12 @@ def test_it_neither_reads_nor_writes_real_conversations(
     response = operator.client.get(f"{EXAMPLE}?tab=waiting")
 
     assert response.status_code == 200
-    touched = [s for s in statements if any(table in s for table in WA_TABLES)]
+    # Only the menu's counters (how many wait, as on every page: no rows, no texts).
+    touched = [
+        s
+        for s in statements
+        if any(table in s for table in WA_TABLES) and not s.startswith("SELECT count(*)")
+    ]
     assert touched == []
     assert _counts(operator.session) == before == (0, 0, 0)
 

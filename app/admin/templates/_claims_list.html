@@ -1,0 +1,52 @@
+{#- The list of «Reclamos» (the page and, redrawn, GET /admin/claims?...&partial=1): the tabs
+    with their numbers, one line per claim on a computer (a card on a phone) and the footer. -#}
+{% set f = result.filters %}
+<div class="card-header">
+  <ul class="nav nav-tabs card-header-tabs" id="claim-tabs">
+    {% for key, label in tabs.items() %}
+    <li class="nav-item">
+      <a class="nav-link {% if key == f.tab %}active{% endif %}" href="{{ link(tab=key, page=None) }}">
+        {{ label }} <span class="badge {{ 'bg-orange text-white' if key == 'open' and result.counts[key] else 'bg-secondary-lt' }} ms-1">{{ result.counts[key] }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% if result.rows %}
+<div class="table-responsive">
+  <table class="table table-vcenter card-table rows-table table-nowrap-wide" id="claims">
+    <thead>
+      <tr><th>N.º</th><th>Fecha</th><th>Edificio y unidad</th><th>Problema</th><th>Quién reclamó</th><th>Lo atiende</th><th>Estado</th></tr>
+    </thead>
+    <tbody>
+      {% for row in result.rows %}
+      <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if (row.urgent or row.attention) and row.group != 'closed' else '' }}">
+        <td data-label="N.º"><a class="fw-bold" href="{{ url_for('admin:view-claim', claim_id=row.id) }}">#{{ row.number }}</a>{% if row.urgent %} <span class="badge bg-red-lt">Urgente</span>{% endif %}</td>
+        <td data-label="Fecha">{{ row.date }}</td>
+        <td data-label="Edificio y unidad" class="claim-place">{{ row.place }}</td>
+        <td data-label="Problema">{{ row.problem }}</td>
+        <td data-label="Quién reclamó">{{ row.reporter }}{% if row.others %} <span class="badge bg-secondary-lt" title="Vecinos que se sumaron">+{{ row.others }}</span>{% endif %}</td>
+        <td data-label="Lo atiende">{{ row.attends }}</td>
+        <td data-label="Estado">
+          <span class="badge claim-status claim-{{ row.group }}" title="{{ row.status_long }}">{{ row.status_label }}</span>
+          <div class="claim-row-sub">{{ row.ago }}{% if row.attention %} · <span class="claim-row-attention">{{ row.attention }}</span>{% endif %}</div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card-body text-secondary">
+  <p class="empty-help mb-0">{% if f.query or f.any_filter %}{{ empty_texts['claims:search'] }}{% else %}{{ empty_texts['claims:' ~ f.tab] }}{% endif %}</p>
+</div>
+{% endif %}
+<div class="card-footer d-flex flex-wrap align-items-center gap-2">
+  <span class="small text-secondary">{{ result.total }} reclamo(s){% if result.pages > 1 %} · página {{ f.page }} de {{ result.pages }}{% endif %}</span>
+  {% if result.pages > 1 %}
+  <div class="ms-auto btn-group">
+    <a class="btn btn-sm btn-secondary {% if f.page <= 1 %}disabled{% endif %}" href="{{ link(page=f.page - 1) }}">Anterior</a>
+    <a class="btn btn-sm btn-secondary {% if f.page >= result.pages %}disabled{% endif %}" href="{{ link(page=f.page + 1) }}">Siguiente</a>
+  </div>
+  {% endif %}
+</div>

@@ -1,6 +1,7 @@
 """The "Verificaciones" page (units without owner email): per-row "Aprobar" (choosing the
 owner) and "Rechazar". Invented data only."""
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -80,7 +81,9 @@ def test_list_shows_unit_building_name_date_and_status(logged_in: Panel, pending
     shown = ("TORRE INVENTADA", "03-B", "Dueña Inventada", "351 555-0401", "Nombre declarado")
     for text in (*shown, "Fecha"):
         assert text in page
-    assert "Pendiente" in page and "pending" not in page
+    # The raw status never shows (the panel's own URLs, as /admin/pending, are not text).
+    visible = re.sub(r"<[^>]+>", " ", page)
+    assert "Pendiente" in visible and "pending" not in visible
     assert ">id<" not in page and ">ID<" not in page
     assert CODE_HASH not in page and "sal0inventada" not in page
 

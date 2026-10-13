@@ -106,7 +106,7 @@ a { color: var(--panel-primary); }
 
 /* --- Conversaciones (conversations.html) -------------------------------------- */
   .inbox { display: grid; grid-template-columns: 360px minmax(0, 1fr) 300px; gap: 12px;
-           height: calc(100vh - 175px); min-height: 480px; }
+           height: calc(100vh - 215px); min-height: 480px; }
   .inbox .card { margin: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .inbox-top { padding: 10px; border-bottom: 1px solid #e6e7e9; display: flex; gap: 6px; }
   .inbox-top input[type=search] { flex: 1; }
@@ -300,6 +300,8 @@ a { color: var(--panel-primary); }
 .confirm-title { font-size: 1.15rem; margin: 0 0 .5rem; }
 .confirm-text { margin: 0 0 1.25rem; line-height: 1.5; }
 .confirm-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+/* A form's own fields, shown inside the dialog (a reason, a provider). */
+.confirm-fields:not(:empty) { margin: -.5rem 0 1.25rem; }
 
 /* --- The tour of "Conversaciones" (panel.js) --------------------------------------------------- */
 .tour-shade { position: fixed; inset: 0; background: rgba(15, 23, 42, .35); z-index: 1050; }
@@ -375,3 +377,65 @@ a { color: var(--panel-primary); }
 .claim-event-note { background: #fffbea; }
 .claim-event-solved, .claim-event-cancelled { background: #f6f7f9; }
 .contact-claim { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin-bottom: .25rem; }
+/* The list: the status' short text, and under it how long ago and why it needs someone. */
+.claim-row-sub { font-size: .8rem; color: var(--panel-muted); white-space: nowrap; }
+.claim-row-attention { color: #a34a00; font-weight: 600; }
+@media (max-width: 991.98px) { .claim-row-sub { white-space: normal; } }
+/* «Qué hacer»: one main button, the rest folded; the forms are only there to be sent (their
+   fields show up in the confirmation dialog). */
+.claim-main-action { width: 100%; }
+.claim-more > summary { cursor: pointer; color: var(--panel-muted); font-size: .9rem; }
+.claim-more-buttons { display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
+.claim-action-forms { display: none; }
+/* «Nuevo reclamo»: who reports, chosen. */
+.claim-chosen { padding: .6rem .8rem; border-radius: .4rem; background: var(--panel-primary-light); }
+.claim-people .list-group-item { padding: .7rem .9rem; }
+
+/* --- Pendientes and the panel's alerts (pending.html, sqladmin/layout.html) ------------------- */
+/* The bar on top of every page: the alerts' button and, when needed, a notice beside it. */
+.panel-topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem;
+                padding: .4rem 1rem; border-bottom: 1px solid var(--panel-line); background: #fff; }
+.panel-notice { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-right: auto;
+                font-size: .875rem; padding: .2rem .6rem; border-radius: .4rem; }
+.panel-notice[hidden] { display: none; }
+.alerts-off { background: #fff4e5; color: #8a4b00; }
+.session-gone { background: #fdecec; color: var(--panel-danger); font-weight: 600; }
+.panel-alerts-button { white-space: nowrap; }
+/* The menu's counters, beside the name (Tabler floats a link's badge on its corner): red when
+   something is urgent. */
+.navbar-vertical .nav-link .menu-badge { position: static !important; transform: none !important; margin-left: .5rem !important; }
+.menu-badge-urgent { background: var(--panel-danger) !important; color: #fff !important; }
+.menu-badge-neutral { background: #f0b429 !important; color: #3d2c00 !important; }
+.menu-badge[hidden] { display: none; }
+
+.pending-greeting { font-size: 1.15rem; font-weight: 600; }
+.row-deck > .pending-cards { display: block; }  /* Tabler's columns are flex: the grid, full width */
+.pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; }
+.pending-card { margin: 0; border-left: 4px solid var(--panel-primary); }
+.pending-card .card-body { display: flex; flex-direction: column; gap: .35rem; }
+.pending-head { display: flex; align-items: baseline; gap: .75rem; }
+.pending-number { font-size: 2.2rem; font-weight: 700; line-height: 1; color: var(--panel-primary); flex-shrink: 0; }
+.pending-title { font-size: 1.05rem; margin: 0; }
+.pending-text { margin: 0; color: var(--panel-muted); }
+.pending-detail { margin: 0; font-weight: 600; }
+.pending-button { align-self: flex-start; margin-top: auto; }
+.pending-card .pending-button { margin-top: .5rem; }
+.pending-card-urgent { border-left-color: var(--panel-danger); }
+.pending-card-urgent .pending-number { color: var(--panel-danger); }
+.pending-card-done { border-left-color: var(--panel-neutral-border); background: #f8f9fa; }
+.pending-card-done .pending-title, .pending-card-done .pending-text { color: var(--panel-muted); }
+.pending-done { font-size: 1rem; font-weight: 700; color: #2b8a3e; white-space: nowrap; flex-shrink: 0; }
+.pending-card-info { border-left-color: var(--panel-neutral-border); }
+.pending-number-info { color: var(--panel-text); }
+.pending-sum { margin: 0; padding-left: 1.1rem; }
+.all-clear { border-left: 4px solid #2b8a3e; }
+.all-clear-title { font-size: 1.6rem; font-weight: 700; color: #2b8a3e; margin-bottom: .25rem; }
+.pending-admin { display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; margin-top: 1rem; padding: .6rem .9rem;
+                 font-size: .875rem; border: 1px dashed var(--panel-neutral-border); border-radius: .4rem; }
+.pending-admin-title { font-weight: 600; color: var(--panel-muted); }
+@media (max-width: 767.98px) {
+  .pending-grid { grid-template-columns: 1fr; gap: .75rem; }
+  .pending-number { font-size: 1.8rem; }
+  .pending-admin { flex-direction: column; }
+  .panel-topbar { padding: .35rem .75rem; }
+}

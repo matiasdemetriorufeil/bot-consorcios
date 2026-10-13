@@ -1,5 +1,118 @@
 # Inventario del panel `/admin`
 
+## Actualización 5e.2: Reclamos más fáciles de seguir y de cargar (2026-10-12)
+
+No cambian las reglas de `app/claims/service.py` ni lo que se les manda a proveedores o
+vecinos. Lo único nuevo que se escribe es la nota interna en la conversación desde la que se
+carga un reclamo.
+
+- **Lista de Reclamos:**
+  - **Se actualiza sola.** El pedido único de 5e.1 trae `claims_stamp` (última actualización y
+    último evento de los reclamos, sin datos de nadie). Si cambia, `panel.js` vuelve a pedir la
+    misma URL con `&partial=1` y reemplaza las pestañas, la tabla y el pie (se mantienen la
+    pestaña, los filtros, la búsqueda y la página). No reemplaza mientras se escribe en el
+    buscador, si hay algo cambiado sin aplicar o con los filtros abiertos: lo hace después.
+  - **Los filtros** quedan siempre plegados; el resumen dice cuáles están aplicados («Filtros:
+    Edificio, Estado»).
+  - **Columnas:** N.º (+ Urgente), Fecha, **Edificio y unidad** («TORRE EJEMPLO · 02-B» o «… ·
+    todo el edificio»), Problema, Quién reclamó (+N), Lo atiende, Estado. Un renglón por
+    reclamo en escritorio.
+  - **Estado:** etiqueta corta («Falta avisar», «Avisado», «Confirmado», «Lo tiene el
+    estudio», «Solucionado», «Cancelado»), con el texto largo al pasar el mouse. Debajo, hace
+    cuánto y el motivo de atención. Los dos textos salen de un solo diccionario,
+    `labels.CLAIM_STATUS_TEXT`.
+- **Ficha del reclamo, «Qué hacer»:** un botón principal según el estado y lo demás en
+  «Otras acciones» (`claims.claim_actions`).
+
+  | Estado | Botón principal | Otras acciones |
+  |---|---|---|
+  | Falta avisar (con WhatsApp) | Reenviar al proveedor · fuera de horario «Mandar al proveedor» (ahora o en el próximo horario) · programado «Mandar ahora» | Marcar como avisado, Cambiar quién lo atiende, Cerrar, Cancelar |
+  | Falta avisar (sin WhatsApp) | Marcar como avisado | Cambiar quién lo atiende, Cerrar, Cancelar |
+  | Avisado | — («Esperando que X confirme · avisado hace …» y el recordatorio) | Cerrar, Cambiar quién lo atiende, Cancelar |
+  | Confirmado | Cerrar como solucionado | Cambiar quién lo atiende, Cancelar |
+  | Lo tiene el estudio, tuvo proveedor (no puede, se lo sacaron, el problema tiene proveedor en el edificio) | Elegir proveedor | Cerrar, Cancelar |
+  | Lo tiene el estudio por diseño | Cerrar como solucionado | Elegir proveedor, Cancelar |
+
+  - Las cajas (el motivo para cerrar o cancelar, el proveedor, cuándo mandar) aparecen dentro
+    del diálogo de confirmación. «Confirmar» no avanza con el motivo vacío y el servidor lo
+    sigue validando («Contá el motivo.»).
+  - Confirmaciones nuevas: `close_claim` (les avisa por WhatsApp a quien reclamó y a los que se
+    sumaron), `mark_sent`, `send_claim_now`, `send_claim_choose`,
+    `change_claim_provider_hours`.
+- **«Cargar reclamo» desde Conversaciones** (ficha del contacto, también la plegable del
+  celular; nunca para un proveedor): abre «Nuevo reclamo» con `?conversation=<id>`.
+  - **Una unidad:** la persona ya está elegida.
+  - **Varias:** ella elige la unidad.
+  - **Número de nadie:** «No está en el padrón», con el teléfono y el nombre de WhatsApp.
+  
+  El reclamo queda con `wa_conversation_id` y en la conversación se anota «Se cargó el
+  reclamo #N.» (o «Se sumó al reclamo #N.»), con link (`/admin/claims/number/N`).
+- **Al vecino** no le llega nada al cargarlo desde el panel. Después, como con los del bot, le
+  llega «la empresa confirmó» y «está solucionado». No hay mensajes nuevos.
+- **«Nuevo reclamo» empieza por la persona:**
+  - **«¿Quién reclama?»** busca en el padrón por nombre, unidad o teléfono, con los formatos de
+    Teléfonos (`GET /admin/claims/people`). Desde 2 letras y 350 ms después de la última tecla.
+  - **Al elegir**, el resto del formulario llega sin recargar (`GET /admin/claims/new/form`).
+  - **«No está en el padrón»:** edificio, unidad opcional, nombre y teléfono.
+  - Se sacó el desplegable largo de personas.
+  - Sin JavaScript funciona igual, recargando.
+- **Guía:** sección 6 actualizada, con tres imágenes nuevas (`10-reclamos-lista.png`,
+  `11-reclamo-que-hacer.png`, `12-nuevo-reclamo.png`).
+- Capturas: `docs/panel-capturas/5e2/`, fuera de Git. Base de demo aparte, borrada al terminar.
+
+## Actualización 5e.1: «Pendientes», contadores y avisos en todo el panel (2026-10-12)
+
+**Menú (los dos roles):** Pendientes, Conversaciones, Reclamos, Teléfonos, Verificaciones,
+Reservas de SUM, Guía (y, para el admin, «Administración» abajo). `/admin/` y el ingreso abren
+**Pendientes** (antes, Conversaciones).
+
+| Pantalla | URL | Tipo | Quién | Qué tiene |
+|---|---|---|---|---|
+| Pendientes | `/admin/pending` | Propia | admin y operadora | Saludo con el nombre y la fecha («Buen día, Marta · lunes 12/10»). Una tarjeta por cosa que espera, con su número, una frase y un botón a la lista ya filtrada: **Esperando persona** (cuántas urgentes y hace cuánto espera la más vieja → `?tab=waiting`), **Mías sin responder** (tomadas por la usuaria con el último mensaje del contacto, sin contar las notas internas → `?tab=mine`), **Reclamos que necesitan atención** (con motivo de aviso o urgentes abiertos → `?tab=open&attention=yes`), **Teléfonos a revisar**, **Verificaciones pendientes** (fecha de la más vieja) y **Reservas del SUM** de hoy y mañana (informativa, link a la planilla de cada edificio en ese día). En cero, la tarjeta se ve gris y dice «Al día»; todo en cero (sin contar el SUM): «Todo al día» grande. Para el admin, una fila chica: última sincronización nocturna (lo peor de las últimas 36 h, en rojo si falló, tuvo errores o no hubo), proveedores activos sin WhatsApp con algún edificio y preguntas que el bot no supo responder esta semana (derivaciones «Sin respuesta» desde el lunes). Las tarjetas se redibujan solas. En el celular, una columna. |
+
+- **Un solo pedido de números** (`GET /admin/pending/numbers`, JSON, `no-store`): lo hace
+  `panel.js` cada 5 s en **todas** las pantallas del panel. Trae los números, textos cortos ya
+  formateados, ids y las alertas de reclamos que ya mostraban los avisos (título, problema y
+  edificio). No trae nombres, teléfonos ni unidades. La fila del admin solo se calcula y se manda
+  para el admin. Con `?cards=1` (solo Pendientes) suma las tarjetas ya armadas.
+  - **Una sola pestaña** hace el pedido (candado `panel-poll` del navegador) y les pasa los
+    números a las demás por `BroadcastChannel`. Si se cierra, otra pestaña lo toma. Una pestaña
+    visible que no recibe números en 12 s los pide ella.
+  - **Sesión vencida:** solo un 401, un 403 o terminar en `/admin/login` cuentan como sesión
+    vencida. Un 500 o un corte de red se reintentan sin recargar. Si hay texto sin enviar en un
+    formulario, no recarga: muestra la franja «Se cerró tu sesión: copiá tu mensaje y volvé a
+    entrar» con «Entrar» (se abre en otra pestaña). Vale también para el poll de la bandeja.
+- **Se borró** `GET /admin/claims/poll`. El poll de Conversaciones trae solo la lista y la
+  conversación abierta (los contadores de sus pestañas siguen en la lista).
+- **Contadores en el menú**, al lado del nombre y actualizados solos: Conversaciones
+  (esperando), Reclamos (necesitan atención), Teléfonos (a revisar) y Verificaciones
+  (pendientes). Rojo si hay urgentes, amarillo si no.
+- **Título de la pestaña:** «(N) Panel · Estudio Diego Rufeil», con N = esperando + reclamos
+  urgentes.
+- **Avisos con sonido desde cualquier pantalla:**
+  - una conversación nueva en «Esperando persona» (vuelve a avisar si se deriva de nuevo);
+  - un reclamo urgente nuevo;
+  - un reclamo que pasa a necesitar atención;
+  - un mensaje nuevo en una conversación de la usuaria, salvo que la esté mirando.
+  
+  Lo ya avisado se guarda en el navegador (`localStorage`, compartido por las pestañas y bajo
+  un candado), así un aviso suena una sola vez, aunque se cambie de pantalla o haya dos
+  pestañas.
+- **Barra arriba de todas las pantallas:**
+  - el botón «🔔 Activar avisos» / «🔔 Avisos activos» (salió de Conversaciones y de Reclamos);
+  - si el navegador no dio permiso, la franja «Los avisos con sonido están apagados. Activar»;
+  - si lo bloqueó, cómo desbloquearlo.
+  
+  El sonido se habilita solo con el primer clic o tecla en cada página.
+- **Reclamos:** el filtro «Atención» dice «Necesitan atención (incluye urgentes)» y lista
+  también los urgentes abiertos, así la tarjeta, el menú y la lista dan el mismo número.
+- **Conversaciones:** `?reason=no_answer` (desde la fila del admin) lista las derivadas por
+  «Sin respuesta» desde el lunes, en cualquier estado, con «Quitar filtro». El recorrido no
+  cambia: la primera vez sigue llevando al ejemplo al abrir Conversaciones.
+- **Guía:** sección «Empezá el día en Pendientes» al principio.
+- Capturas: `docs/panel-capturas/5e1/`, fuera de Git. Base de demo aparte con datos inventados,
+  borrada al terminar.
+
 ## Actualización 8.6: horario de proveedores, recordatorios y avisos (2026-10-08)
 
 - **Configuración de reclamos** (Administración, solo admin, `/admin/claim-settings/list` abre

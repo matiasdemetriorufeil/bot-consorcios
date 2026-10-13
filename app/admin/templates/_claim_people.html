@@ -1,0 +1,18 @@
+{#- «¿Quién reclama?»: the people found in the roster, one line per person and unit (the page
+    and GET /admin/claims/people). Each one is a link: panel.js brings the form without
+    reloading. -#}
+{% set conversation_id = conversation.conversation_id if conversation else '' %}
+{% if people %}
+<div class="list-group claim-people" id="claim-people-list">
+  {% for p in people %}
+  <a class="list-group-item list-group-item-action" data-person-choice
+     href="{{ url_for('admin:view-claim-new') }}?{{ {'person_id': p.person_id, 'unit_id': p.unit_id, 'conversation': conversation_id} | urlencode }}">
+    <strong>{{ p.name }}</strong> <span class="text-secondary">· {{ p.place }} ({{ p.role }})</span>
+  </a>
+  {% endfor %}
+</div>
+{% elif searched %}
+<p class="empty-help mb-0" id="claim-people-empty">{{ empty_texts['claim-new:people'] }}</p>
+{% else %}
+<p class="form-hint mb-0">{{ empty_texts['claim-new:start'] }}</p>
+{% endif %}

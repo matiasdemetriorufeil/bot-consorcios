@@ -13,6 +13,7 @@ from app.config import Settings
 
 DEFAULT_TIMEZONE = Settings.model_fields["timezone"].default
 ARGENTINA = 54
+WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 
 
 def _local(value: datetime, timezone: str) -> datetime:
@@ -67,6 +68,28 @@ def day(value: date | datetime | None, timezone: str = DEFAULT_TIMEZONE) -> str:
     if isinstance(value, datetime):
         value = _local(value, timezone).date()
     return f"{value:%d/%m/%Y}"
+
+
+def weekday_day(value: date | datetime, timezone: str = DEFAULT_TIMEZONE) -> str:
+    """ "lunes 12/10"."""
+    if isinstance(value, datetime):
+        value = _local(value, timezone).date()
+    return f"{WEEKDAYS[value.weekday()]} {value:%d/%m}"
+
+
+def greeting(now: datetime, timezone: str = DEFAULT_TIMEZONE) -> str:
+    """ "Buen día" until 12:59, "Buenas tardes" until 19:59, then "Buenas noches"."""
+    hour = _local(now, timezone).hour
+    if 5 <= hour < 13:
+        return "Buen día"
+    return "Buenas tardes" if 13 <= hour < 20 else "Buenas noches"
+
+
+def week_start(now: datetime, timezone: str = DEFAULT_TIMEZONE) -> datetime:
+    """This week's Monday at 00:00 (local), as an aware datetime."""
+    local = _local(now, timezone)
+    monday = local.date() - timedelta(days=local.weekday())
+    return datetime.combine(monday, datetime.min.time(), tzinfo=ZoneInfo(timezone))
 
 
 def phone(value: str | None) -> str:

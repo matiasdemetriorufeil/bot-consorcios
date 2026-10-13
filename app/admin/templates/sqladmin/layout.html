@@ -1,8 +1,28 @@
-{#- SQLAdmin's layout with, on every page: its title (SQLAdmin's own lists, records and forms pass
-    none; ours do), a line saying what the page is for (app.admin.help.page_help) and the one
-    confirmation dialog of the panel (_confirm_dialog.html, opened by panel.js). Blocks only:
-    the original stays as is. -#}
+{#- SQLAdmin's layout with, on every page: a thin bar on top with the alerts' button and its
+    notices (panel.js shows them and asks for the panel's numbers: app.admin.pending), its
+    title (SQLAdmin's own lists, records and forms pass none; ours do), a line saying what the
+    page is for (app.admin.help.page_help) and the one confirmation dialog of the panel
+    (_confirm_dialog.html, opened by panel.js). Blocks only: the original stays as is. -#}
 {% extends "sqladmin_original/layout.html" %}
+{% block topbar %}
+{% set counts = menu_counts(request) %}
+<div class="panel-topbar" id="panel-topbar"
+     data-pending-url="{{ url_for('admin:view-pending-numbers') }}"
+     data-login-url="{{ url_for('admin:login') }}"
+     data-title-count="{{ counts.get('waiting', 0) + counts.get('claims_urgent', 0) }}">
+  <div class="panel-notice alerts-off" id="alerts-off" hidden>
+    <span data-alerts-text="off">{{ alert_texts.off }}</span>
+    <span data-alerts-text="blocked" hidden>{{ alert_texts.blocked }}</span>
+    <button type="button" class="btn btn-sm btn-primary" data-alerts-enable>Activar</button>
+  </div>
+  <div class="panel-notice session-gone" id="session-gone" hidden>
+    <span>{{ alert_texts.session }}</span>
+    <a class="btn btn-sm btn-primary" href="{{ url_for('admin:login') }}" target="_blank" rel="noopener">Entrar</a>
+  </div>
+  <button type="button" class="btn btn-sm btn-secondary panel-alerts-button" id="enable-alerts" data-alerts-enable
+          title="Sonido y notificación del navegador cuando algo espera a alguien del estudio">🔔 Activar avisos</button>
+</div>
+{% endblock %}
 {% block content_header %}
 <div class="row align-items-center g-2">
   <div class="col">
