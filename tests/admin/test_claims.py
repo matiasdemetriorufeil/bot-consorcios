@@ -172,8 +172,8 @@ def test_the_columns(logged_in: Panel, w: World) -> None:
     assert "Ana Inventada" in row and "+1" in row
     assert "Ascensores Ficticios SRL" in row
     # The short status, the long one on hover.
-    assert 'title="Falta avisar al proveedor">Falta avisar</span>' in row and "claim-open" in row
-    assert "hace 3 h" in row
+    assert 'title="Falta avisar al proveedor">Falta avisar</span>' in row and "state-waiting" in row
+    assert "hace 3 horas" in row
 
 
 @pytest.mark.parametrize(
@@ -535,7 +535,7 @@ def test_urgent_open_claims_for_the_alerts_and_the_menu(logged_in: Panel, w: Wor
     page = logged_in.client.get("/admin/claims").text
     badge = re.search(r'<span[^>]*data-counter="claims"[^>]*>(\d+)</span>', page)
     assert badge and badge.group(1) == "1" and "hidden" not in badge.group(0)
-    assert "menu-badge-urgent" in badge.group(0)
+    assert "count-urgent" in badge.group(0)
     # Elsewhere too (the menu is on every page).
     other = logged_in.client.get("/admin/phones").text
     assert re.search(r'data-counter="claims"[^>]*>1</span>', other)
@@ -862,7 +862,8 @@ def test_pending_send_inside_the_providers_hours(logged_in: Panel, w: World) -> 
     # The boxes are not shown until the button is touched: inside the dialog.
     assert 'id="close-reason"' in page and "<div data-confirm-fields hidden>" in page
     # The browser must not refuse the hidden required reason before the dialog opens.
-    assert 'novalidate id="act-close"' in page and 'novalidate id="act-cancel"' in page
+    assert 'novalidate data-fetch id="act-close"' in page
+    assert 'novalidate data-fetch id="act-cancel"' in page
 
 
 def test_pending_send_out_of_hours_and_scheduled(logged_in: Panel, w: World) -> None:
@@ -899,7 +900,7 @@ def test_sent_has_no_main_button_it_waits_for_the_provider(logged_in: Panel, w: 
         None,
         ["Cerrar como solucionado", "Cambiar quién lo atiende", "Cancelar reclamo"],
     )
-    assert "Esperando que Ascensores Ficticios SRL confirme · avisado hace 2 h." in page
+    assert "Esperando que Ascensores Ficticios SRL confirme · avisado hace 2 horas." in page
     assert 'id="claim-reminded"' in page
 
 

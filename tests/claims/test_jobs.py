@@ -329,6 +329,11 @@ def test_confirmed_but_not_solved_after_three_days(w: World) -> None:
     assert claim.attention is None
 
 
+def test_the_alert_says_1_dia_never_1_dias() -> None:
+    assert texts.days_text(1) == "1 día" and texts.days_text(4) == "4 días"
+    assert texts.ATTENTION_STALE.format(days_text=texts.days_text(1)) == "Sin solucionar hace 1 día"
+
+
 def test_with_the_studio_too_long(w: World) -> None:
     claim = _sent(w, w.damp, at(5, 9))
     change_provider(w.session, claim, None, actor=ClaimActor.PANEL, user="admin", now=at(5, 10))

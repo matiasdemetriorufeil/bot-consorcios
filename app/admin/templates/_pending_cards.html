@@ -1,8 +1,13 @@
 {#- The cards of «Pendientes» (the page and, redrawn, the panel's numbers): p is an
-    app.admin.pending.Pending. A card in zero is dimmed and says «Al día». No names, phones
-    nor units here. -#}
+    app.admin.pending.Pending. A card in zero is dimmed and says «Al día»; when everything is
+    («Todo al día») each one is a single line. No names, phones nor units here. -#}
 {% macro card(key, number, href, detail="", urgent=False) %}
 {% set texts = pending_cards[key] %}
+{% set icons = {'waiting': 'fa-comments', 'mine': 'fa-user', 'claims': 'fa-screwdriver-wrench',
+                'phones': 'fa-address-book', 'verifications': 'fa-user-check'} %}
+{% if p.all_clear %}
+<a class="pending-line" href="{{ href }}" data-card="{{ key }}"><i class="fa-solid {{ icons[key] }}" aria-hidden="true"></i><span class="pending-line-title">{{ texts.title }}</span><span class="pending-done">{{ empty_texts['pending:card'] }}</span><span class="pending-line-link">Ver</span></a>
+{% else %}
 <section class="card pending-card{% if not number %} pending-card-done{% elif urgent %} pending-card-urgent{% endif %}" data-card="{{ key }}">
   <div class="card-body">
     <div class="pending-head">
@@ -15,6 +20,7 @@
     <a class="btn {{ 'btn-primary' if number else 'btn-secondary' }} pending-button" href="{{ href }}">{{ texts.button }}</a>
   </div>
 </section>
+{% endif %}
 {% endmacro %}
 {% if p.all_clear %}
 <div class="card all-clear mb-3" id="all-clear">
@@ -24,7 +30,7 @@
   </div>
 </div>
 {% endif %}
-<div class="pending-grid">
+<div class="{{ 'card pending-lines mb-3' if p.all_clear else 'pending-grid' }}">
   {% set waiting_detail %}{% if p.waiting_urgent %}{{ p.waiting_urgent }} urgente{{ 's' if p.waiting_urgent != 1 }} · {% endif %}la más vieja espera {{ p.waiting_oldest }}{% endset %}
   {{ card('waiting', p.waiting, url_for('admin:view-conversations') ~ '?tab=waiting', waiting_detail, p.waiting_urgent > 0) }}
   {{ card('mine', p.mine, url_for('admin:view-conversations') ~ '?tab=mine') }}
@@ -32,6 +38,10 @@
   {{ card('claims', p.claims, url_for('admin:view-claims') ~ '?tab=open&attention=yes', claims_detail, p.claims_urgent > 0) }}
   {{ card('phones', p.phones, url_for('admin:view-phones') ~ '?tab=review') }}
   {{ card('verifications', p.verifications, url_for('admin:view-verifications'), 'la más vieja es del ' ~ p.verifications_oldest) }}
+{% if p.all_clear %}
+</div>
+<div class="pending-grid">
+{% endif %}
   {% set sum_texts = pending_cards["sum"] %}
   <section class="card pending-card pending-card-info" data-card="sum">
     <div class="card-body">

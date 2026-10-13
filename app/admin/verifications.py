@@ -13,7 +13,7 @@ from typing import Any, ClassVar
 
 from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -21,6 +21,7 @@ from starlette.responses import RedirectResponse, Response
 from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
+from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.views import _in_thread
 from app.bot.identity import (
     IdentityError,
@@ -146,16 +147,30 @@ class VerificationsView(BaseView):
         "/verifications/{request_id:int}/reject", methods=["POST"], identity="verification-reject"
     )
     async def reject_one(self, request: Request) -> Response:
+        """As always (a Flash and back to the list) or, asked by panel.js, without reloading:
+        the row goes away and the counter changes (app.admin.fetch)."""
+        request_id = request.path_params["request_id"]
         with self.session_maker() as session:
             try:
-                await _in_thread(
-                    reject, session, request.path_params["request_id"], admin_user(request)
-                )
+                await _in_thread(reject, session, request_id, admin_user(request))
             except IdentityError as exc:
                 session.rollback()
-                Flash.error(request, problem_text(exc))
+                ok, message = False, problem_text(exc)
             else:
-                Flash.success(request, "Verificación rechazada: el número no se asoció.")
+                ok, message = True, "Verificación rechazada: el número no se asoció."
+            pending = session.scalar(
+                select(func.count())
+                .select_from(VerificationRequest)
+                .where(VerificationRequest.status == VerificationRequestStatus.PENDING)
+            )
+        if wants_fetch(request):
+            return fetch_reply(
+                ok,
+                message,
+                remove=[f'[data-verification="{request_id}"]'] if ok else [],
+                texts={"[data-pending-count]": str(pending or 0)},
+            )
+        (Flash.success if ok else Flash.error)(request, message)
         return self._to_list(request)
 
     @expose(

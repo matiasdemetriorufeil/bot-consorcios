@@ -39,8 +39,14 @@ def when(
     return f"{local:%d/%m/%Y}"
 
 
+def plural(n: int, one: str, many: str) -> str:
+    """ "1 día" / "3 días": the number and the word that goes with it."""
+    return f"{n} {one if n == 1 else many}"
+
+
 def ago(value: datetime | None, now: datetime) -> str:
-    """How long ago: "recién", "hace 5 min", "hace 3 h", "hace 2 días"."""
+    """How long ago: "recién", "hace 5 min", "hace 1 hora", "hace 3 horas", "hace 1 día",
+    "hace 2 días" (never "1 días")."""
     if value is None:
         return ""
     seconds = max(0, (now - value).total_seconds())
@@ -49,9 +55,8 @@ def ago(value: datetime | None, now: datetime) -> str:
     if seconds < 3600:
         return f"hace {int(seconds // 60)} min"
     if seconds < 86400:
-        return f"hace {int(seconds // 3600)} h"
-    days = int(seconds // 86400)
-    return "hace 1 día" if days == 1 else f"hace {days} días"
+        return "hace " + plural(int(seconds // 3600), "hora", "horas")
+    return "hace " + plural(int(seconds // 86400), "día", "días")
 
 
 def full(value: datetime | None, timezone: str = DEFAULT_TIMEZONE) -> str:

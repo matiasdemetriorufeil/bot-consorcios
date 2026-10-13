@@ -174,12 +174,17 @@ _MESSAGES = {
     BookingProblem.PAST: "Ese turno ya empezó o ya pasó.",
     BookingProblem.TAKEN: "Ese turno ya está reservado.",
     BookingProblem.TOO_SOON: "Hay que reservar con al menos {hours} h de anticipación.",
-    BookingProblem.TOO_FAR: "Solo se puede reservar hasta {days} días antes.",
+    BookingProblem.TOO_FAR: "Solo se puede reservar hasta {days_text} antes.",
     BookingProblem.MONTHLY_LIMIT: "La unidad ya tiene {limit} reserva(s) ese mes (es el máximo).",
     BookingProblem.DEBTOR: "La unidad figura con deuda: no puede reservar el {name}.",
     BookingProblem.ALREADY_CANCELLED: "La reserva ya estaba cancelada.",
     BookingProblem.TOO_LATE_TO_CANCEL: "Solo se puede cancelar hasta {hours} h antes del turno.",
 }
+
+
+def _days(n: int) -> str:
+    """ "1 día", "14 días"."""
+    return "1 día" if n == 1 else f"{n} días"
 
 
 def _message(problem: BookingProblem, amenity: Amenity) -> str:
@@ -190,7 +195,7 @@ def _message(problem: BookingProblem, amenity: Amenity) -> str:
             if problem == BookingProblem.TOO_LATE_TO_CANCEL
             else amenity.min_advance_hours
         ),
-        days=amenity.max_advance_days,
+        days_text=_days(amenity.max_advance_days),
         limit=amenity.max_per_unit_per_month,
     )
 

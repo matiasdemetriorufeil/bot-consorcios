@@ -376,7 +376,7 @@ def test_poll_brings_the_list_and_new_messages(operator: Panel) -> None:
 
     # The numbers and the alerts come from app.admin.pending (one request for every page).
     assert not {"waiting_ids", "mine_last", "counts", "urgent_claims"} & set(data)
-    assert 'Esperando persona <span class="badge' in data["inbox_html"]
+    assert 'Esperando persona <span class="count' in data["inbox_html"]
     c = data["conversation"]
     assert c["last_id"] == new.id and "segundo" in c["new_html"] and "primero" not in c["new_html"]
     assert c["status"] == "human" and c["window_open"] is True
@@ -413,7 +413,9 @@ def test_the_page_has_the_alerts_and_double_click_guard(operator: Panel) -> None
     assert page.count('id="enable-alerts"') == 1 and "data-pending-url" in page
     script = operator.client.get("/admin/static/panel.js").text
     assert "new Notification" in script and "panelSessionCheck" in page
-    assert 'class="js-once"' in page and "Enviando…" in page
+    # A double click sends it once: panel.js disables the buttons while it goes (and the
+    # server ignores a repeated form token).
+    assert 'data-busy-text="Enviando…"' in page and 'name="form_token"' in page
     assert "|safe" not in page
 
 
@@ -467,7 +469,7 @@ def test_the_reason_label_is_in_spanish_in_the_conversation(operator: Panel) -> 
 
     # A short label (the long text in its tooltip and in the handoff summary).
     assert (
-        '<span class="badge bg-orange-lt chat-reason" title="Reclamo por la deuda">'
+        '<span class="state state-info chat-reason" title="Reclamo por la deuda">'
         "Reclamo de deuda</span>"
     ) in page
     assert "reclamo-deuda" not in page

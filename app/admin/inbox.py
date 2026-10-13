@@ -32,7 +32,6 @@ from app.db.models import (
     OPEN_CLAIM_STATUSES,
     Building,
     Claim,
-    ClaimStatus,
     DebtSnapshot,
     Person,
     PersonRole,
@@ -492,7 +491,7 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
             number=c.number,
             problem=c.category.list_title,
             status=labels.claim_status(c.status)[0],
-            group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
+            group=labels.state(c.status, "claim"),
             status_long=labels.claim_status(c.status)[1],
         )
         for c in found

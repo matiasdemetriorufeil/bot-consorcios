@@ -206,6 +206,7 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["money"] = formatting.money
     filters["reason_short"] = lambda code: (labels.reason(code) or ("", ""))[0]
     filters["claim_links"] = claim_links
+    filters["state"] = labels.state
     env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
     # In the style sheet's and script's URLs: a change reaches every browser (no stale cache).
     env.globals["static_version"] = static_version()  # type: ignore[attr-defined]

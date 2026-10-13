@@ -116,8 +116,8 @@ ATTENTION_DECLINED = "El proveedor no puede atenderlo"
 ATTENTION_SEND_FAILED = "No se le pudo avisar al proveedor"
 ATTENTION_NOT_TOLD = "Todavía no se le avisó al proveedor"
 ATTENTION_NO_ACK = "El proveedor no confirmó"
-ATTENTION_STALE = "Sin solucionar hace {days} días"
-ATTENTION_STALE_STUDIO = "Lo tiene el estudio hace {days} días"
+ATTENTION_STALE = "Sin solucionar hace {days_text}"
+ATTENTION_STALE_STUDIO = "Lo tiene el estudio hace {days_text}"
 SCHEDULED_EVENT = "Se le va a mandar a {provider} {when} (fuera del horario de proveedores)"
 REMINDED_EVENT = "Recordatorio a {provider} por WhatsApp"
 
@@ -172,6 +172,11 @@ CLAIM_STATUS = "Reclamo *#{number}* ({problem}, {building}), del {date}: {status
 CLAIM_NOT_FOUND = "No encontré un reclamo tuyo con ese número."
 
 
+def days_text(n: int) -> str:
+    """ "1 día", "4 días" (never "1 días")."""
+    return "1 día" if n == 1 else f"{n} días"
+
+
 def attention_text(claim: Claim, now: datetime, attention: object = None) -> str:
     """Why the claim needs someone of the studio, in the panel's words (attention: the one
     about to be raised; by default, the claim's)."""
@@ -187,5 +192,5 @@ def attention_text(claim: Claim, now: datetime, attention: object = None) -> str
         since = (claim.acknowledged_at if acknowledged else claim.status_at) or now
         days = max(1, (now - since).days)
         template = ATTENTION_STALE_STUDIO if status == "studio" else ATTENTION_STALE
-        return template.format(days=days)
+        return template.format(days_text=days_text(days))
     return ""

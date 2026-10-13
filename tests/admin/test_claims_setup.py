@@ -270,7 +270,7 @@ def test_the_list_of_buildings(logged_in: Panel) -> None:
     assert help.PAGE_HELP["view-building-claims"] in page
     row = page.split("TORRE INVENTADA", 1)[1].split("</tr>", 1)[0]
     assert re.findall(r"<td>(\d+)</td>", row)[:1] == ["2"]
-    assert 'bg-yellow-lt">1<' in row
+    assert 'state-waiting">1<' in row
 
 
 def test_the_table_of_a_building(logged_in: Panel) -> None:

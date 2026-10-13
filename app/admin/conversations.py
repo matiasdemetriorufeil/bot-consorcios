@@ -109,6 +109,8 @@ def mark_tour_seen(session: Any, request: Request, now: datetime) -> None:
 class ConversationsView(BaseView):
     name = "Conversaciones"
     icon = "fa-solid fa-comments"
+    # In the bar at the bottom on phones (templates/sqladmin/layout.html), not in «Más».
+    bottom_nav = True
     # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
     menu_counter = "waiting"
     session_maker: ClassVar[Any] = None

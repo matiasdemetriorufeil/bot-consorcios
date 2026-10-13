@@ -1,6 +1,6 @@
 """How the panel shows dates, phones, buildings, money and durations. Invented values only."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -84,3 +84,26 @@ def test_money_number_and_duration() -> None:
     assert formatting.duration(45) == "45 s"
     assert formatting.duration(720.4) == "12 min"
     assert formatting.duration(3900) == "1 h 05 min"
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (30, "recién"),
+        (60, "hace 1 min"),
+        (25 * 60, "hace 25 min"),
+        (3600, "hace 1 hora"),
+        (3 * 3600 + 59, "hace 3 horas"),
+        (86400, "hace 1 día"),
+        (4 * 86400, "hace 4 días"),
+    ],
+)
+def test_ago_never_says_1_dias(seconds: int, expected: str) -> None:
+    now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
+    assert formatting.ago(now - timedelta(seconds=seconds), now) == expected
+
+
+def test_plural() -> None:
+    assert formatting.plural(1, "día", "días") == "1 día"
+    assert formatting.plural(2, "día", "días") == "2 días"
+    assert formatting.plural(0, "hora", "horas") == "0 horas"

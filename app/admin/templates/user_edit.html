@@ -5,7 +5,7 @@
     <div class="card-header">
       <h3 class="card-title">{{ user.display_name }} · {{ user.username }}</h3>
       <div class="card-actions">
-        {% if user.active %}<span class="badge bg-green-lt">Activo</span>{% else %}<span class="badge bg-secondary-lt">Desactivado</span>{% endif %}
+        {% if user.active %}<span class="state state-ok">Activo</span>{% else %}<span class="state state-info">Desactivado</span>{% endif %}
       </div>
     </div>
     <div class="card-body">

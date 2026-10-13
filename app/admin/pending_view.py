@@ -31,6 +31,8 @@ def first_name(name: str) -> str:
 class PendingView(BaseView):
     name = "Pendientes"
     icon = "fa-solid fa-list-check"
+    # In the bar at the bottom on phones (templates/sqladmin/layout.html), not in «Más».
+    bottom_nav = True
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
     clock: ClassVar[Callable[[], datetime]] = staticmethod(lambda: datetime.now(UTC))

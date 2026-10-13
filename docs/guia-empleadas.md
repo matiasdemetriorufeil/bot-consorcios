@@ -37,6 +37,15 @@ El navegador solo deja sonar después de que tocaste algo en la página: al camb
 con el primer clic ya queda listo. El número entre paréntesis en la pestaña del navegador
 («(3) Panel…») te dice cuántas cosas esperan aunque estés en otra pestaña.
 
+**En el celular:** abajo hay una barra con **Pendientes**, **Conversaciones**, **Reclamos** y
+**Más** (Teléfonos, Verificaciones, Reservas de SUM, Guía y Salir), con los mismos números. Los
+avisos son la campana de arriba: si está tachada, tocala para activarlos.
+
+**Al aprobar, rechazar o cerrar algo**, la página no se recarga: la fila se va o el bloque se
+actualiza, y abajo aparece un aviso chico que se va solo. Si algo sale mal, el aviso queda
+hasta que lo cerrás y dice qué pasó. Si dice «No se pudo confirmar si se guardó», tocá
+**Recargar** para ver cómo quedó antes de volver a intentarlo.
+
 ## 1. Atender una conversación que necesita a alguien
 
 El bot contesta solo la mayoría de los mensajes. Cuando no puede (la persona pide hablar con

@@ -6,6 +6,9 @@
 - POST /admin/phones/approve            the selected ones ("Aprobar seleccionados")
 - POST /admin/phones/{id}/unlink        "Desvincular": the phone is deleted (the person stays)
 
+The actions answer as always (a Flash and back to the list) or, asked by panel.js, without
+reloading: the rows that changed and the counters (app.admin.fetch).
+
 Phones are never created or edited here. Every change is audited in bot_events
 (phone_approved, phone_unlinked). The forms carry no CSRF token, like the rest of the panel:
 the session cookie is SameSite=Strict (app.admin.auth).
@@ -26,6 +29,7 @@ from starlette.responses import RedirectResponse, Response
 from app.admin import formatting, labels
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
+from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.views import _in_thread
 from app.config import Settings
 from app.db.models import DataSource, Person, Phone, Unit, UnitPerson
@@ -223,21 +227,20 @@ class PhonesView(BaseView):
         query = back_query(str(form.get("back", "")))
         return RedirectResponse(f"{url}?{query}" if query else url, status_code=302)
 
-    @expose("/phones", methods=["GET"], identity="phones")
-    async def phones_page(self, request: Request) -> Response:
-        params = request.query_params
-        with self.session_maker() as session:
-            result = await _in_thread(
-                lambda: list_phones(
-                    session,
-                    self.timezone,
-                    tab=params.get("tab"),
-                    query=params.get("q", ""),
-                    status=params.get("status", ""),
-                    source=params.get("source", ""),
-                    page=_int(params.get("page"), 1),
-                )
+    async def _list(self, session: Session, params: Any) -> PhoneList:
+        return await _in_thread(
+            lambda: list_phones(
+                session,
+                self.timezone,
+                tab=params.get("tab"),
+                query=params.get("q", ""),
+                status=params.get("status", ""),
+                source=params.get("source", ""),
+                page=_int(params.get("page"), 1),
             )
+        )
+
+    def _context(self, result: PhoneList) -> dict[str, Any]:
         base = {"tab": result.tab, "q": result.query, "status": result.status}
         base["source"] = result.source
 
@@ -245,56 +248,91 @@ class PhonesView(BaseView):
             values = {**base, **changes}
             return "?" + urlencode({k: v for k, v in values.items() if v not in ("", None)})
 
+        return {
+            "result": result,
+            "tabs": TABS,
+            "status_labels": STATUS_LABELS,
+            "source_labels": {s.value: label for s, label in SOURCE_LABELS.items()},
+            "link": link,
+            "back": link(page=result.page)[1:],
+        }
+
+    @expose("/phones", methods=["GET"], identity="phones")
+    async def phones_page(self, request: Request) -> Response:
+        with self.session_maker() as session:
+            result = await self._list(session, request.query_params)
         return await self.templates.TemplateResponse(
-            request,
-            "phones.html",
-            {
-                "title": "Teléfonos",
-                "result": result,
-                "tabs": TABS,
-                "status_labels": STATUS_LABELS,
-                "source_labels": {s.value: label for s, label in SOURCE_LABELS.items()},
-                "link": link,
-                "back": link(page=result.page)[1:],
+            request, "phones.html", {"title": "Teléfonos", **self._context(result)}
+        )
+
+    async def _answer(
+        self, request: Request, form: Any, ok: bool, message: str, changed: set[int]
+    ) -> Response:
+        """After an action: the same Flash and redirect as always, or, asked by panel.js, what
+        changed in the list it was done from (its tab, search and page): rows that are no
+        longer in it go away, the others are redrawn, and the counters."""
+        if not wants_fetch(request):
+            (Flash.success if ok else Flash.warning)(request, message)
+            return self._back(request, form)
+        params = dict(parse_qsl(back_query(str(form.get("back", "")))))
+        with self.session_maker() as session:
+            result = await self._list(session, params)
+        context = self._context(result)
+        template = self.templates.env.get_template("_phone_row.html")
+        shown = {row.id: row for row in result.rows}
+        replace = {}
+        for phone_id in changed:
+            if phone_id in shown:
+                html = await template.render_async(
+                    {"request": request, **context, "row": shown[phone_id]}
+                )
+                replace[f'[data-phone="{phone_id}"]'] = html
+        return fetch_reply(
+            ok,
+            message,
+            remove=[f'[data-phone="{i}"]' for i in sorted(changed) if i not in shown],
+            replace=replace,
+            texts={
+                "[data-review-count]": str(result.review_count),
+                "[data-phones-total]": str(result.total),
             },
         )
 
     @expose("/phones/{phone_id:int}/approve", methods=["POST"], identity="phone-approve")
     async def approve(self, request: Request) -> Response:
         form = await request.form()
+        phone_id = request.path_params["phone_id"]
         with self.session_maker() as session:
-            done = await _in_thread(
-                approve_phone, session, request.path_params["phone_id"], admin_user(request)
-            )
+            done = await _in_thread(approve_phone, session, phone_id, admin_user(request))
         if done:
-            Flash.success(request, "Teléfono aprobado: quedó verificado.")
-        else:
-            Flash.warning(request, "No se aprobó: ese teléfono ya no estaba a revisar.")
-        return self._back(request, form)
+            return await self._answer(
+                request, form, True, "Teléfono aprobado: quedó verificado.", {phone_id}
+            )
+        return await self._answer(
+            request, form, False, "No se aprobó: ese teléfono ya no estaba a revisar.", set()
+        )
 
     @expose("/phones/approve", methods=["POST"], identity="phones-approve")
     async def approve_selected(self, request: Request) -> Response:
         form = await request.form()
         user = admin_user(request)
-        approved = 0
+        approved: set[int] = set()
         for pk in {_int(v) for v in form.getlist("pk")} - {0}:
             with self.session_maker() as session:
-                approved += await _in_thread(approve_phone, session, pk, user)
+                if await _in_thread(approve_phone, session, pk, user):
+                    approved.add(pk)
         if approved:
-            Flash.success(request, f"Teléfonos aprobados: {approved}.")
-        else:
-            Flash.warning(request, "No se aprobó ningún teléfono: elegí alguno a revisar.")
-        return self._back(request, form)
+            message = f"Teléfonos aprobados: {len(approved)}."
+            return await self._answer(request, form, True, message, approved)
+        message = "No se aprobó ningún teléfono: elegí alguno a revisar."
+        return await self._answer(request, form, False, message, set())
 
     @expose("/phones/{phone_id:int}/unlink", methods=["POST"], identity="phone-unlink")
     async def unlink(self, request: Request) -> Response:
         form = await request.form()
+        phone_id = request.path_params["phone_id"]
         with self.session_maker() as session:
-            done = await _in_thread(
-                unlink_phone, session, request.path_params["phone_id"], admin_user(request)
-            )
+            done = await _in_thread(unlink_phone, session, phone_id, admin_user(request))
         if done:
-            Flash.success(request, "Teléfono desvinculado.")
-        else:
-            Flash.warning(request, "Ese teléfono ya no existía.")
-        return self._back(request, form)
+            return await self._answer(request, form, True, "Teléfono desvinculado.", {phone_id})
+        return await self._answer(request, form, False, "Ese teléfono ya no existía.", set())

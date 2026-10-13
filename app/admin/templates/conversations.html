@@ -65,7 +65,7 @@
             {% elif conversation.status.value != 'human' %}
             <div class="composer-hint">Al responder tomás la conversación y el bot deja de contestar.</div>
             {% endif %}
-            <form {% if example %}method="dialog" data-example-note="{{ example_notes.reply }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} class="js-once"{% endif %}>
+            <form {% if example %}method="dialog" data-example-note="{{ example_notes.reply }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
               <input type="hidden" name="action" value="reply">
               <input type="hidden" name="form_token" value="{{ form_token }}">
               <textarea class="form-control" id="reply-text" name="text" rows="3" maxlength="4096" required placeholder="Escribí tu respuesta…"></textarea>
@@ -86,7 +86,7 @@
           {% else %}
             <div class="alert alert-info small mb-2">{{ window_closed_text }}</div>
             {% if templates_list %}
-            <form {% if example %}method="dialog" data-example-note="{{ example_notes.template }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} class="js-once"{% endif %}>
+            <form {% if example %}method="dialog" data-example-note="{{ example_notes.template }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
               <input type="hidden" name="action" value="template">
               <input type="hidden" name="form_token" value="{{ form_token }}">
               <div class="composer-row">
@@ -102,7 +102,7 @@
           {% endif %}
         </div>
         <div data-pane-body="note" hidden>
-          <form {% if example %}method="dialog" data-example-note="{{ example_notes.note }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} class="js-once"{% endif %}>
+          <form {% if example %}method="dialog" data-example-note="{{ example_notes.note }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
             <input type="hidden" name="action" value="note">
             <input type="hidden" name="form_token" value="{{ form_token }}">
             <textarea class="form-control" id="note-text" name="text" rows="2" maxlength="4000" required placeholder="Solo la ve el estudio, no le llega al contacto."></textarea>
@@ -221,17 +221,6 @@
     if (event.target.closest(".js-note")) { showPane("note"); return; }
     var pane = event.target.closest("[data-pane]");
     if (pane) showPane(pane.dataset.pane);
-  });
-  // Double click: a form that sends something goes once (the server also ignores a repeat).
-  document.querySelectorAll("form.js-once").forEach(function (form) {
-    form.addEventListener("submit", function (event) {
-      if (form.dataset.sent) { event.preventDefault(); return; }
-      form.dataset.sent = "1";
-      form.querySelectorAll("button[type=submit]").forEach(function (b) {
-        b.disabled = true;
-        b.textContent = "Enviando…";
-      });
-    });
   });
 })();
 </script>

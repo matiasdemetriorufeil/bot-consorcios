@@ -6,7 +6,7 @@
     {% for key, label in tabs.items() %}
     <li class="nav-item">
       <a class="nav-link {% if key == f.tab %}active{% endif %}" href="{{ link(tab=key, page=None) }}">
-        {{ label }} <span class="badge {{ 'bg-orange text-white' if key == 'open' and result.counts[key] else 'bg-secondary-lt' }} ms-1">{{ result.counts[key] }}</span>
+        {{ label }} <span class="count {{ 'count-waiting' if key == 'open' and result.counts[key] }} ms-1">{{ result.counts[key] }}</span>
       </a>
     </li>
     {% endfor %}
@@ -20,15 +20,15 @@
     </thead>
     <tbody>
       {% for row in result.rows %}
-      <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if (row.urgent or row.attention) and row.group != 'closed' else '' }}">
-        <td data-label="N.º"><a class="fw-bold" href="{{ url_for('admin:view-claim', claim_id=row.id) }}">#{{ row.number }}</a>{% if row.urgent %} <span class="badge bg-red-lt">Urgente</span>{% endif %}</td>
+      <tr data-claim="{{ row.number }}" class="{{ 'claim-row-urgent' if (row.urgent or row.attention) and row.group not in ('ok', 'info') else '' }}">
+        <td data-label="N.º"><a class="fw-bold" href="{{ url_for('admin:view-claim', claim_id=row.id) }}">#{{ row.number }}</a>{% if row.urgent %} <span class="state state-urgent">Urgente</span>{% endif %}</td>
         <td data-label="Fecha">{{ row.date }}</td>
         <td data-label="Edificio y unidad" class="claim-place">{{ row.place }}</td>
         <td data-label="Problema">{{ row.problem }}</td>
-        <td data-label="Quién reclamó">{{ row.reporter }}{% if row.others %} <span class="badge bg-secondary-lt" title="Vecinos que se sumaron">+{{ row.others }}</span>{% endif %}</td>
+        <td data-label="Quién reclamó">{{ row.reporter }}{% if row.others %} <span class="state state-info" title="Vecinos que se sumaron">+{{ row.others }}</span>{% endif %}</td>
         <td data-label="Lo atiende">{{ row.attends }}</td>
         <td data-label="Estado">
-          <span class="badge claim-status claim-{{ row.group }}" title="{{ row.status_long }}">{{ row.status_label }}</span>
+          <span class="state state-{{ row.group }}" title="{{ row.status_long }}">{{ row.status_label }}</span>
           <div class="claim-row-sub">{{ row.ago }}{% if row.attention %} · <span class="claim-row-attention">{{ row.attention }}</span>{% endif %}</div>
         </td>
       </tr>

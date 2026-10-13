@@ -37,6 +37,7 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from app.admin import formatting, labels
 from app.admin.auth import admin_user, display_names
+from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.inbox import add_note as add_conversation_note
 from app.admin.phones import search_condition as phone_search
 from app.bot.identity import to_e164
@@ -291,7 +292,7 @@ def list_claims(session: Session, filters: Filters, now: datetime, timezone: str
             attends=attends_text(c),
             status_label=labels.claim_status(c.status)[0],
             status_long=labels.claim_status(c.status)[1],
-            group=labels.CLAIM_STATUS_GROUP[ClaimStatus(c.status)],
+            group=labels.state(c.status, "claim"),
             ago=formatting.ago(c.status_at, now),
             urgent=c.urgent,
             attention=texts.attention_text(c, now) if c.is_open else "",
@@ -458,7 +459,7 @@ def claim_page(session: Session, claim: Claim, now: datetime, timezone: str) -> 
         unit=unit_text(claim),
         status_label=labels.claim_status(claim.status)[0],
         status_long=labels.claim_status(claim.status)[1],
-        group=labels.CLAIM_STATUS_GROUP[ClaimStatus(claim.status)],
+        group=labels.state(claim.status, "claim"),
         attends=attends_text(claim),
         reporter=person(reporter_text(claim), claim.reporter_phone_e164, claim.reporter_unit),
         attention=texts.attention_text(claim, now) if claim.is_open else "",
@@ -811,6 +812,8 @@ NOT_CONFIGURED = "WhatsApp no está configurado en este servidor: no se mandó n
 class ClaimsView(BaseView):
     name = "Reclamos"
     icon = "fa-solid fa-screwdriver-wrench"
+    # In the bar at the bottom on phones (templates/sqladmin/layout.html), not in «Más».
+    bottom_nav = True
     # The menu's counter (templates/sqladmin/_macros.html, app.admin.pending).
     menu_counter = "claims"
     session_maker: ClassVar[Any] = None
@@ -1030,39 +1033,40 @@ class ClaimsView(BaseView):
         html = await template.render_async({"request": request, **context})
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
+    def _detail_context(self, session: Session, claim: Claim) -> dict[str, Any]:
+        """Everything the claim's page shows (the page, and its block redrawn after an action
+        without reloading)."""
+        page = claim_page(session, claim, self.now(), self.timezone)
+        providers = session.scalars(
+            select(Provider).where(Provider.active.is_(True)).order_by(Provider.name)
+        ).all()
+        wait_when = self._wait_when(session, claim)
+        main, others = claim_actions(
+            claim, scheduled=bool(page.scheduled), wait_when=wait_when,
+            had_provider=page.had_provider,
+        )  # fmt: skip
+        return {
+            "page": page,
+            "main_action": main,
+            "other_actions": others,
+            "providers": providers,
+            "studio_label": labels.STUDIO,
+            "scope_labels": labels.CLAIM_SCOPE,
+            "source_label": labels.label(labels.CLAIM_SOURCE, claim.source),
+            "wait_when": wait_when,
+            "previous_status": labels.label(labels.CLAIM_STATUS, claim.previous.status)
+            if claim.previous
+            else "",
+        }
+
     @expose("/claims/{claim_id:int}", methods=["GET"], identity="claim")
     async def claim_detail(self, request: Request) -> Response:
         with self.session_maker() as session:
             claim = load_claim(session, request.path_params["claim_id"])
             if claim is None:
                 return Response("Reclamo inexistente", status_code=404)
-            page = claim_page(session, claim, self.now(), self.timezone)
-            providers = session.scalars(
-                select(Provider).where(Provider.active.is_(True)).order_by(Provider.name)
-            ).all()
-            wait_when = self._wait_when(session, claim)
-            main, others = claim_actions(
-                claim,
-                scheduled=bool(page.scheduled),
-                wait_when=wait_when,
-                had_provider=page.had_provider,
-            )
-            return await self._page(
-                request,
-                "claim.html",
-                f"Reclamo #{claim.number}",
-                page=page,
-                main_action=main,
-                other_actions=others,
-                providers=providers,
-                studio_label=labels.STUDIO,
-                scope_labels=labels.CLAIM_SCOPE,
-                source_label=labels.label(labels.CLAIM_SOURCE, claim.source),
-                wait_when=wait_when,
-                previous_status=labels.label(labels.CLAIM_STATUS, claim.previous.status)
-                if claim.previous
-                else "",
-            )
+            context = self._detail_context(session, claim)
+            return await self._page(request, "claim.html", f"Reclamo #{claim.number}", **context)
 
     def notifier(self) -> Notifier | None:
         """The claims' WhatsApp messages (None: WhatsApp is not set up in this server)."""
@@ -1077,9 +1081,11 @@ class ClaimsView(BaseView):
 
     async def _act(self, request: Request, action: Any, done: str) -> Response:
         """Apply one change to the claim through the service and go back to it. The action
-        may return a second message (what happened with a WhatsApp notice)."""
+        may return a second message (what happened with a WhatsApp notice). Asked by panel.js
+        (app.admin.fetch), the same change answers with the page's block redrawn instead."""
         claim_id = request.path_params["claim_id"]
         form = await request.form()
+        messages: list[tuple[str, str]] = []  # (level, text), as the Flashes of the page
         with self.session_maker() as session:
             claim = session.get(Claim, claim_id, with_for_update=True)
             if claim is None:
@@ -1088,13 +1094,27 @@ class ClaimsView(BaseView):
                 extra = action(session, claim, form)
             except ClaimProblem as exc:
                 session.rollback()
-                Flash.error(request, str(exc))
+                messages.append(("error", str(exc)))
             else:
                 session.commit()
-                Flash.success(request, done)
+                messages.append(("success", done))
                 if isinstance(extra, tuple):
                     ok, text = extra
-                    (Flash.success if ok else Flash.warning)(request, text)
+                    messages.append(("success" if ok else "warning", text))
+            if wants_fetch(request):
+                session.expire_all()
+                claim = load_claim(session, claim_id)
+                template = self.templates.env.get_template("_claim_detail.html")
+                html = await template.render_async(
+                    {"request": request, **self._detail_context(session, claim)}
+                )
+                ok = all(level == "success" for level, _ in messages)
+                return fetch_reply(
+                    ok, " ".join(text for _, text in messages), replace={"#claim-page": html}
+                )
+        flash = {"success": Flash.success, "warning": Flash.warning, "error": Flash.error}
+        for level, text in messages:
+            flash[level](request, text)
         return _redirect(request, "claim", claim_id=claim_id)
 
     def _send_to_provider(

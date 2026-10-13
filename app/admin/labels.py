@@ -16,6 +16,7 @@ from app.db.models import (
     PanelRole,
     PersonRole,
     ReservationSource,
+    ReservationStatus,
     SyncJob,
     SyncKind,
     SyncStatus,
@@ -88,15 +89,6 @@ CLAIM_STATUS_TEXT = {
 }
 CLAIM_STATUS = {status: long for status, (_, long) in CLAIM_STATUS_TEXT.items()}
 CLAIM_STATUS_SHORT = {status: short for status, (short, _) in CLAIM_STATUS_TEXT.items()}
-# The status' color in the panel: open (nobody is on it yet), in progress, closed.
-CLAIM_STATUS_GROUP = {
-    ClaimStatus.PENDING_SEND: "open",
-    ClaimStatus.STUDIO: "open",
-    ClaimStatus.SENT: "progress",
-    ClaimStatus.ACKNOWLEDGED: "progress",
-    ClaimStatus.SOLVED: "closed",
-    ClaimStatus.CANCELLED: "closed",
-}
 CLAIM_SOURCE = {ClaimSource.BOT: "Por WhatsApp", ClaimSource.PANEL: "Cargado en el panel"}
 CLAIM_ACTOR = {
     ClaimActor.BOT: "El bot",
@@ -226,6 +218,42 @@ ERROR_TYPES = {
     "UnexpectedRedirectError": "Redirección inesperada",
     "TimeoutError": "Tiempo de espera agotado",
 }
+
+
+# --- The panel's one state component (panel.css: .state + .state-<kind>) ---------------------
+# ok: solved, up to date (green) · progress: someone is on it (blue) · waiting: it waits for
+# someone of the studio (orange) · urgent (red) · info: closed or only information (grey).
+STATE_KINDS = ("ok", "progress", "waiting", "urgent", "info")
+STATE: dict[str, dict[Any, str]] = {
+    "conversation": {
+        WaConversationStatus.WAITING_HUMAN: "waiting",
+        WaConversationStatus.HUMAN: "progress",
+        WaConversationStatus.BOT: "info",
+        WaConversationStatus.RESOLVED: "ok",
+        WaConversationStatus.PROVIDER: "info",
+    },
+    "claim": {
+        ClaimStatus.PENDING_SEND: "waiting",
+        ClaimStatus.STUDIO: "waiting",
+        ClaimStatus.SENT: "progress",
+        ClaimStatus.ACKNOWLEDGED: "progress",
+        ClaimStatus.SOLVED: "ok",
+        ClaimStatus.CANCELLED: "info",
+    },
+    "phone": {"verified": "ok", "review": "waiting", "conflict": "urgent", "unverified": "info"},
+    "verification": {
+        VerificationRequestStatus.PENDING: "waiting",
+        VerificationRequestStatus.APPROVED: "ok",
+        VerificationRequestStatus.REJECTED: "info",
+    },
+    "reservation": {ReservationStatus.CONFIRMED: "ok", ReservationStatus.CANCELLED: "info"},
+}
+
+
+def state(value: Any, kind: str) -> str:
+    """The state component's kind of a stored value ("waiting", "ok"...): Jinja filter
+    `{{ claim.status | state('claim') }}` → class "state state-waiting"."""
+    return STATE[kind].get(value, "info")  # StrEnum values match their plain strings
 
 
 def label(table: dict[Any, str], value: Any, default: str = "—") -> str:

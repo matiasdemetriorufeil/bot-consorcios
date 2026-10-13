@@ -3,7 +3,7 @@
 <div class="col-12">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Pendientes <span class="badge {{ 'bg-orange text-white' if rows else 'bg-secondary-lt' }} ms-1">{{ rows | length }}</span></h3>
+      <h3 class="card-title">Pendientes <span class="count {{ 'count-waiting' if rows }} ms-1" data-pending-count>{{ rows | length }}</span></h3>
     </div>
     {% if rows %}
     <div class="table-responsive">
@@ -19,10 +19,10 @@
             <td data-label="Nombre declarado">{{ row.claimed_name }}</td>
             <td data-label="Teléfono" class="text-nowrap">{{ row.phone }}</td>
             <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
-            <td data-label="Estado"><span class="badge bg-orange-lt">{{ row.status }}</span></td>
+            <td data-label="Estado"><span class="state state-waiting">{{ row.status }}</span></td>
             <td class="row-actions">
               <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-verification-approve', request_id=row.id) }}"><i class="fa-solid fa-check me-1"></i>Aprobar</a>
-              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>
+              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" data-fetch {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>
                 <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-xmark me-1"></i>Rechazar</button>
               </form>
             </td>

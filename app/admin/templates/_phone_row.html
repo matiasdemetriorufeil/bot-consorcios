@@ -1,0 +1,25 @@
+{#- One row of «Teléfonos» (the page, and redrawn after an action without reloading:
+    app.admin.phones). result.tab and back come from the page. -#}
+<tr data-phone="{{ row.id }}">
+  {% if result.tab == 'review' %}
+  <td class="row-check" data-label="Elegir"><input class="form-check-input" type="checkbox" name="pk" value="{{ row.id }}" form="approve-selected" aria-label="Elegir {{ row.number }}"></td>
+  {% endif %}
+  <td data-label="Teléfono" class="text-nowrap">{{ row.number }}</td>
+  <td data-label="Persona">{{ row.person }}</td>
+  <td data-label="Unidades">{{ row.units or '—' }}</td>
+  <td data-label="Origen">{{ row.source }}</td>
+  <td data-label="Estado"><span class="state state-{{ row.status | state('phone') }}">{{ row.status_label }}</span></td>
+  <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
+  <td class="row-actions">
+    {% if row.status == 'review' %}
+    <form method="POST" action="{{ url_for('admin:view-phone-approve', phone_id=row.id) }}" data-fetch>
+      <input type="hidden" name="back" value="{{ back }}">
+      <button class="btn btn-sm btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Aprobar</button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" data-fetch {{ confirm_attrs('unlink', row.number ~ ' · ' ~ row.person ~ '.') | xmlattr }}>
+      <input type="hidden" name="back" value="{{ back }}">
+      <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-link-slash me-1"></i>Desvincular</button>
+    </form>
+  </td>
+</tr>

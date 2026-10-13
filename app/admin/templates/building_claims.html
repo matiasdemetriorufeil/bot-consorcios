@@ -48,8 +48,8 @@
               <div class="fw-bold">{{ row.category.list_title }}</div>
               <div class="small text-secondary">{{ row.category.name }}</div>
               <div class="mt-1">
-                <span class="badge bg-secondary-lt">{{ scope_labels[row.category.scope] }}</span>
-                {% if row.category.urgent %}<span class="badge bg-red-lt">Urgente</span>{% endif %}
+                <span class="state state-info">{{ scope_labels[row.category.scope] }}</span>
+                {% if row.category.urgent %}<span class="state state-urgent">Urgente</span>{% endif %}
               </div>
             </td>
             <td>

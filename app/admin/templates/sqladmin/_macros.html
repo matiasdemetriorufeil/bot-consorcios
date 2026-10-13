@@ -74,7 +74,7 @@
         {% if item.icon %}<i class="{{ item.icon }}"></i>{% endif %}
       </span>
       <span class="nav-link-title">{{ item.display_name }}</span>
-      <span class="badge ms-2 menu-badge {{ 'menu-badge-urgent' if urgent else 'menu-badge-neutral' }}" data-counter="{{ key }}" {% if not count %}hidden{% endif %}>{{ count }}</span>
+      <span class="count {{ 'count-urgent' if urgent else 'count-waiting' }}" data-counter="{{ key }}" {% if not count %}hidden{% endif %}>{{ count }}</span>
     </a>
   </li>
   {% else %}
@@ -85,4 +85,28 @@
   {% endif %}
   {% endfor %}
 </div>
+{% endmacro %}
+
+{# «Más», the sheet of the bar at the bottom on phones: every page of the menu but the three
+   already in the bar (views with bottom_nav), with their counters, «Administración» for
+   admins (the same permissions as the menu) and Salir. #}
+{% macro more_menu(menu, request) %}
+<nav class="more-list" aria-label="Más secciones">
+  {% set section = namespace(shown=False) %}
+  {% set counts = menu_counts(request) %}
+  {% for item in menu.items if item.type_ == "View" and item.view.bottom_nav is not defined and item.is_visible(request) and item.is_accessible(request) %}
+  {% if not section.shown and item.view.menu_section == "admin" %}
+  {% set section.shown = True %}
+  <div class="more-section">Administración</div>
+  {% endif %}
+  <a class="more-item {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
+    <i class="{{ item.icon or 'fa-solid fa-circle' }}" aria-hidden="true"></i>
+    <span class="more-item-name">{{ item.display_name }}</span>
+    {% if item.view.menu_counter is defined %}
+    {% set key = item.view.menu_counter %}
+    <span class="count {{ 'count-urgent' if counts.get(key ~ '_urgent', 0) else 'count-waiting' }}" data-counter="{{ key }}" {% if not counts.get(key, 0) %}hidden{% endif %}>{{ counts.get(key, 0) }}</span>
+    {% endif %}
+  </a>
+  {% endfor %}
+</nav>
 {% endmacro %}

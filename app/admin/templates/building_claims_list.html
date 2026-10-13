@@ -11,8 +11,8 @@
           <tr>
             <td>{{ row.name }}</td>
             <td>{{ row.enabled }}</td>
-            <td>{% if row.studio %}<span class="badge bg-yellow-lt">{{ row.studio }}</span>{% else %}0{% endif %}</td>
-            <td>{% if row.building.claims_bot_enabled %}<span class="badge bg-green-lt">Sí</span>{% else %}No{% endif %}</td>
+            <td>{% if row.studio %}<span class="state state-waiting">{{ row.studio }}</span>{% else %}0{% endif %}</td>
+            <td>{% if row.building.claims_bot_enabled %}<span class="state state-ok">Sí</span>{% else %}No{% endif %}</td>
             <td class="list-row-buttons">
               <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-building-claims-table', building_id=row.building.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Configurar</a>
             </td>

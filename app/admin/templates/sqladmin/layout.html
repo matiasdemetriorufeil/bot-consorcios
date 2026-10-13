@@ -1,8 +1,14 @@
-{#- SQLAdmin's layout with, on every page: a thin bar on top with the alerts' button and its
-    notices (panel.js shows them and asks for the panel's numbers: app.admin.pending), its
-    title (SQLAdmin's own lists, records and forms pass none; ours do), a line saying what the
-    page is for (app.admin.help.page_help) and the one confirmation dialog of the panel
-    (_confirm_dialog.html, opened by panel.js). Blocks only: the original stays as is. -#}
+{#- SQLAdmin's layout with, on every page:
+    - a thin bar on top with the alerts' button and its notices (on phones only a bell in the
+      top bar), from where panel.js asks for the panel's numbers (app.admin.pending);
+    - its title (SQLAdmin's own lists, records and forms pass none; ours do) and a line saying
+      what the page is for (app.admin.help.page_help);
+    - the small notices at the bottom (#panel-toasts: the page's Flashes and what panel.js
+      says after an action without reloading);
+    - on phones, the bar at the bottom (Pendientes, Conversaciones, Reclamos, «Más») and its
+      sheet;
+    - the one confirmation dialog of the panel (_confirm_dialog.html, opened by panel.js).
+    Blocks only: the original stays as is. -#}
 {% extends "sqladmin_original/layout.html" %}
 {% block topbar %}
 {% set counts = menu_counts(request) %}
@@ -21,12 +27,17 @@
   </div>
   <button type="button" class="btn btn-sm btn-secondary panel-alerts-button" id="enable-alerts" data-alerts-enable
           title="Sonido y notificación del navegador cuando algo espera a alguien del estudio">🔔 Activar avisos</button>
+  {#- Phones: the alerts are a bell in the top bar (crossed out while they are off). -#}
+  <button type="button" class="panel-bell" id="alerts-bell" data-alerts-enable aria-label="{{ alert_texts.off }} Activar">
+    <i class="fa-solid fa-bell-slash" aria-hidden="true"></i>
+  </button>
 </div>
 {% endblock %}
 {% block content_header %}
 <div class="row align-items-center g-2">
   <div class="col">
     <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
+    {% block under_title %}{% endblock %}
     {% set help_line = page_help(request) %}
     {% if help_line %}<p class="page-help mb-0">{{ help_line }}</p>{% endif %}
   </div>
@@ -34,7 +45,56 @@
   {% block header_actions %}{% endblock %}
 </div>
 {% endblock %}
+{% block flash %}
+{#- The page's Flashes as small notices at the bottom (panel.js takes the successful ones away
+    after 4 s; an error stays until closed). Without JavaScript they just stay. -#}
+<div class="panel-toasts" id="panel-toasts" role="status" aria-live="polite">
+  {% for message in get_flashed_messages(request) %}
+  {% set level = 'error' if message.category in ('danger', 'error') else 'warning' if message.category == 'warning' else 'success' %}
+  <div class="panel-toast panel-toast-{{ level }}" data-toast="{{ level }}" {% if level == 'error' %}role="alert"{% endif %}>
+    <span class="panel-toast-text">{{ message.message }}</span>
+    <button type="button" class="panel-toast-close" data-toast-close aria-label="Cerrar">×</button>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
 {% block tail %}
 {{ super() }}
+{% from 'sqladmin/_macros.html' import more_menu %}
+{% set counts = menu_counts(request) %}
+{% set path = request.url.path %}
+{#- Phones (< 992 px): the bar at the bottom, with the counters of the menu (panel.js keeps
+    them up to date: data-counter). Hidden from 992 px (panel.css). -#}
+<nav class="bottom-nav" id="bottom-nav" aria-label="Secciones principales">
+  {% for href, icon, label, key in [
+      (url_for('admin:view-pending'), 'fa-list-check', 'Pendientes', ''),
+      (url_for('admin:view-conversations'), 'fa-comments', 'Conversaciones', 'waiting'),
+      (url_for('admin:view-claims'), 'fa-screwdriver-wrench', 'Reclamos', 'claims')] %}
+  {% set here = path.startswith(href.path if href.path is defined else href) %}
+  <a class="bottom-nav-item {% if here %}active{% endif %}" href="{{ href }}" {% if here %}aria-current="page"{% endif %}>
+    <span class="bottom-nav-icon"><i class="fa-solid {{ icon }}" aria-hidden="true"></i>
+      {% if key %}<span class="count {{ 'count-urgent' if counts.get(key ~ '_urgent', 0) else 'count-waiting' }}" data-counter="{{ key }}" {% if not counts.get(key, 0) %}hidden{% endif %}>{{ counts.get(key, 0) }}</span>{% endif %}
+    </span>
+    <span class="bottom-nav-label">{{ label }}</span>
+  </a>
+  {% endfor %}
+  {% set more = counts.get('phones', 0) + counts.get('verifications', 0) %}
+  <button type="button" class="bottom-nav-item" data-more-open aria-haspopup="dialog" aria-controls="more-sheet">
+    <span class="bottom-nav-icon"><i class="fa-solid fa-bars" aria-hidden="true"></i>
+      <span class="count count-waiting" data-counter="more" {% if not more %}hidden{% endif %}>{{ more }}</span>
+    </span>
+    <span class="bottom-nav-label">Más</span>
+  </button>
+</nav>
+<dialog class="more-sheet" id="more-sheet" aria-label="Más secciones">
+  <div class="more-sheet-head">
+    <strong>Más</strong>
+    <button type="button" class="more-sheet-close" data-more-close aria-label="Cerrar">×</button>
+  </div>
+  {{ more_menu(admin._menu, request) }}
+  {% if admin.authentication_backend %}
+  <a class="more-item more-logout" href="{{ request.url_for('admin:logout') }}"><i class="fa fa-sign-out" aria-hidden="true"></i><span class="more-item-name">Salir</span></a>
+  {% endif %}
+</dialog>
 {% include "_confirm_dialog.html" %}
 {% endblock %}

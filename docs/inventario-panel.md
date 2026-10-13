@@ -1,5 +1,76 @@
 # Inventario del panel `/admin`
 
+## Actualización 5e.3: panel ágil, cómodo en el celular, y detalles visuales (2026-10-12)
+
+No cambia ninguna regla de negocio ni lo que se le manda a nadie, salvo el plural de «hace N»
+y «hasta N días antes».
+
+- **Acciones sin recargar** (`app/admin/fetch.py`):
+  - **Dónde:** Teléfonos (Aprobar, Aprobar seleccionados, Desvincular), Verificaciones
+    (Rechazar) y la ficha del reclamo (todas sus acciones y la nota interna).
+  - **Cómo:** el formulario lleva `data-fetch` y `panel.js` lo manda con la cabecera
+    `X-Panel-Fetch: 1`. El mismo endpoint, con las mismas validaciones y la misma auditoría,
+    responde JSON con:
+    - el texto del aviso;
+    - las filas que se van (con una transición corta);
+    - los bloques redibujados por el servidor (`_phone_row.html`; `_claim_detail.html`, que
+      es `#claim-page`);
+    - los contadores.
+  - Enseguida se piden los números de 5e.1, y los contadores del menú cambian sin esperar.
+  - **Sin la cabecera** (sin JavaScript), todo sigue igual: `Flash` y redirección.
+  - **Si no se sabe cómo terminó** (red cortada, error del servidor): nunca se reenvía.
+    Queda el aviso «No se pudo confirmar si se guardó. Recargá la página para ver cómo
+    quedó.» con «Recargar», y los botones vuelven a estar habilitados. La sesión vencida sigue
+    el camino de 5e.1.
+- **Avisos chicos abajo** (`#panel-toasts`, `role="status"`): los `Flash` de todas las páginas
+  (también SQLAdmin) y los de las acciones sin recargar.
+  - Los de éxito se van a los 4 s.
+  - Los de error quedan hasta tocar «×» (`role="alert"`).
+- **«Guardando…»:** todo formulario POST (también Conversaciones, SUM y SQLAdmin) deshabilita
+  sus botones mientras se manda; el redactor dice «Enviando…». La confirmación ahora reenvía
+  el botón que se tocó (su `name`/`value`).
+- **Celular (< 992 px):**
+  - **Barra de arriba de 56 px:** logo, «Estudio Rufeil», la campana de avisos (tachada si
+    están apagados: tocarla los activa) y el menú. «Salir» pasó a «Más». La franja de avisos
+    apagados no se ve en el celular; la de sesión vencida, sí.
+  - **Barra fija abajo,** para los dos roles: Pendientes, Conversaciones, Reclamos y «Más»,
+    con los contadores de 5e.1.
+  - **«Más»** sube desde abajo, con Teléfonos y Verificaciones (con contadores), Reservas de
+    SUM, Guía, «Administración» (solo el admin) y Salir.
+  - **Que no tape nada:** la página deja el lugar de la barra. En una conversación abierta, el
+    título se oculta y el chat ocupa la pantalla entre las dos barras, con el redactor arriba
+    de la de abajo.
+  - **Para tocar:** botones, campos, pestañas y el menú de al menos 44 px.
+  - **Títulos** más chicos.
+  - **Revisé las 15 pantallas** de la operadora a 390 px: nada se sale del ancho y no queda
+    nada de menos de 44 px.
+  - A 1024 px se ve como en escritorio. La tabla de Reclamos va en un renglón por reclamo
+    recién desde 1280 px; antes se cortaba a 1024.
+- **Un solo componente de estado** (`panel.css` `.state` + `labels.STATE` + el filtro Jinja
+  `state`):
+  - verde, resuelto o al día;
+  - azul, en curso;
+  - naranja, espera a alguien del estudio;
+  - rojo, urgente;
+  - gris, cerrado o informativo.
+
+  Se usa en Conversaciones, Reclamos, Teléfonos, Verificaciones, SUM, Usuarios y Reclamos por
+  edificio. Los contadores son `.count` (`count-waiting`, `count-urgent`). Se borraron
+  `claim-open/progress/closed`, `chat-status-*`, `phone-status-*`, `menu-badge-*` y los
+  `bg-*-lt` de las etiquetas.
+- **Pendientes:**
+  - el saludo va arriba de la línea de ayuda;
+  - con «Todo al día», las tarjetas en cero son una línea cada una (ícono, nombre, «Al día»,
+    «Ver»).
+- **Plural:**
+  - `formatting.ago`: «hace 1 hora», «hace 3 horas», «hace 1 día»;
+  - los avisos de reclamos: «Sin solucionar hace 1 día», en `app/claims/texts.py`;
+  - el SUM: «hasta 1 día antes», en `app/amenities/booking.py`.
+- **Guía:** las 12 imágenes rehechas (la de Conversaciones ya muestra «Cargar reclamo»), y un
+  párrafo sobre el celular y las acciones sin recargar.
+- **Capturas:** `docs/panel-capturas/5e3/` (fuera de Git), a 1440, 1024 y 390 px. Base de demo
+  aparte, borrada al terminar.
+
 ## Actualización 5e.2: Reclamos más fáciles de seguir y de cargar (2026-10-12)
 
 No cambian las reglas de `app/claims/service.py` ni lo que se les manda a proveedores o

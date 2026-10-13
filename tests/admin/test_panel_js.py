@@ -25,7 +25,12 @@ def _run(call: str) -> Any:
         f"process.stdout.write(JSON.stringify({call}));\n"
     )
     done = subprocess.run(  # noqa: S603 (node and our own script, no outside input)
-        [NODE or "node", "-e", program], capture_output=True, text=True, timeout=30, check=True
+        [NODE or "node", "-e", program],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=True,
     )
     return json.loads(done.stdout)
 
@@ -142,3 +147,55 @@ def test_the_search_waits_until_she_stops_typing() -> None:
     result = _run(DEBOUNCE)
     # Three keys, one request: with the last text, 350 ms after the last key.
     assert result == {"before": [], "almost": [], "after": ["ana"]}
+
+
+# --- 5e.3: actions without reloading ------------------------------------------------------------
+
+BUSY = """(function () {
+  var a = { disabled: false, textContent: "Aprobar", dataset: {} };
+  var b = { disabled: false, textContent: "Enviar", dataset: {} };
+  window.panelBusy([a], true);
+  window.panelBusy([b], true, "Enviando…");
+  var going = [a.disabled, a.textContent, b.disabled, b.textContent];
+  window.panelBusy([a], true);  // a second tap while it goes changes nothing
+  var twice = a.dataset.idleText;
+  window.panelBusy([a, b], false);
+  var done = [a.disabled, a.textContent, b.disabled, b.textContent];
+  return { going: going, twice: twice, done: done };
+})()"""
+
+
+def test_buttons_are_disabled_while_the_form_goes() -> None:
+    assert _run(BUSY) == {
+        "going": [True, "Guardando…", True, "Enviando…"],
+        "twice": "Aprobar",
+        "done": [False, "Aprobar", False, "Enviar"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("level", "delay"), [("success", 4000), ("warning", 4000), ("error", None)]
+)
+def test_a_notice_goes_after_4_s_an_error_stays(level: str, delay: int | None) -> None:
+    assert _run(f"window.panelToastDelay({json.dumps(level)})") == delay
+
+
+@pytest.mark.parametrize(
+    ("status", "is_json", "network", "session", "expected"),
+    [
+        (200, True, False, "ok", "apply"),
+        # Unknown: it may have been done; never sent again (a provider would get two WhatsApp).
+        (0, False, True, "retry", "unknown"),
+        (500, False, False, "retry", "unknown"),
+        (502, True, False, "retry", "unknown"),
+        (200, False, False, "retry", "unknown"),
+        # The session is gone: 5e.1's way (reload, or warn with a message being written).
+        (401, False, False, "reload", "session"),
+        (200, False, False, "warn", "session"),
+    ],
+)
+def test_what_to_do_with_the_answer_of_an_action(
+    status: int, is_json: bool, network: bool, session: str, expected: str
+) -> None:
+    args = json.dumps([status, is_json, network, session])[1:-1]
+    assert _run(f"window.panelFetchOutcome({args})") == expected

@@ -59,6 +59,36 @@
     };
   };
 
+  // A form's buttons while it goes: disabled, saying «Guardando…» (or the form's own text);
+  // back as they were when it is done. Buttons are anything with disabled, textContent and a
+  // dataset (the tests give plain objects).
+  root.panelBusy = function (buttons, busy, text) {
+    Array.prototype.forEach.call(buttons, function (b) {
+      if (busy) {
+        if (b.dataset.idleText === undefined) b.dataset.idleText = b.textContent;
+        b.disabled = true;
+        b.textContent = text || "Guardando…";
+      } else {
+        if (b.dataset.idleText !== undefined) { b.textContent = b.dataset.idleText; delete b.dataset.idleText; }
+        b.disabled = false;
+      }
+    });
+  };
+
+  // How long a small notice stays: null (until closed) for an error, else 4 s.
+  root.panelToastDelay = function (level) {
+    return level === "error" ? null : 4000;
+  };
+
+  // What to do with the answer of an action sent without reloading: "apply" (the server's JSON),
+  // "session" (the session is gone: 5e.1's way) or "unknown" (a network cut, a server error, an
+  // odd answer). Never send it again: the server may have done it already.
+  root.panelFetchOutcome = function (status, isJson, networkError, sessionAction) {
+    if (networkError) return "unknown";
+    if (sessionAction === "reload" || sessionAction === "warn") return "session";
+    return status >= 200 && status < 300 && isJson ? "apply" : "unknown";
+  };
+
   if (typeof document === "undefined") return;
 
   // "Number of characters: N" under each text area (SQLAdmin's main.js): ours runs after its own.
@@ -149,6 +179,14 @@
   function showAlertsState() {
     var state = permission();
     if (alertsButton) alertsButton.textContent = state === "granted" ? "🔔 Avisos activos" : "🔔 Activar avisos";
+    // Phones: the bell in the top bar, crossed out while they are off.
+    var bell = document.getElementById("alerts-bell");
+    if (bell) {
+      var on = state === "granted";
+      bell.querySelector("i").className = "fa-solid " + (on ? "fa-bell" : "fa-bell-slash");
+      bell.setAttribute("aria-label", on ? "Avisos activos" : "Los avisos con sonido están apagados. Activar");
+      bell.classList.toggle("panel-bell-off", !on);
+    }
     if (!alertsOff) return;
     alertsOff.hidden = state !== "default" && state !== "denied";
     // The notice has its own «Activar»: the bar's button, only once they are on.
@@ -210,12 +248,14 @@
   if (topbar) setTitle(Number(topbar.dataset.titleCount) || 0);
 
   function showCounters(counts) {
+    // «Más» of the bar at the bottom (phones): what waits in Teléfonos and Verificaciones.
+    counts = Object.assign({ more: (counts.phones || 0) + (counts.verifications || 0) }, counts);
     document.querySelectorAll("[data-counter]").forEach(function (badge) {
       var key = badge.dataset.counter, n = counts[key] || 0, urgent = counts[key + "_urgent"] || 0;
       badge.textContent = String(n);
       badge.hidden = n === 0;
-      badge.classList.toggle("menu-badge-urgent", urgent > 0);
-      badge.classList.toggle("menu-badge-neutral", urgent === 0);
+      badge.classList.toggle("count-urgent", urgent > 0);
+      badge.classList.toggle("count-waiting", urgent === 0);
     });
   }
 
@@ -291,6 +331,9 @@
       .catch(function () { /* offline for a moment: next time */ })
       .finally(function () { busy = false; });
   }
+
+  // After an action without reloading: the menu's numbers at once, not at the next poll.
+  window.panelRefreshNumbers = askNumbers;
 
   if (pendingUrl) {
     if (channel) {
@@ -462,12 +505,13 @@
     if (!form.dataset || !form.dataset.confirmText) return;
     var dialog = document.getElementById("confirm-dialog");
     if (form.dataset.confirmed === "1") { delete form.dataset.confirmed; return; }
+    var submitter = event.submitter || null;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!dialog || typeof dialog.showModal !== "function") {
       if (window.confirm(form.dataset.confirmTitle + "\n\n" + form.dataset.confirmText)) {
         form.dataset.confirmed = "1";
-        form.requestSubmit();
+        form.requestSubmit(submitter);
       }
       return;
     }
@@ -500,13 +544,140 @@
       }
       if (dialog.returnValue !== "ok") return;
       form.dataset.confirmed = "1";
-      form.requestSubmit();
+      form.requestSubmit(submitter);  // the button that sent it, with its name and value
     };
     dialog.returnValue = "";
     dialog.showModal();
     var first = inputs.filter(function (el) { return el.type !== "radio" && el.type !== "hidden"; })[0];
     if (first) first.focus();
   }, true);
+
+  // --- Small notices at the bottom (#panel-toasts) ---------------------------------------------
+  // The page's Flashes (layout.html) and what an action without reloading says. A success
+  // goes away after 4 s; an error stays until «×» (role="alert").
+  var toasts = document.getElementById("panel-toasts");
+  function dismissLater(toast) {
+    var delay = window.panelToastDelay(toast.dataset.toast);
+    if (delay !== null) window.setTimeout(function () { toast.remove(); }, delay);
+  }
+  window.panelToast = function (text, level, action) {
+    if (!toasts) return null;
+    var toast = document.createElement("div");
+    toast.className = "panel-toast panel-toast-" + level;
+    toast.dataset.toast = level;
+    if (level === "error") toast.setAttribute("role", "alert");
+    var span = document.createElement("span");
+    span.className = "panel-toast-text";
+    span.textContent = text;
+    toast.appendChild(span);
+    if (action) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-sm btn-primary";
+      button.textContent = action.label;
+      button.addEventListener("click", action.run);
+      toast.appendChild(button);
+    }
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "panel-toast-close";
+    close.setAttribute("data-toast-close", "");
+    close.setAttribute("aria-label", "Cerrar");
+    close.textContent = "×";
+    toast.appendChild(close);
+    toasts.appendChild(toast);
+    dismissLater(toast);
+    return toast;
+  };
+  if (toasts) {
+    toasts.querySelectorAll("[data-toast]").forEach(dismissLater);
+    toasts.addEventListener("click", function (event) {
+      var close = event.target.closest("[data-toast-close]");
+      if (close) close.closest(".panel-toast").remove();
+    });
+  }
+
+  // --- Actions: «Guardando…» while they go; some without reloading (data-fetch) ---------------
+  // Every form that sends something (POST) disables its buttons while it goes, so a second tap
+  // does nothing. After the event (setTimeout): a button's name and value still go, as in
+  // SQLAdmin's «Guardar y seguir editando». A form with data-fetch is sent by fetch (header
+  // X-Panel-Fetch: the server answers JSON, app.admin.fetch): rows go away, blocks are
+  // redrawn, the menu's numbers are asked for at once. If the answer is unknown (no network,
+  // a server error) it is never sent again: the server may have done it already.
+  function formButtons(form) {
+    var inside = Array.prototype.slice.call(form.querySelectorAll("button[type=submit], button:not([type]), input[type=submit]"));
+    var outside = form.id ? Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"][type=submit]')) : [];
+    return inside.concat(outside);
+  }
+  var UNKNOWN = "No se pudo confirmar si se guardó. Recargá la página para ver cómo quedó.";
+  function applyReply(data) {
+    (data.remove || []).forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (el) {
+        el.classList.add("row-leaving");
+        window.setTimeout(function () { el.remove(); }, 220);
+      });
+    });
+    Object.keys(data.replace || {}).forEach(function (selector) {
+      var el = document.querySelector(selector);
+      if (el) el.outerHTML = data.replace[selector];
+    });
+    Object.keys(data.texts || {}).forEach(function (selector) {
+      document.querySelectorAll(selector).forEach(function (el) { el.textContent = data.texts[selector]; });
+    });
+  }
+  function sendByFetch(form, submitter) {
+    var buttons = formButtons(form);
+    var body = new FormData(form, submitter || undefined);
+    window.panelBusy(buttons, true, form.dataset.busyText);
+    var done = function () { window.panelBusy(buttons, false); };
+    fetch(form.action, {
+      method: "POST", body: body, credentials: "same-origin",
+      headers: { "X-Panel-Fetch": "1", Accept: "application/json" }
+    }).then(function (response) {
+      var session = window.panelSessionCheck(response);  // "ok" for JSON; reload/warn: 5e.1
+      var type = response.headers.get("content-type") || "";
+      var outcome = window.panelFetchOutcome(response.status, type.indexOf("json") >= 0, false, session);
+      if (outcome !== "apply") { if (outcome === "unknown") unknown(); return null; }
+      return response.json();
+    }).then(function (data) {
+      if (!data) return;
+      applyReply(data);
+      window.panelToast(data.message, data.level);
+      if (window.panelRefreshNumbers) window.panelRefreshNumbers();
+    }).catch(function () {
+      unknown();
+    }).finally(done);
+  }
+  function unknown() {
+    window.panelToast(UNKNOWN, "error", { label: "Recargar", run: function () { window.location.reload(); } });
+  }
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (event.defaultPrevented || !form.getAttribute) return;
+    if ((form.getAttribute("method") || "get").toLowerCase() !== "post") return;
+    if (form.hasAttribute("data-fetch") && window.fetch && window.FormData) {
+      event.preventDefault();
+      sendByFetch(form, event.submitter);
+      return;
+    }
+    var buttons = formButtons(form);
+    window.setTimeout(function () { window.panelBusy(buttons, true, form.dataset.busyText); }, 0);
+  });
+  // Back to a page from the browser's cache: its buttons as they were.
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
+  });
+
+  // --- «Más» of the bar at the bottom (phones) ---------------------------------------------------
+  // The bar and its sheet come after this script in the page: looked up when used.
+  document.addEventListener("click", function (event) {
+    var sheet = document.getElementById("more-sheet");
+    if (!sheet || typeof sheet.showModal !== "function" || !event.target.closest) return;
+    if (event.target.closest("[data-more-open]")) { sheet.showModal(); return; }
+    // The close button, or a tap on the shade around the sheet.
+    if (sheet.open && (event.target === sheet || event.target.closest("[data-more-close]"))) sheet.close();
+  });
 
   // --- The example of "Cómo usar" (app.admin.example) -----------------------------------------
   // Its buttons and links do nothing: a short note says what they would do in a real one.

@@ -20,6 +20,7 @@ from app.amenities.booking import (
     check_booking,
     describe_slot,
     free_slots,
+    problem_message,
     slot_end,
     slot_start,
 )
@@ -346,3 +347,10 @@ def test_availability_says_why_each_slot_cannot_be_booked_now(world: World) -> N
         world.session, world.amenity, NEXT_FRIDAY, NEXT_FRIDAY, now=friday_15, timezone=TZ
     )
     assert first.problems == (BookingProblem.AMENITY_INACTIVE,) and not first.bookable
+
+
+@pytest.mark.parametrize(("days", "text"), [(1, "hasta 1 día antes"), (30, "hasta 30 días antes")])
+def test_too_far_says_1_dia_never_1_dias(world: World, days: int, text: str) -> None:
+    world.amenity.max_advance_days = days
+    message = problem_message(BookingProblem.TOO_FAR, world.amenity)
+    assert message == f"Solo se puede reservar {text}."

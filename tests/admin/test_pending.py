@@ -412,7 +412,7 @@ def test_the_menu_counters_as_the_page_is_drawn(operator: Panel, busy: None) -> 
     def badge(key: str) -> str:
         found = re.search(rf'<span class="([^"]*)" data-counter="{key}"[^>]*>(\d+)</span>', page)
         assert found, key
-        return f"{found.group(2)} {'urgent' if 'menu-badge-urgent' in found.group(1) else '-'}"
+        return f"{found.group(2)} {'urgent' if 'count-urgent' in found.group(1) else '-'}"
 
     assert badge("waiting") == "2 urgent"
     assert badge("claims") == "2 urgent"

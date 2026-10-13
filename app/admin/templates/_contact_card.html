@@ -3,13 +3,13 @@
   {% if card.provider %}
   <div class="contact-name">{{ card.provider }}</div>
   <div class="text-secondary small">{{ card.phone | phone }}{% if card.profile_name %} · en WhatsApp: {{ card.profile_name }}{% endif %}</div>
-  <div class="mt-2"><span class="badge bg-teal-lt">Proveedor</span></div>
+  <div class="mt-2"><span class="state state-info">Proveedor</span></div>
   <div class="small text-secondary mt-2">El bot no le contesta: sus botones los lee el sistema y lo demás lo ven ustedes.</div>
   <div class="contact-section">Reclamos abiertos</div>
   {% for c in card.claims %}
   <div class="small contact-claim">
     <a href="{{ url_for('admin:view-claim', claim_id=c.id) }}">#{{ c.number }} · {{ c.problem }}</a>
-    <span class="badge claim-status claim-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
+    <span class="state state-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
   </div>
   {% else %}
   <div class="small text-secondary">No tiene reclamos abiertos.</div>
@@ -21,8 +21,8 @@
   </div>
   {% if card.known %}
   <div class="mt-2">
-    {% if card.verified %}<span class="badge bg-green-lt">Teléfono verificado</span>
-    {% else %}<span class="badge bg-yellow-lt">Teléfono sin verificar (cargado en ConsorPlus)</span>{% endif %}
+    {% if card.verified %}<span class="state state-ok">Teléfono verificado</span>
+    {% else %}<span class="state state-info">Teléfono sin verificar (cargado en ConsorPlus)</span>{% endif %}
   </div>
   <div class="contact-section">Unidades</div>
   {% for item in card.units %}
@@ -31,7 +31,7 @@
     {% if item.debt %}
     <div class="small">
       Última deuda: <strong>{{ item.debt.total }}</strong>
-      {% if item.debt.up_to_date %}<span class="badge bg-green-lt">al día</span>{% else %}<span class="badge bg-red-lt">con deuda</span>{% endif %}
+      {% if item.debt.up_to_date %}<span class="state state-ok">al día</span>{% else %}<span class="state state-waiting">con deuda</span>{% endif %}
       <div class="text-secondary">consultada {{ item.debt.fetched_at }}</div>
     </div>
     {% else %}
@@ -56,7 +56,7 @@
   {% for c in card.claims %}
   <div class="small contact-claim">
     <a href="{{ url_for('admin:view-claim', claim_id=c.id) }}">#{{ c.number }} · {{ c.problem }}</a>
-    <span class="badge claim-status claim-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
+    <span class="state state-{{ c.group }}" title="{{ c.status_long }}">{{ c.status }}</span>
   </div>
   {% endfor %}
   {#- With who reports already chosen (its unit, or its phone if nobody's), linked to this
