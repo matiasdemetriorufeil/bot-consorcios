@@ -93,19 +93,29 @@ VIEWS = (
     VerificationsView,
     AmenitiesView,
     GuideView,
+    # «Administración», by its blocks (MENU_GROUPS), each in the order of its menu.
     BuildingAdmin,
     BuildingInfoAdmin,
+    BuildingClaimsView,
     ProviderAdmin,
     ClaimCategoryAdmin,
-    BuildingClaimsView,
     ClaimSettingsAdmin,
     BotSettingsAdmin,
-    WaTemplateAdmin,
     QuickReplyAdmin,
+    WaTemplateAdmin,
     UsersView,
     MetricsView,
     SyncRunAdmin,
     WaMediaView,
+)
+# The blocks of «Administración» in the menu (and in «Más» on phones), in this order: each
+# admin view says which one is its own (menu_group). They fold; the one of the open page is
+# open (templates/sqladmin/_macros.html, panel.js remembers the rest).
+MENU_GROUPS = (
+    ("buildings", "Edificios"),
+    ("claims", "Reclamos"),
+    ("bot", "Bot"),
+    ("system", "Sistema"),
 )
 
 
@@ -208,6 +218,7 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["claim_links"] = claim_links
     filters["state"] = labels.state
     env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
+    env.globals["menu_groups"] = MENU_GROUPS  # type: ignore[attr-defined]
     # In the style sheet's and script's URLs: a change reaches every browser (no stale cache).
     env.globals["static_version"] = static_version()  # type: ignore[attr-defined]
 

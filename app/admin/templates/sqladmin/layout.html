@@ -39,7 +39,8 @@
     <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
     {% block under_title %}{% endblock %}
     {% set help_line = page_help(request) %}
-    {% if help_line %}<p class="page-help mb-0">{{ help_line }}</p>{% endif %}
+    {% set guide_anchor = page_guide(request) %}
+    {% if help_line %}<p class="page-help mb-0">{{ help_line }}{% if guide_anchor %} <a class="page-help-guide" href="{{ url_for('admin:view-guide') }}#{{ guide_anchor }}">Ver en la guía</a>{% endif %}</p>{% endif %}
   </div>
   {# A page's own buttons beside its title (e.g. "Ver recorrido" in Conversaciones). #}
   {% block header_actions %}{% endblock %}

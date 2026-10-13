@@ -65,6 +65,23 @@ a { color: var(--panel-primary); }
 }
 .navbar-vertical .nav-link { font-size: .95rem; }
 .menu-section .nav-link { font-size: .72rem; letter-spacing: .06em; }
+/* «Administración» in folding blocks (_macros.html display_menu): the block's name with a
+   chevron, its pages a little to the right. */
+.menu-group-box > summary { list-style: none; cursor: pointer; display: flex; align-items: center;
+  color: rgba(255, 255, 255, .85); font-weight: 600; }
+.menu-group-box > summary::-webkit-details-marker { display: none; }
+.menu-group-box > summary::after { content: ""; width: .45rem; height: .45rem; margin-left: auto; opacity: .7;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg);
+  transition: transform .15s; }
+.menu-group-box[open] > summary::after { transform: rotate(-135deg); }
+.menu-group-items { padding-left: .75rem; flex-direction: column; }
+.more-group > summary { list-style: none; cursor: pointer; font-weight: 600; }
+.more-group > summary::-webkit-details-marker { display: none; }
+.more-group > summary::after { content: ""; width: .45rem; height: .45rem; margin-right: .25rem; color: var(--panel-muted);
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg);
+  transition: transform .15s; }
+.more-group[open] > summary::after { transform: rotate(-135deg); }
+.more-group > .more-item { padding-left: 2rem; }
 
 /* --- Tables: more air --------------------------------------------------------------------------- */
 .table > :not(caption) > * > * { padding: .7rem .9rem; }
@@ -536,3 +553,24 @@ a { color: var(--panel-primary); }
 .pending-line i { width: 1.25rem; text-align: center; color: var(--panel-muted); }
 .pending-line-title { flex: 1; }
 .pending-line-link { color: var(--panel-primary); font-weight: 600; }
+
+/* --- The guide's index and «Ver en la guía» (guide.html, layout.html) ------------------------- */
+.page-help-guide { white-space: nowrap; font-weight: 600; margin-left: .25rem; }
+.page-help-guide::after { content: " →"; }
+.guide-index { margin: 0 0 1.75rem; padding: .9rem 1.1rem; border-radius: .5rem; background: var(--panel-primary-light); }
+.guide-index-title { font-weight: 700; margin-bottom: .35rem; }
+.guide-index-parts { margin: 0; padding-left: 1.2rem; }
+.guide-index-parts > li { margin-bottom: .4rem; }
+.guide-index-part { font-weight: 600; }
+.guide-index ul { margin: .2rem 0 0; padding-left: 1.1rem; }
+.guide-index ul li { margin-bottom: .1rem; }
+/* A section reached from a link: below the bar on top, not under it. */
+.guide h2, .guide h3 { scroll-margin-top: 1rem; }
+.guide h2 { border-top: 1px solid var(--panel-line); padding-top: 1.25rem; }
+.guide h2:first-of-type { border-top: 0; }
+@media (max-width: 991.98px) {
+  .guide h2, .guide h3 { scroll-margin-top: 4.5rem; }
+  .guide .guide-image { width: 100%; max-width: 100%; }
+  .guide { font-size: 1rem; }
+  .guide-index li { padding: .25rem 0; }
+}

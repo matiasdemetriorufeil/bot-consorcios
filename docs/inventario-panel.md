@@ -1,5 +1,55 @@
 # Inventario del panel `/admin`
 
+## Actualización 5e.4: el menú del admin ordenado y la guía fácil de consultar (2026-10-12)
+
+Sin cambios de URLs, permisos ni reglas.
+
+- **«Administración» en 4 bloques plegables**, en este orden:
+
+  | Bloque | Pantallas |
+  |---|---|
+  | Edificios | Edificios, Información de edificios, Reclamos por edificio |
+  | Reclamos | Proveedores, Tipos de problema, Configuración de reclamos |
+  | Bot | Configuración del bot, Respuestas rápidas, Plantillas de WhatsApp |
+  | Sistema | Usuarios, Métricas, Sincronizaciones, Chat de prueba (solo en desarrollo) |
+
+  - Cada vista de admin dice su bloque (`menu_group`). El orden está en
+    `app.admin.MENU_GROUPS` y `VIEWS`.
+  - El bloque de la pantalla abierta llega abierto desde el servidor.
+  - Los demás quedan como la usuaria los dejó: `localStorage["panel-menu-groups"]`, con
+    try/catch, compartido por el menú y «Más».
+  - Los mismos bloques aparecen en «Más» del celular.
+  - La operadora no ve ningún cambio: no tiene pantallas de admin, así que no se dibujan ni el
+    título ni los bloques.
+- **Guía** (`docs/guia-empleadas.md`) **en dos partes, con índice arriba:**
+  - **Todos los días:** Empezá el día en Pendientes; Cómo es un día (nuevo: al llegar, durante
+    el día, antes de irte, reglas); Conversaciones; Responder cuando pasó más de un día;
+    Reclamos (corta: qué ves, el botón principal, cargar uno, cerrarlo); Teléfonos;
+    Verificaciones; Reservas del SUM.
+  - **Si pasa algo raro:** Cuando algo no anda; Reclamos: el proveedor y los avisos (el horario,
+    el recordatorio, los avisos al estudio, si no contesta o no puede, los urgentes), movido
+    desde Reclamos.
+- **Conversor** (`app/admin/guide.py`):
+  - **Anclas:** cada parte y cada sección lleva un `id` hecho con su título (`slug`: sin
+    acentos, en minúsculas, con guiones, y `-2` si se repite). El índice (`guide_contents`) usa
+    las mismas.
+  - **Links internos:** permite `[texto](#ancla)`; lo demás sigue escapado.
+  - **Imágenes:** llevan `width` y `height` (leídos del PNG), así un link a una sección cae en
+    ella aunque las imágenes de arriba carguen después.
+  - **Arreglos de paso:**
+    - un ítem de lista que sigue en el renglón de abajo con 2 espacios se partía en un
+      párrafo aparte;
+    - la negrita que cruzaba el salto de renglón se rompía.
+- **«Ver en la guía» →** al final de la línea de ayuda de cada pantalla de la operadora
+  (Pendientes, Conversaciones, Reclamos, Teléfonos, Verificaciones, SUM): abre la guía en su
+  sección (`help.PAGE_GUIDE`). Las pantallas de admin no lo llevan.
+- **Celular:** la guía va en una columna, con las imágenes al ancho de la pantalla y el índice
+  arriba.
+- **Imágenes de la guía:** se rehicieron las que muestran la línea de ayuda (01–07 y 10–12).
+  La 08 y la 09 no cambian.
+- **Capturas:** `docs/panel-capturas/5e4/`, fuera de Git. Base de demo aparte, borrada al
+  terminar.
+
 ## Actualización 5e.3: panel ágil, cómodo en el celular, y detalles visuales (2026-10-12)
 
 No cambia ninguna regla de negocio ni lo que se le manda a nadie, salvo el plural de «hace N»

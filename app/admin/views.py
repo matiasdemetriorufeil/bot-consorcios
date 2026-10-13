@@ -98,6 +98,7 @@ class AuditedView(ModelView):
 
 
 class BuildingAdmin(AdminOnly, AuditedView, model=Building):
+    menu_group = "buildings"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Edificio"
     name_plural = "Edificios"
     icon = "fa-solid fa-building"
@@ -165,6 +166,7 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
 
 
 class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
+    menu_group = "buildings"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Información de edificio"
     name_plural = "Información de edificios"
     icon = "fa-solid fa-book"
@@ -239,6 +241,7 @@ class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
 
 
 class SyncRunAdmin(AdminOnly, ModelView, model=SyncRun):
+    menu_group = "system"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Sincronización"
     name_plural = "Sincronizaciones"
     icon = "fa-solid fa-rotate"
@@ -351,6 +354,7 @@ _DEFAULT_VALUE = "Si lo dejás vacío, el bot usa el valor por defecto."
 class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     """The single row of bot settings; values never shown here: the .env ones."""
 
+    menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Configuración del bot"
     name_plural = "Configuración del bot"
     icon = "fa-solid fa-gear"
@@ -437,6 +441,7 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
 
 
 class MetricsView(AdminOnly, BaseView):
+    menu_group = "system"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Métricas"
     icon = "fa-solid fa-chart-line"
     session_maker: ClassVar[Any] = None
@@ -468,6 +473,7 @@ class MetricsView(AdminOnly, BaseView):
 class WaTemplateAdmin(AdminOnly, AuditedView, model=WaTemplate):
     """Approved templates the inbox offers when the 24-hour window is closed."""
 
+    menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Plantilla de WhatsApp"
     name_plural = "Plantillas de WhatsApp"
     icon = "fa-solid fa-envelope-open-text"
@@ -514,6 +520,7 @@ class WaTemplateAdmin(AdminOnly, AuditedView, model=WaTemplate):
 class QuickReplyAdmin(AdminOnly, AuditedView, model=QuickReply):
     """Saved texts the operators insert in a reply with one click."""
 
+    menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Respuesta rápida"
     name_plural = "Respuestas rápidas"
     icon = "fa-solid fa-bolt"

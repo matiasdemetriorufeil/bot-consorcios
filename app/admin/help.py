@@ -147,6 +147,33 @@ PAGE_HELP: dict[str, str] = {
 }
 
 
+# --- «Ver en la guía»: each page of the operators, to its section of the guide ------------------
+# The anchors are the guide's titles made ids (app.admin.guide.slug); a test checks each one
+# exists. Admins' pages, the example and the guide itself have none.
+
+PAGE_GUIDE: dict[str, str] = {
+    "view-pending": "empeza-el-dia-en-pendientes",
+    "view-conversations": "conversaciones",
+    "view-conversation": "conversaciones",
+    "view-claims": "reclamos",
+    "view-claim": "reclamos",
+    "view-claim-new": "reclamos",
+    "view-phones": "telefonos",
+    "view-verifications": "verificaciones",
+    "view-verification-approve": "verificaciones",
+    "view-amenities": "reservas-del-sum",
+    "view-amenity-week": "reservas-del-sum",
+    "view-amenity-book": "reservas-del-sum",
+    "view-amenity-reservation": "reservas-del-sum",
+}
+
+
+def page_guide(request: Request) -> str:
+    """The anchor of the page's section in the guide ("" when none)."""
+    route = request.scope.get("route")
+    return PAGE_GUIDE.get(getattr(route, "name", None) or "", "")
+
+
 def page_help(request: Request) -> str:
     """The line under the page's title, by the route that served it ("" when none)."""
     route = request.scope.get("route")
@@ -526,6 +553,7 @@ def globals_for_templates() -> dict[str, Any]:
     """What setup_admin adds to the templates."""
     return {
         "page_help": page_help,
+        "page_guide": page_guide,
         "empty_for": empty_for,
         "confirm_attrs": confirm_attrs,
         "empty_texts": EMPTY,

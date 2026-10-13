@@ -131,6 +131,7 @@ def update_user(
 
 
 class UsersView(AdminOnly, BaseView):
+    menu_group = "system"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Usuarios"
     icon = "fa-solid fa-users"
     session_maker: ClassVar[Any] = None

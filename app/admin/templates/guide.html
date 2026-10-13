@@ -1,8 +1,24 @@
+{#- The employees' guide (app.admin.guide): the index on top (its two parts and their
+    sections, from the guide's own titles) and then the guide. One column on a phone. -#}
 {% extends "sqladmin/layout.html" %}
 {% block content %}
 <div class="col-12 col-xl-9">
   <div class="card">
     <div class="card-body guide">
+      <nav class="guide-index" id="guide-index" aria-label="Índice de la guía">
+        <div class="guide-index-title">En esta guía</div>
+        <ol class="guide-index-parts">
+          {% for part, anchor, sections in contents %}
+          <li><a class="guide-index-part" href="#{{ anchor }}">{{ part }}</a>
+            {% if sections %}
+            <ul>
+              {% for title, section in sections %}<li><a href="#{{ section }}">{{ title }}</a></li>{% endfor %}
+            </ul>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+      </nav>
       {{ guide }}
     </div>
   </div>

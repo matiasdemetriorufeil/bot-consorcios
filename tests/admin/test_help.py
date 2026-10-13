@@ -65,7 +65,9 @@ def test_every_page_of_the_panel_has_its_line(logged_in: Panel) -> None:
 def _line(page: str) -> str:
     match = re.search(r'<p class="page-help mb-0">(.*?)</p>', page, re.S)
     assert match, "no help line"
-    return html.unescape(match.group(1))
+    # Without the link «Ver en la guía» at its end (test_guide.py checks it).
+    line = re.sub(r'\s*<a class="page-help-guide"[^>]*>[^<]*</a>', "", match.group(1))
+    return html.unescape(line)
 
 
 @pytest.mark.parametrize(

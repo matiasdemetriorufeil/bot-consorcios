@@ -105,6 +105,7 @@ def _with_assignments(stmt: Select) -> Select:
 
 
 class ProviderAdmin(AdminOnly, AuditedView, model=Provider):
+    menu_group = "claims"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Proveedor"
     name_plural = "Proveedores"
     icon = "fa-solid fa-helmet-safety"
@@ -235,6 +236,7 @@ SCOPE_CHOICES = [(s.value, labels.CLAIM_SCOPE[s]) for s in ClaimScope]
 
 
 class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
+    menu_group = "claims"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Tipo de problema"
     name_plural = "Tipos de problema"
     icon = "fa-solid fa-list-check"
@@ -390,6 +392,7 @@ def _redirect(request: Request, identity: str, **params: Any) -> RedirectRespons
 
 
 class BuildingClaimsView(AdminOnly, BaseView):
+    menu_group = "buildings"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Reclamos por edificio"
     icon = "fa-solid fa-table-list"
     session_maker: ClassVar[Any] = None
@@ -610,6 +613,7 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
     """The single row of "Configuración de reclamos" (app.claims.claim_config): the menu opens
     its form directly, like "Configuración del bot"."""
 
+    menu_group = "claims"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Configuración de reclamos"
     name_plural = "Configuración de reclamos"
     icon = "fa-solid fa-clock"

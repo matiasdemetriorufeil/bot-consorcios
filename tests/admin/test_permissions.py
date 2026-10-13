@@ -72,20 +72,14 @@ OPERATOR_MENU = [
     "Reservas de SUM",
     "Guía",
 ]
-ADMIN_SECTION = [
-    "Edificios",
-    "Información de edificios",
-    "Proveedores",
-    "Tipos de problema",
-    "Reclamos por edificio",
-    "Configuración de reclamos",
-    "Configuración del bot",
-    "Plantillas de WhatsApp",
-    "Respuestas rápidas",
-    "Usuarios",
-    "Métricas",
-    "Sincronizaciones",
+# «Administración», in its four blocks (Edificios, Reclamos, Bot, Sistema), in this order.
+ADMIN_GROUPS = [
+    ("Edificios", ["Edificios", "Información de edificios", "Reclamos por edificio"]),
+    ("Reclamos", ["Proveedores", "Tipos de problema", "Configuración de reclamos"]),
+    ("Bot", ["Configuración del bot", "Respuestas rápidas", "Plantillas de WhatsApp"]),
+    ("Sistema", ["Usuarios", "Métricas", "Sincronizaciones"]),
 ]
+ADMIN_SECTION = [page for _, pages in ADMIN_GROUPS for page in pages]
 
 
 @dataclass
@@ -465,3 +459,64 @@ def test_the_admin_menu_in_production(logged_in: Panel) -> None:
     page = logged_in.client.get("/admin/conversations").text
     assert _menu(page) == [*OPERATOR_MENU, *ADMIN_SECTION]
     assert logged_in.client.get("/admin/dev-chat").status_code == 404
+
+
+# --- «Administración» in four folding blocks (5e.4) ---------------------------------------------
+
+
+def _blocks(
+    page: str, where: str = 'id="navbarSupportedContent"'
+) -> list[tuple[str, list[str], bool]]:
+    """(name, pages, open) of each block of «Administración» in the menu."""
+    nav = page.split(where, 1)[1].split("</nav>", 1)[0]
+    found = re.findall(
+        r'<details class="menu-group-box" data-menu-group="\w+" ?(open)?[^>]*>\s*'
+        r'<summary[^>]*><span class="menu-group-title">([^<]+)</span></summary>(.*?)</details>',
+        nav,
+        re.S,
+    )
+    return [
+        (name, re.findall(r'<span class="nav-link-title">([^<]+)</span>', body), bool(opened))
+        for opened, name, body in found
+    ]
+
+
+def test_the_admin_menu_has_its_four_blocks_in_order(logged_in: Panel) -> None:
+    blocks = _blocks(logged_in.client.get("/admin/pending").text)
+    assert [(name, pages) for name, pages, _ in blocks] == ADMIN_GROUPS
+    assert not any(opened for _, _, opened in blocks)  # no admin page is open
+
+
+def test_the_test_chat_closes_sistema_in_development(boss: Panel) -> None:
+    blocks = _blocks(boss.client.get("/admin/pending").text)
+    assert blocks[-1][0] == "Sistema"
+    assert blocks[-1][1] == ["Usuarios", "Métricas", "Sincronizaciones", "Chat de prueba"]
+
+
+@pytest.mark.parametrize(
+    ("url", "block"),
+    [
+        ("/admin/provider/list", "Reclamos"),
+        ("/admin/users", "Sistema"),
+        ("/admin/building-claims", "Edificios"),
+        ("/admin/quick-reply/list", "Bot"),
+    ],
+)
+def test_the_block_of_the_open_page_is_open(logged_in: Panel, url: str, block: str) -> None:
+    blocks = _blocks(logged_in.client.get(url).text)
+    assert [name for name, _, opened in blocks if opened] == [block]
+
+
+def test_the_operator_sees_no_blocks(op: Panel) -> None:
+    page = op.client.get("/admin/pending").text
+    assert _menu(page) == OPERATOR_MENU
+    assert "menu-group" not in page and "Administración" not in page
+    sheet = page.split('id="more-sheet"', 1)[1].split("</dialog>", 1)[0]
+    assert "more-group" not in sheet
+
+
+def test_mas_has_the_same_blocks_for_the_admin(logged_in: Panel) -> None:
+    page = logged_in.client.get("/admin/users").text
+    sheet = page.split('id="more-sheet"', 1)[1].split("</dialog>", 1)[0]
+    found = re.findall(r'<details class="more-group" data-menu-group="(\w+)" ?(open)?[^>]*>', sheet)
+    assert found == [("buildings", ""), ("claims", ""), ("bot", ""), ("system", "open")]

@@ -1,6 +1,7 @@
-{# SQLAdmin's macros, with our menu: the admin-only views (menu_section "admin", from
-   app.admin.auth.AdminOnly) go under an "Administración" heading. Only admins see those
-   views, so operators never see the heading. Everything else is SQLAdmin's own. #}
+{# SQLAdmin's macros, with our menu: the admin-only views (app.admin.auth.AdminOnly) go under
+   an "Administración" heading, in folding blocks (their menu_group, app.admin.MENU_GROUPS).
+   Only admins see those views, so operators never see the heading nor the blocks.
+   Everything else is SQLAdmin's own. #}
 {% import "sqladmin_original/_macros.html" as original %}
 
 {# Jinja does not re-export imported macros: the ones other SQLAdmin templates import, wrapped. #}
@@ -50,38 +51,63 @@
 {% endfor %}
 {% endmacro %}
 
+{# One page of the menu: with its counter (Conversaciones, Reclamos, Teléfonos, Verificaciones:
+   how many wait, app.admin.pending; red when some are urgent; panel.js keeps them up to
+   date), or as SQLAdmin draws it. #}
+{% macro nav_entry(item, request) %}
+{% if item.view.menu_counter is defined and item.is_visible(request) and item.is_accessible(request) %}
+{% set key = item.view.menu_counter %}
+{% set counts = menu_counts(request) %}
+{% set count = counts.get(key, 0) %}
+{% set urgent = counts.get(key ~ '_urgent', 0) %}
+<li class="nav-item">
+  <a class="nav-link {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
+    <span class="nav-link-icon d-md-none d-lg-inline-block">
+      {% if item.icon %}<i class="{{ item.icon }}"></i>{% endif %}
+    </span>
+    <span class="nav-link-title">{{ item.display_name }}</span>
+    <span class="count {{ 'count-urgent' if urgent else 'count-waiting' }}" data-counter="{{ key }}" {% if not count %}hidden{% endif %}>{{ count }}</span>
+  </a>
+</li>
+{% else %}
+{{ menu_item(item, request) }}
+{% endif %}
+{% endmacro %}
+
 {% macro display_menu(menu, request) %}
 <div class="navbar-nav">
-  {% set section = namespace(shown=False) %}
   {% for item in menu.items %}
-  {% if item.type_ == "View" %}
-  {% if not section.shown and item.view.menu_section == "admin" and item.is_visible(request) and item.is_accessible(request) %}
+  {% if item.type_ == "View" and item.view.menu_group is not defined %}
+  {{ nav_entry(item, request) }}
+  {% elif item.type_ == "Category" %}
+  {{ menu_category(item, request) }}
+  {% endif %}
+  {% endfor %}
+  {#- «Administración» in folding blocks: the one of the open page open (panel.js remembers
+      how she left the rest). -#}
+  {% set section = namespace(shown=False) %}
+  {% for key, name in menu_groups %}
+  {% set items = [] %}
+  {% for item in menu.items if item.type_ == "View" and item.view.menu_group == key and item.is_visible(request) and item.is_accessible(request) %}
+  {% set _ = items.append(item) %}
+  {% endfor %}
+  {% if items %}
+  {% if not section.shown %}
   {% set section.shown = True %}
   <li class="nav-item menu-section mt-3" id="menu-section-admin">
     <span class="nav-link disabled text-uppercase small fw-bold opacity-75">Administración</span>
   </li>
   {% endif %}
-  {% if item.view.menu_counter is defined and item.is_visible(request) and item.is_accessible(request) %}
-  {#- Conversaciones, Reclamos, Teléfonos, Verificaciones: how many wait (app.admin.pending),
-      red when some are urgent. panel.js keeps them up to date on every page. -#}
-  {% set key = item.view.menu_counter %}
-  {% set counts = menu_counts(request) %}
-  {% set count = counts.get(key, 0) %}
-  {% set urgent = counts.get(key ~ '_urgent', 0) %}
-  <li class="nav-item">
-    <a class="nav-link {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
-      <span class="nav-link-icon d-md-none d-lg-inline-block">
-        {% if item.icon %}<i class="{{ item.icon }}"></i>{% endif %}
-      </span>
-      <span class="nav-link-title">{{ item.display_name }}</span>
-      <span class="count {{ 'count-urgent' if urgent else 'count-waiting' }}" data-counter="{{ key }}" {% if not count %}hidden{% endif %}>{{ count }}</span>
-    </a>
+  {% set active = namespace(found=False) %}
+  {% for item in items %}{% if item.is_active(request) %}{% set active.found = True %}{% endif %}{% endfor %}
+  <li class="nav-item menu-group">
+    <details class="menu-group-box" data-menu-group="{{ key }}" {% if active.found %}open data-menu-current{% endif %}>
+      <summary class="nav-link menu-group-summary"><span class="menu-group-title">{{ name }}</span></summary>
+      <ul class="navbar-nav menu-group-items">
+        {% for item in items %}{{ nav_entry(item, request) }}{% endfor %}
+      </ul>
+    </details>
   </li>
-  {% else %}
-  {{ menu_item(item, request) }}
-  {% endif %}
-  {% elif item.type_ == "Category" %}
-  {{ menu_category(item, request) }}
   {% endif %}
   {% endfor %}
 </div>
@@ -89,24 +115,42 @@
 
 {# «Más», the sheet of the bar at the bottom on phones: every page of the menu but the three
    already in the bar (views with bottom_nav), with their counters, «Administración» for
-   admins (the same permissions as the menu) and Salir. #}
+   admins in the same blocks as the menu (the same permissions) and Salir. #}
+{% macro more_entry(item, request, counts) %}
+<a class="more-item {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
+  <i class="{{ item.icon or 'fa-solid fa-circle' }}" aria-hidden="true"></i>
+  <span class="more-item-name">{{ item.display_name }}</span>
+  {% if item.view.menu_counter is defined %}
+  {% set key = item.view.menu_counter %}
+  <span class="count {{ 'count-urgent' if counts.get(key ~ '_urgent', 0) else 'count-waiting' }}" data-counter="{{ key }}" {% if not counts.get(key, 0) %}hidden{% endif %}>{{ counts.get(key, 0) }}</span>
+  {% endif %}
+</a>
+{% endmacro %}
+
 {% macro more_menu(menu, request) %}
 <nav class="more-list" aria-label="Más secciones">
-  {% set section = namespace(shown=False) %}
   {% set counts = menu_counts(request) %}
-  {% for item in menu.items if item.type_ == "View" and item.view.bottom_nav is not defined and item.is_visible(request) and item.is_accessible(request) %}
-  {% if not section.shown and item.view.menu_section == "admin" %}
+  {% for item in menu.items if item.type_ == "View" and item.view.bottom_nav is not defined and item.view.menu_group is not defined and item.is_visible(request) and item.is_accessible(request) %}
+  {{ more_entry(item, request, counts) }}
+  {% endfor %}
+  {% set section = namespace(shown=False) %}
+  {% for key, name in menu_groups %}
+  {% set items = [] %}
+  {% for item in menu.items if item.type_ == "View" and item.view.menu_group == key and item.is_visible(request) and item.is_accessible(request) %}
+  {% set _ = items.append(item) %}
+  {% endfor %}
+  {% if items %}
+  {% if not section.shown %}
   {% set section.shown = True %}
   <div class="more-section">Administración</div>
   {% endif %}
-  <a class="more-item {% if item.is_active(request) %}active{% endif %}" href="{{ item.url(request) }}">
-    <i class="{{ item.icon or 'fa-solid fa-circle' }}" aria-hidden="true"></i>
-    <span class="more-item-name">{{ item.display_name }}</span>
-    {% if item.view.menu_counter is defined %}
-    {% set key = item.view.menu_counter %}
-    <span class="count {{ 'count-urgent' if counts.get(key ~ '_urgent', 0) else 'count-waiting' }}" data-counter="{{ key }}" {% if not counts.get(key, 0) %}hidden{% endif %}>{{ counts.get(key, 0) }}</span>
-    {% endif %}
-  </a>
+  {% set active = namespace(found=False) %}
+  {% for item in items %}{% if item.is_active(request) %}{% set active.found = True %}{% endif %}{% endfor %}
+  <details class="more-group" data-menu-group="{{ key }}" {% if active.found %}open data-menu-current{% endif %}>
+    <summary class="more-item more-group-summary"><span class="more-item-name">{{ name }}</span></summary>
+    {% for item in items %}{{ more_entry(item, request, counts) }}{% endfor %}
+  </details>
+  {% endif %}
   {% endfor %}
 </nav>
 {% endmacro %}

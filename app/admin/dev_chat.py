@@ -92,6 +92,7 @@ def _phone(value: object) -> str | None:
 
 
 class DevChatView(AdminOnly, BaseView):
+    menu_group = "system"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Chat de prueba"
     icon = "fa-solid fa-mobile-screen"
     # Set by setup_admin (only in development).

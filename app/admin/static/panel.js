@@ -669,6 +669,41 @@
     document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
   });
 
+  // --- The blocks of «Administración» (admins: the menu and «Más») ---------------------------
+  // The block of the open page comes open from the server; the others stay as she left them
+  // (localStorage, shared by the menu and «Más»). Some come after this script: when the page is
+  // read. A browser without storage: they are just closed.
+  var GROUPS_KEY = "panel-menu-groups";
+  function readGroups() {
+    try { return JSON.parse(window.localStorage.getItem(GROUPS_KEY) || "{}") || {}; } catch (e) { return {}; }
+  }
+  function writeGroups(value) {
+    try { window.localStorage.setItem(GROUPS_KEY, JSON.stringify(value)); } catch (e) { /* not kept */ }
+  }
+  document.addEventListener("DOMContentLoaded", function () {
+    var saved = readGroups();
+    document.querySelectorAll("details[data-menu-group]").forEach(function (box) {
+      var group = box.dataset.menuGroup;
+      if (box.hasAttribute("data-menu-current") || !(group in saved)) return;
+      box.open = !!saved[group];
+    });
+  });
+  // "toggle" does not bubble: listened while it goes down.
+  document.addEventListener("toggle", function (event) {
+    var box = event.target;
+    // The block of the open page always comes open from the server: not a choice to keep
+    // (the browser also says "toggle" when it draws a block already open).
+    if (!box.dataset || !box.dataset.menuGroup || box.hasAttribute("data-menu-current")) return;
+    var saved = readGroups();
+    if (saved[box.dataset.menuGroup] === box.open) return;
+    saved[box.dataset.menuGroup] = box.open;
+    writeGroups(saved);
+    // The same block in the menu and in «Más».
+    document.querySelectorAll('details[data-menu-group="' + box.dataset.menuGroup + '"]').forEach(function (other) {
+      if (other !== box && other.open !== box.open) other.open = box.open;
+    });
+  }, true);
+
   // --- «Más» of the bar at the bottom (phones) ---------------------------------------------------
   // The bar and its sheet come after this script in the page: looked up when used.
   document.addEventListener("click", function (event) {
