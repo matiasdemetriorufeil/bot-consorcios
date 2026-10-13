@@ -269,7 +269,7 @@ def test_the_list_of_buildings(logged_in: Panel) -> None:
     assert "TORRE INVENTADA" in page and "OTRA FICTICIA" in page
     assert help.PAGE_HELP["view-building-claims"] in page
     row = page.split("TORRE INVENTADA", 1)[1].split("</tr>", 1)[0]
-    assert re.findall(r"<td>(\d+)</td>", row)[:1] == ["2"]
+    assert re.findall(r"<td[^>]*>(\d+)</td>", row)[:1] == ["2"]
     assert 'state-waiting">1<' in row
 
 

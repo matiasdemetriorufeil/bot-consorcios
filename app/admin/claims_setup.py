@@ -120,6 +120,8 @@ class ProviderAdmin(AdminOnly, AuditedView, model=Provider):
         "problems",
         Provider.active,
     ]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["buildings", "problems"]
     column_details_list = [
         *column_list,
         Provider.other_phone,
@@ -251,6 +253,8 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
         ClaimCategory.urgent,
         ClaimCategory.active,
     ]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["sort_order", "list_title"]
     column_details_list = [
         ClaimCategory.name,
         ClaimCategory.list_title,

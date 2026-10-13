@@ -1,5 +1,49 @@
 # Inventario del panel `/admin`
 
+## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
+
+**5f.3, en una línea:** un 403 de permiso (el JSON de `errors.py`) ya no se toma como sesión
+vencida: sale el aviso «Esta acción es solo para administradores.» sin recargar ni perder lo
+escrito. Además, el motivo de un reclamo («El proveedor no puede atenderlo») va en su propio
+renglón, sin barra horizontal.
+
+En 5f.4 no cambia qué hace el panel, solo cómo se acomodan las tablas.
+
+- **Teléfonos y Verificaciones a 1024 px:** los botones de la fila van uno arriba del otro,
+  cada uno entero, entre 768 y 1279 px, y las celdas tienen 12 px de margen a los costados. No
+  se esconde ninguna columna.
+- **Listas de SQLAdmin:**
+  - los filtros van al costado solo desde 1280 px. Por debajo quedan plegados arriba y, si se
+    abren, siguen abiertos al cambiar de página, ordenar o buscar en la misma lista;
+  - Ver y Editar van uno arriba del otro;
+  - los encabezados largos se parten en dos renglones;
+  - cada lista declara sus columnas secundarias (`column_secondary`), que se esconden por
+    debajo de 1280 px y siguen en la ficha:
+
+  | Lista | Se esconde por debajo de 1280 px |
+  |---|---|
+  | Edificios | Dirección |
+  | Información de edificios | Actualizado |
+  | Proveedores | Edificios, Problemas |
+  | Tipos de problema | Orden, Título en la lista |
+  | Sincronizaciones | Tipo, Terminó |
+  | Plantillas | Idioma |
+
+  - Proveedores, de 1280 a unos 1550 px y con los filtros al costado, todavía no entra:
+    se desplaza dentro de su tarjeta con la primera columna fija y una sombra a la derecha que
+    muestra que hay más.
+- **Celular:** Usuarios y las dos pantallas de «Reclamos por edificio» pasan a tarjetas de
+  fila, como las demás listas. Los encabezados largos de «Proveedores del mes» (Métricas) se
+  parten en dos renglones.
+- **Medición fija** (`scripts/panel_survey/`, solo desarrollo, con datos inventados):
+  - `demo_server.py` levanta el panel sobre `<base>_panel_demo`. Se niega a tocar cualquier
+    base que no termine en `_panel_demo` e ignora las credenciales de ConsorPlus; `--drop`
+    borra la base de demo;
+  - `survey.py <carpeta> [--axe]` saca capturas a 1440, 1024 y 390 px, mide el desplazamiento
+    de la página y de las tablas, y **sale con error** si alguna pantalla de la operadora se
+    desplaza. axe-core se baja a una carpeta temporal cada vez; no está en el repositorio.
+  - El README de la carpeta dice cómo correrlo.
+
 ## Actualización 5f.2: ingreso, errores, «Agregar a inicio» y cierre de 5f.1 (2026-10-13)
 
 No cambian los permisos, las URLs de las pantallas ni lo que se manda a nadie.

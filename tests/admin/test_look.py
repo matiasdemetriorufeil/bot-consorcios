@@ -676,3 +676,68 @@ def test_a_long_reason_never_widens_the_claims_list() -> None:
     )
     rows = (ADMIN_DIR / "templates" / "_claims_list.html").read_text(encoding="utf-8")
     assert 'class="claim-row-attention cell-cut" title="{{ row.attention }}"' in rows
+
+
+# --- 5f.4: no table scrolls sideways inside its card --------------------------------------------
+
+
+def _prop_name(column: object) -> str:
+    return column if isinstance(column, str) else column.key  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "view",
+    [
+        "BuildingAdmin",
+        "BuildingInfoAdmin",
+        "SyncRunAdmin",
+        "WaTemplateAdmin",
+        "ProviderAdmin",
+        "ClaimCategoryAdmin",
+    ],
+)
+def test_secondary_columns_are_listed_and_kept_in_the_record(view: str) -> None:
+    from app.admin import claims_setup, views
+
+    cls = getattr(views, view, None) or getattr(claims_setup, view)
+    listed = {_prop_name(c) for c in cls.column_list}
+    detail = {_prop_name(c) for c in cls.column_details_list}
+    assert cls.column_secondary and set(cls.column_secondary) <= listed
+    assert set(cls.column_secondary) <= detail  # hidden in the list, never lost
+
+
+def test_a_list_marks_its_secondary_columns(logged_in: Panel) -> None:
+    page = logged_in.client.get("/admin/building/list").text
+    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Dirección', page)
+    assert 'class="table-responsive table-scroll-hint"' in page
+    assert '<div class="list-layout">' in page and 'class="filter-sidebar-col"' in page
+
+
+def test_the_rules_that_keep_tables_inside_their_card() -> None:
+    css = _css()
+    assert (
+        "@media (max-width: 1279.98px) {\n  .col-secondary { display: none !important; }\n}" in css
+    )
+    assert ".list-layout { flex-direction: row; }" in css  # filters beside it only from 1280 px
+    assert ".rows-table.card-table td.row-actions .btn { white-space: nowrap; }" in css
+    assert "position: sticky; left: 0;" in css and ".table-scroll-hint" in css
+    js = (ADMIN_DIR / "static" / "panel.js").read_text(encoding="utf-8")
+    assert 'matchMedia("(min-width: 1280px)")' in js and "panel-filters-open:" in js
+
+
+@pytest.mark.parametrize(
+    ("name", "table_id"),
+    [
+        ("users.html", "users"),
+        ("building_claims_list.html", "building-claims"),
+        ("building_claims.html", "building-claims-table"),
+    ],
+)
+def test_more_lists_are_row_cards_on_phones(name: str, table_id: str) -> None:
+    text = (ADMIN_DIR / "templates" / name).read_text(encoding="utf-8")
+    table = re.search(rf'<table class="([^"]+)" id="{table_id}">', text)
+    assert table is not None and "rows-table" in table.group(1)
+    body = text.split(f'id="{table_id}">', 1)[1].split("</table>", 1)[0]
+    cells = re.findall(r"<td(?: [^>]*)?>", body)
+    labelled = [c for c in cells if "data-label" in c or "row-actions" in c or "colspan" in c]
+    assert cells and labelled == cells

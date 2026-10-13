@@ -114,6 +114,8 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
         Building.pilot,
         Building.claims_bot_enabled,
     ]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["address"]
     column_searchable_list = [Building.name, Building.address]
     column_sortable_list = [Building.consorplus_code, Building.name, Building.active]
     column_default_sort = [(Building.name, False)]
@@ -177,6 +179,8 @@ class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
         BuildingInfo.title,
         BuildingInfo.updated_at,
     ]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["updated_at"]
     column_searchable_list = [BuildingInfo.title, "building.name"]
     column_sortable_list = [BuildingInfo.category, BuildingInfo.title, BuildingInfo.updated_at]
     column_filters = [
@@ -258,6 +262,8 @@ class SyncRunAdmin(AdminOnly, ModelView, model=SyncRun):
         SyncRun.units_ok,
         SyncRun.units_failed,
     ]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["kind", "finished_at"]
     column_details_list = [*column_list, SyncRun.error_summary, SyncRun.stats]
     column_sortable_list = [SyncRun.started_at, SyncRun.job, SyncRun.status]
     column_default_sort = [(SyncRun.started_at, True)]
@@ -498,6 +504,8 @@ class WaTemplateAdmin(AdminOnly, AuditedView, model=WaTemplate):
     audit_name = "wa_template"
     can_delete = False  # deactivated instead: sent messages keep their text anyway
     column_list = [WaTemplate.label, WaTemplate.name, WaTemplate.language, WaTemplate.active]
+    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
+    column_secondary = ["language"]
     column_details_list = [*column_list, WaTemplate.body, WaTemplate.updated_at]
     column_sortable_list = [WaTemplate.label, WaTemplate.active]
     column_default_sort = [(WaTemplate.label, False)]

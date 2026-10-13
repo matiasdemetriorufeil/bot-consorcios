@@ -1,7 +1,9 @@
 {#- Copy of SQLAdmin 0.32.0's sqladmin/list.html (pinned in pyproject.toml), changed for this
     panel: "Acciones" only with batch actions, row buttons with their text, filters folded
     and one card per row on phones (data-label); since 5f.1 its buttons beside the page's title
-    (not repeated in the card), the empty block of the panel and long text cut on computers. tests/admin/test_sqladmin_pin.py fails when the original changes. -#}
+    (not repeated in the card), the empty block of the panel and long text cut on computers;
+    since 5f.4 the filters beside it only from 1280 px and the view's column_secondary hidden
+    under that. tests/admin/test_sqladmin_pin.py fails when the original changes. -#}
 {% extends "sqladmin/layout.html" %}
 {% from "sqladmin/_macros.html" import empty_state %}
 {#- The page's buttons (export, import, «+ Nuevo») beside its title, like the panel's own pages
@@ -51,7 +53,8 @@
 <div class="container-fluid">
   <div class="row">
     <div class="col-12">
-      <div class="d-flex flex-column-reverse flex-lg-row gap-3 min-w-0">
+      {#- The filters beside the table from 1280 px; under that, folded above it. -#}
+      <div class="list-layout">
         <div class="flex-grow-1 min-w-0">
           <div class="card">
             <div class="card-body border-bottom">
@@ -117,7 +120,12 @@
             </div>
             {% if show_rows %}
             {% block model_list_table %}
-            <div class="table-responsive">
+            {#- Secondary columns (the view's column_secondary): hidden under 1280 px, the record
+                has them. Set here: a nested block does not see the outer one's variables. -#}
+            {% set secondary = model_view.column_secondary if model_view.column_secondary is defined else [] %}
+            {#- If it is still wider than its card (Proveedores, with the filters beside it): the
+                first column stays and a shadow on the right says there is more. -#}
+            <div class="table-responsive table-scroll-hint">
               <table class="table card-table table-vcenter table-nowrap-wide rows-table">
                 <thead>
                   <tr>
@@ -128,7 +136,7 @@
                     <th class="w-1"><span class="visually-hidden">Ver y editar</span></th>
                     {% for name in model_view._list_prop_names %}
                     {% set label = model_view._column_labels.get(name, name) %}
-                    <th>
+                    <th{% if name in secondary %} class="col-secondary"{% endif %}>
                       {% if name in model_view._sort_fields %}
                       {% if request.query_params.get("sortBy") == name and request.query_params.get("sort") == "asc" %}
                       <a href="{{ request.url.include_query_params(sort='desc') }}"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
@@ -180,7 +188,7 @@
                     {% set render_as_link = name not in model_view._non_link_related_fields %}
                     {% if name in model_view._relation_names %}
                     {% if is_list( value ) %}
-                    <td data-label="{{ cell_label }}">
+                    <td data-label="{{ cell_label }}" class="cell-list{% if name in secondary %} col-secondary{% endif %}">
                       {% for elem, formatted_elem in zip(value, formatted_value) %}
                       {% if render_as_link and model_view.show_compact_lists %}
                       <a href="{{ model_view._build_url_for('admin:details', request, elem) }}">({{ formatted_elem
@@ -197,14 +205,14 @@
                     </td>
                     {% else %}
                     {% if render_as_link %}
-                    <td data-label="{{ cell_label }}"><a href="{{ model_view._url_for_details_with_prop(request, row, name) }}">{{ formatted_value
+                    <td data-label="{{ cell_label }}"{% if name in secondary %} class="col-secondary"{% endif %}><a href="{{ model_view._url_for_details_with_prop(request, row, name) }}">{{ formatted_value
                         }}</a></td>
                     {% else %}
-                    <td data-label="{{ cell_label }}"><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
+                    <td data-label="{{ cell_label }}"{% if name in secondary %} class="col-secondary"{% endif %}><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
                     {% endif %}
                     {% endif %}
                     {% else %}
-                    <td data-label="{{ cell_label }}"><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
+                    <td data-label="{{ cell_label }}"{% if name in secondary %} class="col-secondary"{% endif %}><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
                     {% endif %}
                     {% endfor %}
                   </tr>
@@ -268,7 +276,7 @@
           </div>
         </div>
         {% if show_rows and model_view.get_filters() %}
-        <div class="col-lg-3 filter-sidebar-col">
+        <div class="filter-sidebar-col">
           <details id="filter-sidebar" class="card list-filters-card" data-open-wide>
             <summary class="card-header">
               <h2 class="card-title">{{ _("Filters") }}</h2>

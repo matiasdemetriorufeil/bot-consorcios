@@ -274,14 +274,53 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   text-transform: none; color: var(--c-text-2); background: var(--c-surface-2); }
 .table-hover > tbody > tr:hover > *, .rows-table > tbody > tr:hover > * { --tblr-table-accent-bg: transparent; background: var(--c-surface-2); }
 @media (min-width: 1280px) { .table-nowrap-wide td, .table-nowrap-wide th { white-space: nowrap; } }
-/* Under that, the same wide tables (Reclamos, SQLAdmin's lists) wrap their text: a little less
-   air to each side so that seven columns fit at 1024 px without a horizontal bar. */
-@media (min-width: 768px) and (max-width: 1279.98px) {
-  .table-nowrap-wide > :not(caption) > * > * { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-}
+/* A cell that is a list (a provider's buildings and problems): its lines wrap, never stretching
+   the row. */
+.table-nowrap-wide td.cell-list { white-space: normal; min-width: 8rem; max-width: 12rem; }
 @media (min-width: 768px) {
+  /* Headers in up to two lines («Reclamos por el bot»), never wider than their column's data. */
+  .table-nowrap-wide thead th { white-space: normal; }
+  /* SQLAdmin's «Ver» and «Editar»: one above the other, each whole. */
+  .rows-table.card-table td.list-row-buttons { white-space: normal; }
+  .rows-table.card-table td.list-row-buttons .btn { display: flex; width: max-content; white-space: nowrap;
+    margin: 0 0 var(--sp-1) auto; }
+}
+/* Under 1280 px the tables wrap their text: a little less air to each side so that every column
+   fits at 1024 px without a horizontal bar (Reclamos, Teléfonos, Verificaciones, SQLAdmin's
+   lists); SQLAdmin's secondary columns (column_secondary) wait in the record. */
+@media (max-width: 1279.98px) {
+  .col-secondary { display: none !important; }
+}
+@media (min-width: 768px) and (max-width: 1279.98px) {
+  .table-nowrap-wide > :not(caption) > * > *, .rows-table > :not(caption) > * > * {
+    padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  /* The row's buttons one above the other, each whole on its line. */
+  .rows-table.card-table td.row-actions { white-space: normal; }
+  .rows-table.card-table td.row-actions form, .rows-table.card-table td.row-actions > a {
+    display: flex; justify-content: flex-end; width: max-content; margin-left: auto; }
+  .rows-table.card-table td.row-actions > * + * { margin-top: var(--sp-1); }
+  .rows-table.card-table td.row-actions .btn { white-space: nowrap; }
+  /* Long headers (Métricas' providers) in two lines instead of widening the table. */
+  .table-wrap-head thead th { white-space: normal; }
+}
+/* A table that still does not fit (an SQLAdmin list with its filters beside it): it scrolls
+   inside its card, its first column stays, and a shadow on the right says there is more (it goes
+   away at the end: the cover moves with the content). Not on phones: there rows are cards. */
+@media (min-width: 768px) {
+  .table-scroll-hint {
+    background:
+      linear-gradient(to left, var(--c-surface) 40%, transparent) right center / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 100% 50%, var(--c-shade), transparent) right center / 0.875rem 100% no-repeat scroll;
+    background-color: var(--c-surface);
+  }
+  .table-scroll-hint > table > :not(caption) > tr > :first-child {
+    position: sticky; left: 0; z-index: 1; background: var(--c-surface); box-shadow: inset -1px 0 0 var(--c-border); }
+  .table-scroll-hint > table > thead > tr > :first-child { background: var(--c-surface-2); }
+}
+@media (min-width: 1280px) {
   /* Long text on one line with «…»: the whole of it on hover (title). */
   .cell-cut { display: block; max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-nowrap-wide .cell-cut { max-width: 16rem; }
 }
 
 /* --- Empty pages: one block everywhere (an icon, help.EMPTY's sentence, maybe a button) ---------- */
@@ -326,6 +365,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .card-footer.form-buttons { margin: 0; background: transparent; }
 
 /* --- SQLAdmin's lists: search, pagination, filters folded on phones, aside on wide screens ---- */
+/* SQLAdmin's list and its filters: the filters folded above the table, beside it from 1280 px. */
+.list-layout { display: flex; flex-direction: column-reverse; gap: var(--sp-4); min-width: 0; }
+.list-layout > * { min-width: 0; }
+.list-layout > .filter-sidebar-col { width: 100%; }
+@media (min-width: 1280px) {
+  .list-layout { flex-direction: row; }
+  .list-layout > .flex-grow-1 { flex: 1 1 auto; }
+  .list-layout > .filter-sidebar-col { width: 300px; flex-shrink: 0; }
+}
 .list-filters-card > summary { cursor: pointer; list-style: none; }
 .list-filters-card > summary::-webkit-details-marker { display: none; }
 .list-filters-card > summary .card-title::after { content: " ▾"; color: var(--c-text-2); }
@@ -394,7 +442,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   .navbar-vertical #navbarSupportedContent { order: 4; flex-basis: 100%; }
   .navbar-vertical .menu-user { display: none; }
   .list-search { min-width: 0; max-width: none; flex-basis: 100%; }
-  .filter-sidebar-col { width: 100%; }
+  .filter-sidebar-col { width: 100%; }  /* also under 1280 px: see .list-layout */
   .card-header { flex-wrap: wrap; gap: var(--sp-2); }
   .card-header > .ms-auto { margin-left: 0 !important; }
   .card-header .ms-3 { margin-left: 0 !important; }

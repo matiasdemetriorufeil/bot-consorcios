@@ -133,12 +133,20 @@
     });
   }
 
-  // SQLAdmin's filters: open beside the list on wide screens, folded above it on phones.
-  if (window.matchMedia("(min-width: 992px)").matches) {
-    document.querySelectorAll("details[data-open-wide]").forEach(function (box) {
-      box.open = true;
+  // SQLAdmin's filters: open beside the list from 1280 px, folded above it under that. Opened
+  // there by her, they stay open while she moves inside the same list (pages, sorting, a
+  // search): sessionStorage, by the list's path. A browser without storage: folded again.
+  var wide = window.matchMedia("(min-width: 1280px)").matches;
+  var FILTERS_KEY = "panel-filters-open:" + window.location.pathname;
+  document.querySelectorAll("details[data-open-wide]").forEach(function (box) {
+    var kept = null;
+    try { kept = window.sessionStorage.getItem(FILTERS_KEY); } catch (e) { kept = null; }
+    box.open = wide || kept === "1";
+    box.addEventListener("toggle", function () {
+      if (wide) return;
+      try { window.sessionStorage.setItem(FILTERS_KEY, box.open ? "1" : "0"); } catch (e) { /* not kept */ }
     });
-  }
+  });
 
   // --- Alerts: a short beep (no sound file) and a browser notification -----------------------
   // Browsers only play sound after a click or a key on the page: the first one unlocks it,

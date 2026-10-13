@@ -36,7 +36,7 @@
     </div>
     {% endif %}
     <div class="table-responsive">
-      <table class="table table-vcenter card-table">
+      <table class="table table-vcenter card-table rows-table" id="building-claims-table">
         <thead><tr><th>Problema</th><th>Habilitado</th><th>¿Quién lo atiende?</th><th>Orden</th></tr></thead>
         <tbody>
           {% for row in rows %}
@@ -45,20 +45,23 @@
           <tr class="claims-second-list"><td colspan="4">Estos aparecen en una segunda lista («Más opciones»)</td></tr>
           {% endif %}
           <tr class="{{ '' if row.enabled else 'text-secondary' }}">
-            <td>
-              <div class="fw-bold">{{ row.category.list_title }}</div>
-              <div class="small text-secondary">{{ row.category.name }}</div>
-              <div class="mt-1">
-                <span class="state state-info">{{ scope_labels[row.category.scope] }}</span>
-                {% if row.category.urgent %}<span class="state state-urgent">Urgente</span>{% endif %}
+            <td data-label="Problema">
+              {#- One block (on a phone the cell is a line: label, then this). -#}
+              <div>
+                <div class="fw-bold">{{ row.category.list_title }}</div>
+                <div class="small text-secondary">{{ row.category.name }}</div>
+                <div class="mt-1">
+                  <span class="state state-info">{{ scope_labels[row.category.scope] }}</span>
+                  {% if row.category.urgent %}<span class="state state-urgent">Urgente</span>{% endif %}
+                </div>
               </div>
             </td>
-            <td>
+            <td data-label="Habilitado">
               <label class="form-check form-switch mb-0">
                 <input class="form-check-input" type="checkbox" name="enabled_{{ cid }}" {% if row.enabled %}checked{% endif %} aria-label="Habilitado: {{ row.category.list_title }}">
               </label>
             </td>
-            <td>
+            <td data-label="¿Quién lo atiende?">
               <select class="form-select" name="provider_{{ cid }}" aria-label="Quién atiende: {{ row.category.list_title }}">
                 <option value="">{{ studio_label }}</option>
                 {% for provider in providers %}
@@ -69,7 +72,7 @@
                 {% endif %}
               </select>
             </td>
-            <td class="claims-order">
+            <td class="claims-order" data-label="Orden">
               <input class="form-control" type="number" inputmode="numeric" min="0" step="1" name="order_{{ cid }}" value="{{ row.sort_order }}" required aria-label="Orden: {{ row.category.list_title }}">
             </td>
           </tr>

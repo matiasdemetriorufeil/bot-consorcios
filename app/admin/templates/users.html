@@ -4,17 +4,17 @@
   <div class="card">
     <div class="card-header"><h2 class="card-title">Usuarios</h2></div>
     <div class="table-responsive">
-      <table class="table table-vcenter card-table">
+      <table class="table table-vcenter card-table rows-table" id="users">
         <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
           {% for user, last_login in rows %}
           <tr class="{{ '' if user.active else 'text-secondary' }}">
-            <td>{{ user.display_name }}</td>
-            <td>{{ user.username }}</td>
-            <td>{{ roles[user.role] }}</td>
-            <td>{% if user.active %}<span class="state state-ok">Activo</span>{% else %}<span class="state state-info">Desactivado</span>{% endif %}</td>
-            <td>{{ last_login or '—' }}</td>
-            <td><a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-user-edit', user_id=user.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Editar</a></td>
+            <td data-label="Nombre">{{ user.display_name }}</td>
+            <td data-label="Usuario">{{ user.username }}</td>
+            <td data-label="Rol">{{ roles[user.role] }}</td>
+            <td data-label="Estado">{% if user.active %}<span class="state state-ok">Activo</span>{% else %}<span class="state state-info">Desactivado</span>{% endif %}</td>
+            <td data-label="Último ingreso">{{ last_login or '—' }}</td>
+            <td class="row-actions"><a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-user-edit', user_id=user.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Editar</a></td>
           </tr>
           {% else %}
           <tr><td colspan="6" class="text-secondary">Todavía no hay usuarios: creá uno por empleada.</td></tr>
