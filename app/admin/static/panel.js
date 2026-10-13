@@ -10,12 +10,15 @@
   // --- Two decisions without the page, so they can be tested alone (tests/admin/test_panel_js.py)
 
   // What to do with the answer of a poll: "ok" (use it), "retry" (a server error, an odd answer:
-  // the next poll), "reload" (the session is gone: the login) or "warn" (gone, but there is a
-  // message being written: say so instead of losing it). A network failure never gets here.
-  // url and loginUrl may be whole URLs or paths: only their paths are compared.
+  // the next poll), "reload" (the session is gone: the login), "warn" (gone, but there is a
+  // message being written: say so instead of losing it) or "denied" (a 403 with the panel's
+  // JSON, app.admin.errors: no permission for that, the session is fine). A network failure
+  // never gets here. url and loginUrl may be whole URLs or paths: only their paths are
+  // compared. errorJson: the answer is JSON (whatever was expected).
   function pathOf(url) { return String(url || "").replace(/^[a-z]+:\/\/[^/]+/i, "").split(/[?#]/)[0]; }
-  root.panelSessionAction = function (status, url, isJson, hasDraft, loginUrl) {
+  root.panelSessionAction = function (status, url, isJson, hasDraft, loginUrl, errorJson) {
     var login = pathOf(loginUrl);
+    if (status === 403 && errorJson && !(login && pathOf(url) === login)) return "denied";
     var gone = status === 401 || status === 403 || (!!login && pathOf(url) === login);
     if (gone) return hasDraft ? "warn" : "reload";
     return status >= 200 && status < 300 && isJson ? "ok" : "retry";
@@ -81,11 +84,13 @@
   };
 
   // What to do with the answer of an action sent without reloading: "apply" (the server's JSON),
-  // "session" (the session is gone: 5e.1's way) or "unknown" (a network cut, a server error, an
-  // odd answer). Never send it again: the server may have done it already.
+  // "session" (the session is gone: 5e.1's way), "denied" (no permission: the server's message
+  // as an error notice, nothing reloaded nor lost) or "unknown" (a network cut, a server error,
+  // an odd answer). Never send it again: the server may have done it already.
   root.panelFetchOutcome = function (status, isJson, networkError, sessionAction) {
     if (networkError) return "unknown";
     if (sessionAction === "reload" || sessionAction === "warn") return "session";
+    if (sessionAction === "denied") return "denied";
     return status >= 200 && status < 300 && isJson ? "apply" : "unknown";
   };
 
@@ -220,7 +225,8 @@
     var login = topbar ? topbar.dataset.loginUrl : "";
     var type = response.headers.get("content-type") || "";
     var expected = type.indexOf(kind === "html" ? "html" : "json") >= 0;
-    var action = window.panelSessionAction(response.status, response.url, expected, hasDraft(), login);
+    var action = window.panelSessionAction(response.status, response.url, expected, hasDraft(), login,
+      type.indexOf("json") >= 0);
     if (action === "reload") window.location.reload();
     if (action === "warn" && !sessionStopped) {
       sessionStopped = true;
@@ -238,7 +244,8 @@
   var pendingUrl = topbar && topbar.dataset.pendingUrl;
   var cardsBox = document.querySelector("[data-pending-cards]");
   var EVERY = 5000, STALE = 12000, KEEP = 3 * 24 * 3600 * 1000;
-  var TITLE = "Panel · Estudio Diego Rufeil";
+  // The tab: «(N) Pantalla · Panel · Estudio Diego Rufeil» (the server draws it the same way).
+  var TITLE = (topbar && topbar.dataset.title) || "Panel · Estudio Diego Rufeil";
   var channel = null;
   try { channel = "BroadcastChannel" in window ? new BroadcastChannel("panel-numbers") : null; } catch (e) { channel = null; }
   var shared = !!(channel && navigator.locks);
@@ -637,6 +644,14 @@
       var session = window.panelSessionCheck(response);  // "ok" for JSON; reload/warn: 5e.1
       var type = response.headers.get("content-type") || "";
       var outcome = window.panelFetchOutcome(response.status, type.indexOf("json") >= 0, false, session);
+      if (outcome === "denied") {
+        // No permission (app.admin.errors' JSON, ok: false): say so; the page stays as it is.
+        return response.json().then(function (data) {
+          if (data && data.ok === false && data.message) window.panelToast(data.message, "error");
+          else unknown();
+          return null;
+        });
+      }
       if (outcome !== "apply") { if (outcome === "unknown") unknown(); return null; }
       return response.json();
     }).then(function (data) {
@@ -791,7 +806,8 @@
     var last = document.createElement("div");
     last.className = "tour-bubble tour-centered tour-done";
     last.setAttribute("role", "dialog");
-    last.innerHTML = '<h3 class="tour-title">Listo</h3><p class="tour-text"></p>' +
+    last.setAttribute("aria-labelledby", "tour-done-title");
+    last.innerHTML = '<h2 class="tour-title" id="tour-done-title">Listo</h2><p class="tour-text"></p>' +
       '<div class="tour-buttons"><button type="button" class="btn btn-sm btn-secondary" data-tour-stay>Seguir mirando el ejemplo</button>' +
       '<a class="btn btn-sm btn-primary" data-example-back><i class="fa-solid fa-arrow-left me-1"></i>Volver a mis conversaciones</a></div>';
     last.querySelector(".tour-text").textContent = app.dataset.exampleDone || "";
@@ -819,8 +835,9 @@
     bubble.className = "tour-bubble";
     bubble.setAttribute("role", "dialog");
     bubble.setAttribute("aria-live", "polite");
+    bubble.setAttribute("aria-labelledby", "tour-title");
     bubble.innerHTML =
-      '<div class="tour-count"></div><h3 class="tour-title"></h3><p class="tour-text"></p>' +
+      '<div class="tour-count"></div><h2 class="tour-title" id="tour-title"></h2><p class="tour-text"></p>' +
       '<div class="tour-buttons">' +
       '<button type="button" class="btn btn-sm btn-secondary" data-tour-skip>Saltar</button>' +
       '<button type="button" class="btn btn-sm btn-secondary" data-tour-prev>Anterior</button>' +

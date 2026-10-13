@@ -1,4 +1,5 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block header_actions %}
 <div class="col-auto">
   {# The tour, over a made-up conversation (app.admin.example): never over a real one. #}
@@ -45,7 +46,7 @@
         {% include "_contact_card.html" %}
       </details>
       <div id="inbox-banner" class="alert alert-info m-2 small">La ventana de 24 h cambió: recargá la página para ver cómo responder.</div>
-      <div id="chat-thread" class="chat-thread">
+      <div id="chat-thread" class="chat-thread" role="region" aria-label="Mensajes" tabindex="0">
         {% with show_first_day=True %}{% include "_thread_messages.html" %}{% endwith %}
       </div>
       {% set action_url = '' if example else url_for('admin:view-conversation-action', conversation_id=conversation.id) %}
@@ -111,9 +112,9 @@
         </div>
       </div>
     </section>
-    <aside class="card inbox-card d-none d-xxl-flex">{% include "_contact_card.html" %}</aside>
+    <aside class="card inbox-card d-none d-xxl-flex" aria-label="Ficha del contacto">{% include "_contact_card.html" %}</aside>
     {% else %}
-    <section class="card inbox-empty d-none d-lg-flex"><p class="empty-help mb-0">Elegí una conversación de la lista para leerla y responder.</p></section>
+    <section class="card inbox-empty d-none d-lg-flex">{{ empty_state('Elegí una conversación de la lista para leerla y responder.', 'fa-comment-dots') }}</section>
     {% endif %}
   </div>
 </div>

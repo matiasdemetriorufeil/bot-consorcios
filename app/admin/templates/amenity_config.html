@@ -11,7 +11,7 @@
 
 <div class="col-12 col-xl-6">
   <form class="card" method="POST" id="config-form">
-    <div class="card-header"><h3 class="card-title">Reglas y límites</h3></div>
+    <div class="card-header"><h2 class="card-title">Reglas y límites</h2></div>
     <div class="card-body">
       {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
       <div class="mb-3">
@@ -58,7 +58,7 @@
 
 <div class="col-12 col-xl-6">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Turnos por día</h3></div>
+    <div class="card-header"><h2 class="card-title">Turnos por día</h2></div>
     <div class="list-group list-group-flush" id="slots">
       {% for day_slots in by_day %}
       {% set day_name = weekdays[loop.index0] %}
@@ -69,8 +69,9 @@
           <span>{{ describe_slot(slot) }}</span>
           <form method="POST" action="{{ url_for('admin:view-amenity-slot-remove', amenity_id=amenity.id, slot_id=slot.id) }}"
             {{ confirm_attrs('remove_slot', day_name ~ ', ' ~ describe_slot(slot) ~ '.') | xmlattr }}>
-            <button type="submit" class="btn btn-sm btn-danger">
-              <i class="fa-solid fa-trash me-1"></i>Eliminar
+            {#- One per slot: quiet (a red link), the dialog still asks. -#}
+            <button type="submit" class="btn btn-sm btn-link-danger">
+              <i class="fa-solid fa-trash" aria-hidden="true"></i>Eliminar
             </button>
           </form>
         </div>
@@ -85,7 +86,7 @@
 
 <div class="col-12 col-md-6">
   <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="add-slot">
-    <div class="card-header"><h3 class="card-title">Agregar un turno</h3></div>
+    <div class="card-header"><h2 class="card-title">Agregar un turno</h2></div>
     <div class="card-body">
       <div class="mb-2">
         <div class="form-label">Días</div>
@@ -128,7 +129,7 @@
 
 <div class="col-12 col-md-6">
   <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="copy-slots">
-    <div class="card-header"><h3 class="card-title">Copiar los turnos de un día</h3></div>
+    <div class="card-header"><h2 class="card-title">Copiar los turnos de un día</h2></div>
     <div class="card-body">
       <div class="mb-3">
         <label class="form-label" for="copy_from">Copiar los turnos del</label>

@@ -2,6 +2,7 @@
     saved at once. second_list_from: the first problem that goes to WhatsApp's second list
     ("Más opciones", app.claims.setup.split_for_whatsapp). -#}
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
@@ -21,7 +22,7 @@
 <div class="col-12">
   <form class="card" method="POST" id="claims-table">
     <div class="card-header">
-      <h3 class="card-title">Problemas y proveedores</h3>
+      <h2 class="card-title">Problemas y proveedores</h2>
       <div class="ms-auto small text-secondary">
         Reclamos por el bot: {% if building.claims_bot_enabled %}<strong>sí</strong>{% else %}no (se prende en Edificios){% endif %}
       </div>
@@ -73,7 +74,7 @@
             </td>
           </tr>
           {% else %}
-          <tr class="list-empty"><td colspan="4" class="empty-help">{{ empty_texts['building-claims:categories'] }}</td></tr>
+          <tr class="list-empty"><td colspan="4">{{ empty_state(empty_texts['building-claims:categories'], 'fa-screwdriver-wrench') }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -93,7 +94,7 @@
 {% if others %}
 <div class="col-12 col-lg-6">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Copiar de otro edificio</h3></div>
+    <div class="card-header"><h2 class="card-title">Copiar de otro edificio</h2></div>
     <div class="card-body">
       <form method="POST" action="{{ url_for('admin:view-building-claims-copy', building_id=building.id) }}" class="row g-2"
         {{ confirm_attrs('copy_claims') | xmlattr }}>

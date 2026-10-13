@@ -66,6 +66,31 @@ def test_when_the_session_is_gone(
     assert _run(f"window.panelSessionAction({args})") == expected
 
 
+ACTION = "https://x.test/admin/claims/7/close"
+
+
+@pytest.mark.parametrize(
+    ("status", "url", "draft", "error_json", "expected"),
+    [
+        # A 403 with app.admin.errors' JSON: no permission; the session is fine, nothing reloads,
+        # whatever is being written stays.
+        (403, ACTION, False, True, "denied"),
+        (403, ACTION, True, True, "denied"),
+        # The session is gone, as in 5e.1: a 403 without that JSON, a 401, the login.
+        (403, ACTION, False, False, "reload"),
+        (403, ACTION, True, False, "warn"),
+        (401, ACTION, True, True, "warn"),
+        (200, "https://x.test/admin/login", False, True, "reload"),
+        (403, "https://x.test/admin/login", True, True, "warn"),
+    ],
+)
+def test_a_permission_is_not_a_lost_session(
+    status: int, url: str, draft: bool, error_json: bool, expected: str
+) -> None:
+    args = json.dumps([status, url, error_json, draft, LOGIN, error_json])[1:-1]
+    assert _run(f"window.panelSessionAction({args})") == expected
+
+
 DAY = 24 * 3600 * 1000
 KEEP = 3 * DAY
 
@@ -192,6 +217,8 @@ def test_a_notice_goes_after_4_s_an_error_stays(level: str, delay: int | None) -
         # The session is gone: 5e.1's way (reload, or warn with a message being written).
         (401, False, False, "reload", "session"),
         (200, False, False, "warn", "session"),
+        # No permission: the server's message as an error notice (never "unknown", never reload).
+        (403, True, False, "denied", "denied"),
     ],
 )
 def test_what_to_do_with_the_answer_of_an_action(

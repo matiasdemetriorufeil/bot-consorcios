@@ -8,32 +8,32 @@
 {% macro menu_category(menu, request) %}{{ original.menu_category(menu, request) }}{% endmacro %}
 {% macro menu_item(menu, request) %}{{ original.menu_item(menu, request) }}{% endmacro %}
 
-{# The form fields: SQLAdmin 0.32.0's render_field and render_form_fields, copied only to say
-   "Obligatorio" instead of its fixed English title ("This is a required field"). #}
+{# The form fields: SQLAdmin 0.32.0's render_field and render_form_fields, copied to say
+   "Obligatorio" instead of its fixed English title ("This is a required field") and, since
+   5f.1, drawn like the panel's own forms: the label on top, then the field, its help and its
+   errors below it (red, the same in every form); the field points to both with
+   aria-describedby, and says aria-invalid when it has an error. #}
 {% macro render_field(field, kwargs={}, ajax_lookup_url="") %}
-<div class="mb-3 form-group row">
+{% set attrs = {"data_url": ajax_lookup_url} if ajax_lookup_url and field.loader is defined else {} %}
+{% set described = [] %}
+{% if field.errors %}{% set _ = described.append(field.id ~ '-error') %}{% endif %}
+{% if field.description %}{% set _ = described.append(field.id ~ '-help') %}{% endif %}
+{% if described %}{% set _ = attrs.update({"aria-describedby": described | join(' ')}) %}{% endif %}
+{% if field.errors %}{% set _ = attrs.update({"aria-invalid": "true", "class_": "form-control is-invalid"}) %}{% endif %}
+<div class="form-field{% if field.type == 'BooleanField' %} form-field-check{% endif %}">
   {{ field.label(
-    class_="form-label col-sm-2 col-form-label" + (' required-label' if field.flags.required else ''),
+    class_="form-label" + (' required-label' if field.flags.required else ''),
     **({'title': "Obligatorio"} if field.flags.required else {})
   ) }}
-  <div class="col-sm-10">
-    {% if ajax_lookup_url and field.loader is defined %}
-      {% set extra = {"data_url": ajax_lookup_url} %}
-    {% else %}
-      {% set extra = {} %}
-    {% endif %}
-    {% if field.errors %}
-    {{ field(class_="form-control is-invalid", **extra) }}
-    {% else %}
-    {{ field(**extra) }}
-    {% endif %}
-    {% for error in field.errors %}
-    <div class="invalid-feedback">{{ error }}</div>
-    {% endfor %}
-    {% if field.description %}
-    <small class="text-muted">{{ field.description }}</small>
-    {% endif %}
+  {{ field(**attrs) }}
+  {% if field.errors %}
+  <div class="field-error" id="{{ field.id }}-error">
+    {% for error in field.errors %}<div>{{ error }}</div>{% endfor %}
   </div>
+  {% endif %}
+  {% if field.description %}
+  <small class="form-hint" id="{{ field.id }}-help">{{ field.description }}</small>
+  {% endif %}
 </div>
 {% endmacro %}
 
@@ -75,7 +75,7 @@
 {% endmacro %}
 
 {% macro display_menu(menu, request) %}
-<div class="navbar-nav">
+<ul class="navbar-nav">
   {% for item in menu.items %}
   {% if item.type_ == "View" and item.view.menu_group is not defined %}
   {{ nav_entry(item, request) }}
@@ -110,7 +110,9 @@
   </li>
   {% endif %}
   {% endfor %}
-</div>
+  {#- Who is in, at the foot of the menu right above «Salir» (on phones, in «Más»). -#}
+  <li class="menu-user" id="menu-user"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ panel_user_name(request) }}</span></li>
+</ul>
 {% endmacro %}
 
 {# «Más», the sheet of the bar at the bottom on phones: every page of the menu but the three
@@ -153,4 +155,14 @@
   {% endif %}
   {% endfor %}
 </nav>
+{% endmacro %}
+
+{# The one empty block of the panel: an icon, help.EMPTY's sentence (in its <p class="empty-help">)
+   and, when there is one, a button (its href and label). #}
+{% macro empty_state(text, icon="fa-inbox", href=None, label=None) %}
+<div class="empty-state">
+  <i class="fa-solid {{ icon }}" aria-hidden="true"></i>
+  <p class="empty-help">{{ text }}</p>
+  {% if href and label %}<a class="btn btn-primary" href="{{ href }}">{{ label }}</a>{% endif %}
+</div>
 {% endmacro %}

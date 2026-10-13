@@ -775,6 +775,12 @@ def test_reminder_and_attention_on_the_page_and_the_list(logged_in: Panel, w: Wo
     listed = _text(logged_in.client.get("/admin/claims?attention=yes").text)
     assert _numbers(listed) == [other.number, claim.number]
     assert "El proveedor no confirmó" in listed and "Filtros: Atención" in listed
+    # Why it needs someone: its own line, cut with «…» on a computer, the whole text in title.
+    raw = logged_in.client.get("/admin/claims?attention=yes").text
+    assert (
+        '<div class="claim-row-attention cell-cut" title="El proveedor no confirmó">'
+        "El proveedor no confirmó</div>"
+    ) in raw
 
     [alert] = [
         a

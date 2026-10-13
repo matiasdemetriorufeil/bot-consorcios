@@ -1,0 +1,37 @@
+{#- SQLAdmin 0.32.0's login page, ours since 5f.2 (tests/admin/test_sqladmin_pin.py keeps an eye on
+    the original): the studio's logo and name on top, the card centered; the focus on the user
+    when it opens, the browser's password manager (autocomplete username / current-password),
+    Enter sends. The error (app.admin.auth: wrong user or password, too many tries) goes once,
+    above the button, without saying which field failed: both point to it, neither is marked. -#}
+{% extends "sqladmin/base.html" %}
+{% block page_title %}Ingresar · Panel · Estudio Diego Rufeil{% endblock %}
+{% block body %}
+<main id="contenido" tabindex="-1" class="login-page">
+  <form class="card login-card" action="{{ url_for('admin:login') }}" method="POST">
+    <div class="card-body">
+      <div class="login-brand">
+        <img src="{{ asset_url('panel-static', 'logo.svg') }}" alt="" width="56" height="56">
+        <h1 class="login-title">Estudio Diego Rufeil</h1>
+        <p class="login-subtitle">Panel del estudio</p>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="login-username">{{ _("Username") }}</label>
+        <input id="login-username" name="username" type="text" class="form-control" autofocus
+          autocomplete="username" autocapitalize="none" spellcheck="false"
+          placeholder="{{ _('Enter username') }}" {% if error %}aria-describedby="login-error"{% endif %}>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="login-password">{{ _("Password") }}</label>
+        <input id="login-password" name="password" type="password" class="form-control"
+          autocomplete="current-password" placeholder="{{ _('Password') }}"
+          {% if error %}aria-describedby="login-error"{% endif %}>
+      </div>
+      {% if error %}
+      <p class="login-error" id="login-error" role="alert">{{ error }}</p>
+      {% endif %}
+      <button type="submit" class="btn btn-primary w-100">{{ _("Login") }}</button>
+      <p class="login-help">¿Te olvidaste la contraseña? Pedile a un administrador que te la cambie.</p>
+    </div>
+  </form>
+</main>
+{% endblock %}

@@ -15,6 +15,7 @@ from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -202,7 +203,7 @@ class VerificationsView(BaseView):
                 _with_unit(select(VerificationRequest).where(VerificationRequest.id == pk))
             )
             if verification is None:
-                return Response("Solicitud inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             chat_id = conversation_id(session, verification.phone_e164)
             context = {
                 "title": "Aprobar verificación",

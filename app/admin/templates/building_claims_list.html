@@ -1,11 +1,12 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
 <div class="col-12 col-xl-9">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Edificios</h3></div>
+    <div class="card-header"><h2 class="card-title">Edificios</h2></div>
     <div class="table-responsive">
       <table class="table table-vcenter card-table" id="building-claims">
-        <thead><tr><th>Edificio</th><th>Problemas habilitados</th><th>Sin proveedor</th><th>Reclamos por el bot</th><th></th></tr></thead>
+        <thead><tr><th>Edificio</th><th>Problemas habilitados</th><th>Sin proveedor</th><th>Reclamos por el bot</th><th><span class="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>
           {% for row in rows %}
           <tr>
@@ -18,7 +19,7 @@
             </td>
           </tr>
           {% else %}
-          <tr class="list-empty"><td colspan="5" class="empty-help">{{ empty_texts['building-claims'] }}</td></tr>
+          <tr class="list-empty"><td colspan="5">{{ empty_state(empty_texts['building-claims'], 'fa-building') }}</td></tr>
           {% endfor %}
         </tbody>
       </table>

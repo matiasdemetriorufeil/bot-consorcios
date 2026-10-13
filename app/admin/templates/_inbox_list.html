@@ -1,4 +1,5 @@
 {# The inbox list (page and poll). Everything the contact sends is autoescaped text. #}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% set list_base = url_for('admin:view-conversation', conversation_id=open_id) if open_id and not example else url_for('admin:view-conversations') %}
 <nav class="inbox-tabs" aria-label="Pestañas de la bandeja">
   {% for key, label in tabs.items() %}
@@ -36,6 +37,6 @@
     </div>
   </a>
   {% else %}
-  <div class="inbox-empty-list empty-help">{{ empty_texts['conversations:search'] if query else empty_texts['conversations:reason'] if reason_filter else empty_texts['conversations:' ~ tab] }}</div>
+  {{ empty_state(empty_texts['conversations:search'] if query else empty_texts['conversations:reason'] if reason_filter else empty_texts['conversations:' ~ tab], 'fa-comments') }}
   {% endfor %}
 </div>

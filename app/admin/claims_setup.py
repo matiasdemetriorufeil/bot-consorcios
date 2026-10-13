@@ -22,6 +22,7 @@ from sqladmin.flash import Flash
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import object_session, selectinload
 from starlette.datastructures import FormData
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 from wtforms import SelectMultipleField, ValidationError
@@ -445,7 +446,7 @@ class BuildingClaimsView(AdminOnly, BaseView):
         with self.session_maker() as session:
             building = session.get(Building, building_id)
             if building is None:
-                return Response("Edificio inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             if request.method == "POST":
                 require_admin(request)
                 form = await request.form()

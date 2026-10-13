@@ -1,9 +1,26 @@
 {#- SQLAdmin's create page, only its form changed: the buttons keep SQLAdmin's English value (it
     compares it to decide where to go after saving) and show a Spanish label; colors by what
-    they do (app.admin.i18n has the rest of its texts). -#}
+    they do (Guardar the main one, the rest secondary) (app.admin.i18n has the rest of its texts). -#}
 {% extends "sqladmin_original/create.html" %}
 {% from 'sqladmin/_macros.html' import render_form_fields %}
-{% block create_form %}
+{#- select2 and flatpickr (SQLAdmin's relation and date fields): only in its forms. -#}
+{% block form_assets_css %}
+<link rel="stylesheet" href="{{ asset_url('statics', 'css/select2.min.css') }}">
+<link rel="stylesheet" href="{{ asset_url('statics', 'css/flatpickr.min.css') }}">
+{% endblock %}
+{% block form_assets_js %}
+<script type="text/javascript" src="{{ asset_url('statics', 'js/select2.full.min.js') }}"></script>
+<script type="text/javascript" src="{{ asset_url('statics', 'js/flatpickr.min.js') }}"></script>
+{% endblock %}
+{#- The original's card, its title as <h2> (the page's <h1> is the model's name). -#}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{{ _("New %(name)s", name=model_view.name) }}</h2>
+    </div>
+    <div class="card-body border-bottom py-3">
+      {% block create_form %}
 <form action="{{ url_for('admin:create', identity=model_view.identity) }}" method="POST"
   enctype="multipart/form-data">
   {% if error %}
@@ -12,13 +29,17 @@
   <fieldset class="form-fieldset">
     {{ render_form_fields(form, form_opts=form_opts, ajax_lookup_url=url_for('admin:ajax_lookup', identity=model_view.identity)) }}
   </fieldset>
-  <div class="d-flex flex-wrap gap-2 form-buttons">
-    <button type="submit" name="save" value="Save" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>{{ _('Save') }}</button>
+  <div class="form-buttons">
+    <button type="submit" name="save" value="Save" class="btn btn-primary"><i class="fa-solid fa-check" aria-hidden="true"></i>{{ _('Save') }}</button>
     {% if model_view.can_edit and model_view.has_permission(request, "edit") %}
-    <button type="submit" name="save" value="Save and continue editing" class="btn btn-outline-primary">{{ _('Save and continue editing') }}</button>
+    <button type="submit" name="save" value="Save and continue editing" class="btn btn-secondary">{{ _('Save and continue editing') }}</button>
     {% endif %}
-    <button type="submit" name="save" value="Save and add another" class="btn btn-outline-primary">{{ _('Save and add another') }}</button>
-    <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn btn-secondary ms-sm-auto"><i class="fa-solid fa-arrow-left me-1"></i>{{ _("Cancel") }}</a>
+    <button type="submit" name="save" value="Save and add another" class="btn btn-secondary">{{ _('Save and add another') }}</button>
+    <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn btn-secondary ms-sm-auto"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{{ _("Cancel") }}</a>
   </div>
 </form>
+{% endblock %}
+    </div>
+  </div>
+</div>
 {% endblock %}

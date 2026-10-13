@@ -20,7 +20,8 @@ REVIEW = (
     "SQLAdmin changed {name}: review app/admin/templates/sqladmin/ (copies and block "
     "overrides), app/admin/static/panel.js and app.admin.i18n, then update this hash."
 )
-# sha256 of the originals the panel copies (list, details) or extends by blocks, and of the
+# sha256 of the originals the panel copies (base, layout's body, list, details, login) or
+# extends by blocks, and of the
 # JavaScript whose texts panel.js rewrites. Line endings normalized.
 ORIGINALS = {
     "sqladmin/_macros.html": "31efad250ae651e1bf837b626c91ffc5d25c7c48ef421eb033c3b0d5f8d1529b",
@@ -31,6 +32,7 @@ ORIGINALS = {
     "sqladmin/edit.html": "ab92794731459e9dd79723b9456ae76e311616e303c86782a85c8d2f1f1909b9",
     "sqladmin/create.html": "530935731c2db15abd2f6951f08b7872474f6e57852b1fc347cc1802a4e6a7ba",
     "sqladmin/error.html": "81bfb5ef648cb902a772fd1013c0d07505de33e7f0ee85c2d0b3cb3b789ad083",
+    "sqladmin/login.html": "e9f47d4e78778ce892c3aecdfb12931f6ff20ba6d67949413dc0bef3a1faec41",
 }
 MAIN_JS = "46159d7ac3fe0c40c8a2482b678b9a6d156708cb0517dbd26fb942892555f08e"
 _MSGID = re.compile(r"""_\(\s*(["'])(.+?)\1""", re.S)

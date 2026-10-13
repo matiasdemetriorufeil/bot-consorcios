@@ -19,7 +19,7 @@
   {% endif %}
 
   <div class="card" id="claim-who" {% if chosen or mode == 'other' %}hidden{% endif %}>
-    <div class="card-header"><h3 class="card-title">¿Quién reclama?</h3></div>
+    <div class="card-header"><h2 class="card-title">¿Quién reclama?</h2></div>
     <div class="card-body">
       <form method="GET" class="row g-2" id="claim-people-form" action="{{ url_for('admin:view-claim-new') }}">
         {% if conversation_id %}<input type="hidden" name="conversation" value="{{ conversation_id }}">{% endif %}
@@ -37,7 +37,7 @@
   </div>
 
   <div class="card" id="claim-other" {% if mode != 'other' %}hidden{% endif %}>
-    <div class="card-header"><h3 class="card-title">No está en el padrón</h3></div>
+    <div class="card-header"><h2 class="card-title">No está en el padrón</h2></div>
     <div class="card-body">
       <form method="GET" class="row g-2" id="claim-other-form" action="{{ url_for('admin:view-claim-new') }}">
         <input type="hidden" name="reporter" value="other">

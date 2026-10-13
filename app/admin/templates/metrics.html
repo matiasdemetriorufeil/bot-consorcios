@@ -1,65 +1,72 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
-<div class="col-sm-6 col-lg-4">
-  <div class="card">
-    <div class="card-body">
-      <div class="subheader">Conversaciones del mes</div>
-      <div class="h1 mb-0" id="month-conversations">{{ m.month_conversations }}</div>
-      <div class="text-muted">desde el {{ m.month_start.strftime("%d/%m/%Y") }}</div>
-    </div>
-  </div>
-</div>
-<div class="col-sm-6 col-lg-4">
-  <div class="card">
-    <div class="card-body">
-      <div class="subheader">Derivadas a una persona</div>
-      <div class="h1 mb-0" id="handed-off">
-        {% if m.handed_off_percent is none %}–{% else %}{{ "%.0f" | format(m.handed_off_percent) }} %{% endif %}
+{#- The month's numbers in the same cards as Pendientes (.stat), the days in one compact chart:
+    30 columns whose height is the only computed style; its aria-label says the total, the day
+    with most and the one with fewest, and «Ver por día» has every number. -#}
+<div class="col-12">
+  <div class="stat-grid">
+    <section class="card stat">
+      <div class="card-body">
+        <span class="stat-label">Conversaciones del mes</span>
+        <span class="stat-number" id="month-conversations">{{ m.month_conversations }}</span>
+        <p class="stat-text">desde el {{ m.month_start.strftime("%d/%m/%Y") }}</p>
       </div>
-      <div class="text-muted">{{ m.month_handed_off }} de {{ m.month_conversations }} conversaciones</div>
-    </div>
-  </div>
-</div>
-<div class="col-sm-6 col-lg-4">
-  <div class="card">
-    <div class="card-body">
-      <div class="subheader">Costo de IA del mes (estimado)</div>
-      <div class="h1 mb-0" id="month-cost">{{ m.month_cost_usd | money("US$") }}</div>
-      <div class="text-muted">
-        {% if m.month_calls_without_cost %}{{ m.month_calls_without_cost }} consulta(s) sin precio cargado{% else %}según el precio por consulta de la IA{% endif %}
+    </section>
+    <section class="card stat">
+      <div class="card-body">
+        <span class="stat-label">Derivadas a una persona</span>
+        <span class="stat-number" id="handed-off">{% if m.handed_off_percent is none %}–{% else %}{{ "%.0f" | format(m.handed_off_percent) }} %{% endif %}</span>
+        <p class="stat-text">{{ m.month_handed_off }} de {{ m.month_conversations }} conversaciones</p>
       </div>
-    </div>
+    </section>
+    <section class="card stat">
+      <div class="card-body">
+        <span class="stat-label">Costo de IA del mes (estimado)</span>
+        <span class="stat-number" id="month-cost">{{ m.month_cost_usd | money("US$") }}</span>
+        <p class="stat-text">{% if m.month_calls_without_cost %}{{ m.month_calls_without_cost }} consulta(s) sin precio cargado{% else %}según el precio por consulta de la IA{% endif %}</p>
+      </div>
+    </section>
   </div>
 </div>
 <div class="col-lg-8">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Conversaciones por día (últimos 30 días)</h3></div>
-    <div class="table-responsive">
-      <table class="table card-table table-vcenter">
-        <tbody>
-          {% for day, count in m.conversations_per_day | reverse %}
-          <tr>
-            <td class="w-1 text-nowrap">{{ day.strftime("%d/%m") }}</td>
-            <td>
-              <div class="progress progress-sm" title="{{ count }}">
-                <div class="progress-bar" style="width: {{ (100 * count / peak) | round(1) }}%"></div>
-              </div>
-            </td>
-            <td class="w-1 text-end">{{ count }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-header"><h2 class="card-title">Conversaciones por día (últimos 30 días)</h2></div>
+    <div class="card-body">
+      {% set days = m.conversations_per_day %}
+      {% if not days | selectattr(1) | list %}
+      {{ empty_state(empty_texts['metrics:per-day'], 'fa-chart-column') }}
+      {% else %}
+      <div class="spark" id="per-day-chart" role="img" aria-label="{{ per_day_summary }}">
+        {% for day, count in days %}
+        <div class="spark-bar{% if not count %} is-zero{% endif %}" aria-hidden="true" title="{{ day.strftime('%d/%m') }}: {{ count }}" style="height: {{ (100 * count / peak) | round(1) }}%"></div>
+        {% endfor %}
+      </div>
+      {% if days %}
+      <div class="spark-axis" aria-hidden="true"><span>{{ days[0][0].strftime("%d/%m") }}</span><span>{{ days[-1][0].strftime("%d/%m") }}</span></div>
+      {% endif %}
+      {% endif %}
+      <details class="metrics-days" id="per-day">
+        <summary>Ver por día</summary>
+        <table class="table table-vcenter mb-0">
+          <thead><tr><th>Día</th><th class="num">Conversaciones</th></tr></thead>
+          <tbody>
+            {% for day, count in days | reverse %}
+            <tr><td>{{ day.strftime("%d/%m") }}</td><td class="num">{{ count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
     </div>
   </div>
 </div>
 <div class="col-lg-4">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Herramientas más usadas (mes)</h3></div>
+    <div class="card-header"><h2 class="card-title">Herramientas más usadas (mes)</h2></div>
     <table class="table card-table table-vcenter" id="top-tools">
       <tbody>
         {% for tool, count in tools %}
-        <tr><td>{{ tool }}</td><td class="w-1 text-end">{{ count }}</td></tr>
+        <tr><td>{{ tool }}</td><td class="w-1 num">{{ count }}</td></tr>
         {% else %}
         <tr><td class="text-muted">Sin datos este mes.</td></tr>
         {% endfor %}
@@ -68,8 +75,8 @@
   </div>
 </div>
 
-<div class="col-12"><h2 class="page-title mt-3" id="claims-metrics">Reclamos del mes</h2>
-  <div class="text-muted">Desde el {{ c.month_start.strftime("%d/%m/%Y") }}: {{ c.total }} reclamo(s).</div>
+<div class="col-12 section-title"><h2 id="claims-metrics">Reclamos del mes</h2>
+  <p>Desde el {{ c.month_start.strftime("%d/%m/%Y") }}: {{ c.total }} reclamo(s).</p>
 </div>
 {% for card_id, title, rows in [
     ('claims-by-status', 'Por estado', c.by_status),
@@ -81,7 +88,7 @@
     <table class="table card-table table-vcenter" id="{{ card_id }}">
       <tbody>
         {% for name, count in rows %}
-        <tr><td>{{ name }}</td><td class="w-1 text-end">{{ count }}</td></tr>
+        <tr><td>{{ name }}</td><td class="w-1 num">{{ count }}</td></tr>
         {% else %}
         <tr><td class="text-muted">Sin reclamos este mes.</td></tr>
         {% endfor %}
@@ -96,17 +103,17 @@
     <div class="table-responsive">
       <table class="table card-table table-vcenter rows-table" id="claims-by-provider">
         <thead>
-          <tr><th>Proveedor</th><th class="text-end">Reclamos enviados</th><th class="text-end">Horas hasta «Recibido»</th><th class="text-end">Horas hasta solucionado</th><th class="text-end">No pudo atenderlo</th><th class="text-end">Necesitaron recordatorio</th></tr>
+          <tr><th>Proveedor</th><th class="num">Reclamos enviados</th><th class="num">Horas hasta «Recibido»</th><th class="num">Horas hasta solucionado</th><th class="num">No pudo atenderlo</th><th class="num">Necesitaron recordatorio</th></tr>
         </thead>
         <tbody>
           {% for p in c.providers %}
           <tr>
             <td data-label="Proveedor">{{ p.name }}</td>
-            <td data-label="Reclamos enviados" class="text-end">{{ p.sent }}</td>
-            <td data-label="Horas hasta «Recibido»" class="text-end">{% if p.hours_to_ack is none %}–{% else %}{{ "%.1f" | format(p.hours_to_ack) }}{% endif %}</td>
-            <td data-label="Horas hasta solucionado" class="text-end">{% if p.hours_to_solve is none %}–{% else %}{{ "%.1f" | format(p.hours_to_solve) }}{% endif %}</td>
-            <td data-label="No pudo atenderlo" class="text-end">{{ p.declined }}</td>
-            <td data-label="Necesitaron recordatorio" class="text-end">{{ p.reminded }}</td>
+            <td data-label="Reclamos enviados" class="num">{{ p.sent }}</td>
+            <td data-label="Horas hasta «Recibido»" class="num">{% if p.hours_to_ack is none %}–{% else %}{{ "%.1f" | format(p.hours_to_ack) }}{% endif %}</td>
+            <td data-label="Horas hasta solucionado" class="num">{% if p.hours_to_solve is none %}–{% else %}{{ "%.1f" | format(p.hours_to_solve) }}{% endif %}</td>
+            <td data-label="No pudo atenderlo" class="num">{{ p.declined }}</td>
+            <td data-label="Necesitaron recordatorio" class="num">{{ p.reminded }}</td>
           </tr>
           {% else %}
           <tr><td colspan="6" class="text-muted">Este mes no se le mandó ningún reclamo a un proveedor.</td></tr>

@@ -13,7 +13,7 @@
     <div class="pending-head">
       {% if number %}<span class="pending-number">{{ number }}</span>
       {% else %}<span class="pending-done">{{ empty_texts['pending:card'] }}</span>{% endif %}
-      <h3 class="pending-title">{{ texts.title }}</h3>
+      <h2 class="pending-title">{{ texts.title }}</h2>
     </div>
     <p class="pending-text">{{ texts.text }}</p>
     {% if number and detail %}<p class="pending-detail">{{ detail }}</p>{% endif %}
@@ -47,7 +47,7 @@
     <div class="card-body">
       <div class="pending-head">
         <span class="pending-number pending-number-info">{{ p.sum_days | sum(attribute='total') }}</span>
-        <h3 class="pending-title">{{ sum_texts.title }}</h3>
+        <h2 class="pending-title">{{ sum_texts.title }}</h2>
       </div>
       <p class="pending-text">{{ sum_texts.text }}</p>
       {% set any_sum = p.sum_days | selectattr('buildings') | list %}

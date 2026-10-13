@@ -271,6 +271,7 @@ EMPTY: dict[str, str] = {
     "building-claims:categories": (
         "Todavía no hay problemas cargados. Agregalos en «Tipos de problema» y volvé acá."
     ),
+    "metrics:per-day": "Sin conversaciones en estos 30 días.",
 }
 EMPTY_DEFAULT = "Todavía no hay nada acá."
 

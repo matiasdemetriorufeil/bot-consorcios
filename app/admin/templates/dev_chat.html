@@ -37,7 +37,7 @@
 
   <div>
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">Teléfono de prueba</h3></div>
+      <div class="card-header"><h2 class="card-title">Teléfono de prueba</h2></div>
       <div class="card-body">
         <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
           <div class="col-12 col-md-8">
@@ -57,7 +57,7 @@
 
     {% if providers %}
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">Hablar como proveedor</h3></div>
+      <div class="card-header"><h2 class="card-title">Hablar como proveedor</h2></div>
       <div class="card-body">
         <form method="post" action="{{ url_for('admin:view-dev-chat-provider') }}" class="row g-2">
           <div class="col-12 col-md-8">
@@ -77,7 +77,7 @@
     {% endif %}
 
     <div class="card mb-3" id="claim-jobs">
-      <div class="card-header"><h3 class="card-title">Tareas de reclamos</h3></div>
+      <div class="card-header"><h2 class="card-title">Tareas de reclamos</h2></div>
       <div class="card-body">
         <form method="post" action="{{ url_for('admin:view-dev-chat-claim-jobs') }}" class="row g-2">
           <input type="hidden" name="phone" value="{{ phone or '' }}">
@@ -96,7 +96,7 @@
     </div>
 
     <div class="card mb-3">
-      <div class="card-header"><h3 class="card-title">Buscar una persona de la base</h3></div>
+      <div class="card-header"><h2 class="card-title">Buscar una persona de la base</h2></div>
       <div class="card-body">
         <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
           {% if phone %}<input type="hidden" name="phone" value="{{ phone }}">{% endif %}

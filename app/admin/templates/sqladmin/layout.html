@@ -1,21 +1,59 @@
-{#- SQLAdmin's layout with, on every page:
+{#- SQLAdmin 0.32.0's layout, its body block rewritten (5f.2: a copy of the original's, which
+    tests/admin/test_sqladmin_pin.py keeps an eye on) so that every page has:
+    - the menu in a <nav>, the studio's name as a link (not a heading) and, out of production,
+      a small «Desarrollo» label (app.admin.panel_env);
     - a thin bar on top with the alerts' button and its notices (on phones only a bell in the
       top bar), from where panel.js asks for the panel's numbers (app.admin.pending);
-    - its title (SQLAdmin's own lists, records and forms pass none; ours do) and a line saying
-      what the page is for (app.admin.help.page_help);
+    - its title as the page's only <h1> (SQLAdmin's own lists, records and forms pass none; ours
+      do) and a line saying what the page is for (app.admin.help.page_help), inside
+      <main id="contenido"> (the target of «Saltar al contenido»);
+    - the tab's title «(N) Pantalla · Panel · Estudio Diego Rufeil», N from the menu's counters
+      (already read for the menu: no other query);
     - the small notices at the bottom (#panel-toasts: the page's Flashes and what panel.js
       says after an action without reloading);
     - on phones, the bar at the bottom (Pendientes, Conversaciones, Reclamos, «Más») and its
       sheet;
-    - the one confirmation dialog of the panel (_confirm_dialog.html, opened by panel.js).
-    Blocks only: the original stays as is. -#}
+    - the one confirmation dialog of the panel (_confirm_dialog.html, opened by panel.js). -#}
 {% extends "sqladmin_original/layout.html" %}
-{% block topbar %}
+{% from 'sqladmin/_macros.html' import display_menu %}
+{%- macro screen_name() -%}
+{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}
+{%- endmacro -%}
+{% block page_title %}{% set counts = menu_counts(request) %}{% set n = counts.get('waiting', 0) + counts.get('claims_urgent', 0) %}{% if n %}({{ n }}) {% endif %}{% block screen_title %}{{ screen_name() }}{% endblock %} · Panel · Estudio Diego Rufeil{% endblock %}
+{% block body %}
+<div class="wrapper">
+  <aside class="navbar navbar-expand-lg navbar-vertical navbar-expand-md navbar-dark" data-bs-theme="dark" aria-label="Menú del panel">
+    <div class="container-fluid">
+      <div class="navbar-brand navbar-brand-autodark">
+        <a href="{{ url_for('admin:index') }}" class="brand-link"><span class="brand-name">{{ admin.title }}</span></a>
+        {% if panel_env.dev_label %}<span class="env-badge" title="Este no es el panel de producción">Desarrollo</span>{% endif %}
+      </div>
+      <nav class="navbar navbar-expand-sm shadow-none" id="navbar-menu" aria-label="Menú"
+        data-sqladmin-menu="{{ admin.base_url }}">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
+          aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Abrir el menú">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+          {{ display_menu(admin._menu, request) }}
+        </div>
+      </nav>
+      {% if admin.authentication_backend %}
+      <a href="{{ request.url_for('admin:logout') }}" class="btn btn-secondary btn-icon m-2 px-2">
+        <span>{{ _("Logout") }}</span>
+        <i class="fa fa-sign-out" aria-hidden="true"></i>
+      </a>
+      {% endif %}
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    {% block topbar %}
 {% set counts = menu_counts(request) %}
-<div class="panel-topbar" id="panel-topbar"
+<header class="panel-topbar" id="panel-topbar"
      data-pending-url="{{ url_for('admin:view-pending-numbers') }}"
      data-login-url="{{ url_for('admin:login') }}"
-     data-title-count="{{ counts.get('waiting', 0) + counts.get('claims_urgent', 0) }}">
+     data-title-count="{{ counts.get('waiting', 0) + counts.get('claims_urgent', 0) }}"
+     data-title="{{ self.screen_title() | trim }} · Panel · Estudio Diego Rufeil">
   <div class="panel-notice alerts-off" id="alerts-off" hidden>
     <span data-alerts-text="off">{{ alert_texts.off }}</span>
     <span data-alerts-text="blocked" hidden>{{ alert_texts.blocked }}</span>
@@ -31,22 +69,33 @@
   <button type="button" class="panel-bell" id="alerts-bell" data-alerts-enable aria-label="{{ alert_texts.off }} Activar">
     <i class="fa-solid fa-bell-slash" aria-hidden="true"></i>
   </button>
-</div>
-{% endblock %}
-{% block content_header %}
+</header>
+    {% endblock %}
+    <main id="contenido" tabindex="-1">
+      <div class="container-fluid">
+        <div class="page-header d-print-none">
+          {% block content_header %}
 <div class="row align-items-center g-2">
   <div class="col">
-    <h2 class="page-title">{% if title %}{{ title }}{% elif model_view is defined %}{{ model_view.name_plural }}{% endif %}</h2>
+    <h1 class="page-title">{{ screen_name() }}</h1>
     {% block under_title %}{% endblock %}
     {% set help_line = page_help(request) %}
     {% set guide_anchor = page_guide(request) %}
     {% if help_line %}<p class="page-help mb-0">{{ help_line }}{% if guide_anchor %} <a class="page-help-guide" href="{{ url_for('admin:view-guide') }}#{{ guide_anchor }}">Ver en la guía</a>{% endif %}</p>{% endif %}
   </div>
-  {# A page's own buttons beside its title (e.g. "Ver recorrido" in Conversaciones). #}
+  {# A page's own buttons beside its title, its main one last (e.g. "Ver recorrido" in
+     Conversaciones, «Nuevo reclamo», SQLAdmin's «+ Nuevo»): on the right, below and across on
+     phones. #}
   {% block header_actions %}{% endblock %}
 </div>
-{% endblock %}
-{% block flash %}
+          {% endblock %}
+        </div>
+      </div>
+      <div class="page-body flex-grow-1">
+        <div class="container-fluid">
+          <div class="row row-deck row-cards">
+            {% block content %} {% endblock %}
+            {% block flash %}
 {#- The page's Flashes as small notices at the bottom (panel.js takes the successful ones away
     after 4 s; an error stays until closed). Without JavaScript they just stay. -#}
 <div class="panel-toasts" id="panel-toasts" role="status" aria-live="polite">
@@ -57,6 +106,16 @@
     <button type="button" class="panel-toast-close" data-toast-close aria-label="Cerrar">×</button>
   </div>
   {% endfor %}
+</div>
+            {% endblock %}
+            {% block secret_modal %}
+            {% include 'sqladmin/secret_modal.html' %}
+            {% endblock %}
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
 </div>
 {% endblock %}
 {% block tail %}
@@ -94,6 +153,7 @@
   </div>
   {{ more_menu(admin._menu, request) }}
   {% if admin.authentication_backend %}
+  <div class="more-user"><i class="fa-solid fa-circle-user" aria-hidden="true"></i><span>{{ panel_user_name(request) }}</span></div>
   <a class="more-item more-logout" href="{{ request.url_for('admin:logout') }}"><i class="fa fa-sign-out" aria-hidden="true"></i><span class="more-item-name">Salir</span></a>
   {% endif %}
 </dialog>

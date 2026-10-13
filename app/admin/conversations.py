@@ -32,6 +32,7 @@ import anyio
 from sqladmin import BaseView, expose
 from sqladmin.flash import Flash
 from sqlalchemy import select
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 
@@ -191,7 +192,7 @@ class ConversationsView(BaseView):
             if conversation_id is not None:
                 found = self._conversation_context(session, conversation_id, context["names"])
                 if found is None:
-                    return Response("Conversación inexistente", status_code=404)
+                    raise HTTPException(status_code=404)
                 open_context = found
             # Rendered with the session open: the template reads the rows.
             return await self.templates.TemplateResponse(

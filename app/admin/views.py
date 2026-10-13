@@ -3,7 +3,7 @@
 Views with AdminOnly first are only for admins (operators get 403 and do not see them)."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from functools import partial
 from typing import Any, ClassVar
@@ -440,6 +440,22 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
 # --- Metrics ----------------------------------------------------------------------------
 
 
+def per_day_summary(per_day: list[tuple[date, int]]) -> str:
+    """What the compact chart of Métricas says without looking at it (its aria-label): the
+    total of the period, the day with most conversations and the one with fewest (the first
+    of them on a tie)."""
+    if not per_day:
+        return "Conversaciones por día: sin datos."
+    total = sum(n for _, n in per_day)
+    most = max(per_day, key=lambda item: item[1])
+    fewest = min(per_day, key=lambda item: item[1])
+    return (
+        f"Conversaciones por día, últimos {len(per_day)} días: {total} en total. "
+        f"El día con más: {most[0]:%d/%m}, con {most[1]}. "
+        f"El día con menos: {fewest[0]:%d/%m}, con {fewest[1]}."
+    )
+
+
 class MetricsView(AdminOnly, BaseView):
     menu_group = "system"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Métricas"
@@ -453,7 +469,8 @@ class MetricsView(AdminOnly, BaseView):
             now = datetime.now(UTC)
             metrics = await _in_thread(compute_metrics, session, now, self.timezone)
             claims = await _in_thread(compute_claim_metrics, session, now, self.timezone)
-        peak = max((n for _, n in metrics.conversations_per_day), default=0)
+        per_day = metrics.conversations_per_day
+        peak = max((n for _, n in per_day), default=0)
         return await self.templates.TemplateResponse(
             request,
             "metrics.html",
@@ -462,6 +479,7 @@ class MetricsView(AdminOnly, BaseView):
                 "m": metrics,
                 "c": claims,
                 "peak": peak or 1,
+                "per_day_summary": per_day_summary(per_day),
                 "tools": [(labels.tool(name), count) for name, count in metrics.top_tools],
             },
         )

@@ -464,7 +464,7 @@ def test_the_home_is_pending(logged_in: Panel) -> None:
     response = logged_in.client.get("/admin/", follow_redirects=False)
     assert response.headers["location"].endswith("/admin/pending")
     page = logged_in.client.get("/admin/").text
-    assert '<h2 class="page-title">Pendientes</h2>' in page
+    assert '<h1 class="page-title">Pendientes</h1>' in page
 
 
 def test_the_login_opens_pending_and_the_tour_still_waits_in_conversations(

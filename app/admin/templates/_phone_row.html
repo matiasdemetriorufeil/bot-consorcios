@@ -19,7 +19,7 @@
     {% endif %}
     <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" data-fetch {{ confirm_attrs('unlink', row.number ~ ' · ' ~ row.person ~ '.') | xmlattr }}>
       <input type="hidden" name="back" value="{{ back }}">
-      <button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-link-slash me-1"></i>Desvincular</button>
+      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-link-slash" aria-hidden="true"></i>Desvincular</button>
     </form>
   </td>
 </tr>

@@ -1,15 +1,55 @@
-{#- SQLAdmin's base page plus the panel's own style sheet and script (app/admin/static): one
-    style for SQLAdmin's views and ours. Blocks only: the original stays as is. -#}
-{% extends "sqladmin_original/base.html" %}
-{% block head_meta %}
-{{ super() }}
-<meta name="theme-color" content="#1f4e5f">
-{% endblock %}
-{% block head_css %}
-{{ super() }}
-<link rel="stylesheet" href="{{ url_for('admin:panel-static', path='panel.css') }}?v={{ static_version }}">
-{% endblock %}
-{% block tail_js %}
-{{ super() }}
-<script type="text/javascript" src="{{ url_for('admin:panel-static', path='panel.js') }}?v={{ static_version }}"></script>
-{% endblock %}
+{#- Copy of SQLAdmin 0.32.0's sqladmin/base.html (pinned in pyproject.toml), changed for this
+    panel (5f.2): lang="es"; the tab's title by page (block page_title: «Pantalla · Panel ·
+    Estudio Diego Rufeil»); every static file with its version (asset_url: a hash of its
+    content, app.admin.static_cache) and nothing it does not use (no Tabler icons; select2 and
+    flatpickr only in SQLAdmin's forms: block form_assets); the logo's icons, the manifest and
+    the bar's color for «Agregar a inicio»; the link «Saltar al contenido»; the panel's own style
+    sheet and script. tests/admin/test_sqladmin_pin.py fails when the original changes. -#}
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  {% block head_meta %}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  {#- The bar's color (panel.css --c-nav-bg; the manifest says the same). -#}
+  <meta name="theme-color" content="#17323d">
+  {% endblock %}
+  {% block head_css %}
+  <link rel="stylesheet" href="{{ asset_url('statics', 'css/tabler.min.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('statics', 'css/fontawesome-all.min.css') }}">
+  {% block form_assets_css %}{% endblock %}
+  <link rel="stylesheet" href="{{ asset_url('statics', 'css/main.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('panel-static', 'panel.css') }}">
+  {% endblock %}
+  <link rel="icon" href="{{ asset_url('panel-static', 'logo.svg') }}" type="image/svg+xml">
+  <link rel="icon" href="{{ asset_url('panel-static', 'icons/icon-32.png') }}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{{ asset_url('panel-static', 'icons/apple-touch-icon-180.png') }}">
+  <link rel="manifest" href="{{ asset_url('panel-static', 'manifest.webmanifest') }}">
+  <title>{% block page_title %}{{ admin.title }}{% endblock %}</title>
+  {% block head %}
+  {% endblock %}
+  {% block head_tail %}
+  {% endblock %}
+</head>
+
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+  {% block body %}
+  <main id="contenido" tabindex="-1">
+    {% block main %}
+    {% endblock %}
+  </main>
+  {% endblock %}
+  {% block tail_js %}
+  <script type="text/javascript" src="{{ asset_url('statics', 'js/jquery.min.js') }}"></script>
+  <script type="text/javascript" src="{{ asset_url('statics', 'js/tabler.min.js') }}"></script>
+  {% block form_assets_js %}{% endblock %}
+  <script type="text/javascript" src="{{ asset_url('statics', 'js/main.js') }}"></script>
+  <script type="text/javascript" src="{{ asset_url('panel-static', 'panel.js') }}"></script>
+  {% endblock %}
+  {% block tail %}
+  {% endblock %}
+</body>
+
+</html>

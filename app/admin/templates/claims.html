@@ -3,13 +3,13 @@
     (panel.js, data-claims-list), except while the search or the filters are being used. On a
     phone each row is a card. -#}
 {% extends "sqladmin/layout.html" %}
+{% block header_actions %}
+<div class="col-auto">
+  <a class="btn btn-primary" href="{{ url_for('admin:view-claim-new') }}"><i class="fa-solid fa-plus" aria-hidden="true"></i>Nuevo reclamo</a>
+</div>
+{% endblock %}
 {% block content %}
 {% set f = result.filters %}
-<div class="col-12">
-  <div class="d-flex flex-wrap gap-2">
-    <a class="btn btn-primary" href="{{ url_for('admin:view-claim-new') }}"><i class="fa-solid fa-plus me-2"></i>Nuevo reclamo</a>
-  </div>
-</div>
 <div class="col-12">
   <div class="card" id="claims-card">
     <div class="card-body border-bottom py-3">

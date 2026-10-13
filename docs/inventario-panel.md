@@ -1,5 +1,148 @@
 # Inventario del panel `/admin`
 
+## Actualización 5f.2: ingreso, errores, «Agregar a inicio» y cierre de 5f.1 (2026-10-13)
+
+No cambian los permisos, las URLs de las pantallas ni lo que se manda a nadie.
+
+- **Ingreso** (`templates/sqladmin/login.html`, ahora nuestra):
+  - el logo «DR» y «Estudio Diego Rufeil» arriba, la tarjeta centrada;
+  - el foco en el usuario al abrir; `autocomplete="username"` y `"current-password"`;
+  - Enter manda;
+  - el error, una sola vez arriba del botón, sin marcar ningún campo (no dice cuál falló);
+  - debajo, «¿Te olvidaste la contraseña? Pedile a un administrador que te la cambie.».
+- **Páginas de error** (`app/admin/errors.py`, `templates/sqladmin/error.html`):
+  - 404 «No encontramos esa página», 403 (el texto de siempre) y 500 «Algo salió mal…»,
+    todas con «Volver a Pendientes»;
+  - sin sesión, no muestran el menú;
+  - el detalle técnico de un 500 se muestra solo con `APP_ENV=development` exacto. El error
+    queda una sola vez en el log, con su traceback;
+  - los pedidos de `panel.js` (`X-Panel-Fetch`) reciben JSON con el mismo código de siempre;
+  - los 404 de texto plano de las vistas propias («Reclamo inexistente»…) pasaron a esta
+    página.
+- **Título de la pestaña:** «(N) Pantalla · Panel · Estudio Diego Rufeil» en todas: las
+  propias, las de SQLAdmin, las de error y el ingreso. El servidor ya lo dibuja con el número,
+  que sale de los contadores del menú, así que no suma consultas.
+- **«Agregar a inicio»:**
+  - `static/manifest.webmanifest` («Panel · Estudio Diego Rufeil» / «Estudio Rufeil»,
+    `start_url` `/admin/`, `standalone`, colores `--c-nav-bg` y `--c-bg`);
+  - íconos en `static/icons/`: 32, Apple 180, 192 / 512 y maskable 192 / 512;
+  - `theme-color` del color de la barra;
+  - sin service worker;
+  - en pantalla completa no hay botón Atrás: cada ficha tiene su «← Volver» y en el celular
+    está la barra de abajo. La guía avisa que en el iPhone hay que ingresar de nuevo la primera
+    vez.
+- **Entorno:**
+  - fuera de producción, la etiqueta «Desarrollo» al lado del nombre;
+  - si falta `APP_ENV`, también aparece, como alarma. **En el servidor hay que poner
+    `APP_ENV=production`**;
+  - el Chat de prueba sigue solo en desarrollo.
+- **Estáticos:**
+  - todos desde el servidor, con `?v=` igual al hash de su contenido (calculado al arrancar):
+    un cambio llega solo, sin borrar caché;
+  - con `?v=`, caché de un año (`immutable`); sin `?v=`, se revalida;
+  - gzip solo para CSS, JS, SVG y el manifest: las páginas no se comprimen, por BREACH;
+  - ya no se cargan los íconos de Tabler (209 KB), y select2 / flatpickr solo en los
+    formularios de SQLAdmin;
+  - medido con la caché vacía, Pendientes pasó de unos 17 pedidos y 1,4 MB a 14 pedidos y
+    306 KB.
+- **Accesibilidad:**
+  - `lang="es"`;
+  - «Saltar al contenido» con el primer Tab;
+  - un solo `<h1>` (el título de la pantalla) y los títulos de tarjeta en `<h2>`;
+  - `nav`, `main`, `header` y los `aside` con nombre;
+  - los encabezados de columna de botones con texto para lector de pantalla;
+  - el chat se puede desplazar con el teclado;
+  - axe-core, corrido desde el script de verificación en todas las pantallas a 1440 y 390 px,
+    no encuentra problemas.
+- **Lo que quedó de 5f.1:**
+  - Rechazar y Desvincular con contorno rojo;
+  - los estados no se parten en el celular;
+  - Métricas sin datos muestra «Sin conversaciones en estos 30 días»;
+  - «Desde el…» quedó abajo de «Reclamos del mes»;
+  - el menú lateral ya ocupaba todo el alto (lo de 5f.1 era solo la captura de página
+    completa).
+- **Capturas:** `docs/panel-capturas/5f2/`, fuera de Git.
+
+## Actualización 5f.1: una base visual única para el panel (2026-10-13)
+
+Solo cambia cómo se ve. Quedan igual las URLs, los permisos, los textos de negocio y lo que se
+le manda a cualquiera. No se suman librerías ni fuentes: todo anda sin internet.
+
+- **Una base en `panel.css`:** todos los colores, tamaños, espacios, radios, sombras y tiempos
+  son variables de `:root`. Fuera de ese bloque no hay hex, `rgb` ni `rgba`, y tampoco
+  `font-size`, radios ni sombras escritos a mano. Tabler (el tema de SQLAdmin) toma las mismas
+  variables (`--tblr-*` → `--c-*`). Lo controla `tests/admin/test_look.py`.
+
+  | Grupo | Variables |
+  |---|---|
+  | Principal | `--c-primary #1f5f7a`, `--c-primary-hover #174a5f`, `--c-primary-soft #e7f0f4`, `--c-primary-border`, `--c-on-primary #fff` |
+  | Foco | `--c-focus #1f5f7a` (en fondos claros), `--c-focus-on-dark #8fd0ea` (menú oscuro y barra de arriba del celular) |
+  | Neutros | `--c-bg #f4f6f8`, `--c-surface #fff`, `--c-surface-2 #f8f9fa`, `--c-surface-3 #eef1f4`, `--c-border #dfe4e8`, `--c-border-strong #c6ced6`, `--c-text #1f2933`, `--c-text-2 #4f5b67`, `--c-placeholder #66717d` |
+  | Estados | `--c-ok #1e6b34` / `-bg #e6f4ea` · `--c-progress #1f5f7a` / `-bg #e7f0f4` · `--c-waiting #96410a` / `-bg #fff1e6` · `--c-urgent #fff` / `-bg #b42318` · `--c-info #4b5563` / `-bg #eef0f2` · contador que espera `--c-count-waiting #3d2c00` sobre `#f0b429` |
+  | Peligro | `--c-danger #b42318`, `--c-danger-hover #8f1c13`, `--c-danger-soft #fdecec` |
+  | Menú | `--c-nav-bg #17323d`, `--c-nav-text`, `--c-nav-text-2`, `--c-nav-active-bg #24495a`, `--c-nav-accent` |
+  | Chat y planilla del SUM | `--c-chat-*`, `--c-msg-*`, `--c-phone-*`, `--c-slot-*`, `--c-grid-*` |
+  | Letra | `--font-sans` (la del sistema), `--fs-title` 22 px, `--fs-subtitle` 17 px, `--fs-body` 15 px, `--fs-small` 13 px, `--fs-display` (números grandes), `--fs-icon`; `--fw-regular 400`, `--fw-bold 600` |
+  | Espacio | `--sp-1` a `--sp-6`: 4 / 8 / 12 / 16 / 24 / 32 px |
+  | Forma | `--radius-sm 6px` (botones, campos), `--radius-md 10px` (tarjetas, diálogos); `--shadow-1` (tarjetas), `--shadow-2` (diálogos, avisos, «Más») |
+  | Botones | `--btn-h 38px`, `--btn-h-sm 32px`, `--btn-h-touch 44px` (todos en el celular) |
+  | Movimiento | `--t-fast 150ms`, `--t-base 200ms`; en 0 con `prefers-reduced-motion` |
+
+  El `html` mide 16 px (medido en el navegador), así que los rem dan 15 / 13 / 17 / 22 px reales.
+
+- **Contraste AA:** un test calcula cada par de texto y fondo (4,5:1) y el anillo de foco contra
+  los fondos donde aparece (3:1). Cambiaron los pares que no llegaban:
+  - el verde de «no leídos»;
+  - «Al día»;
+  - «Disponible» en la planilla del SUM;
+  - el gris del chat;
+  - el placeholder;
+  - el naranja de «esperando».
+- **Foco con teclado:** un anillo de 3 px separado 2 px del elemento, en links, botones,
+  `summary`, campos, interruptores y casillas.
+  - Es petróleo en lo claro y claro en el menú oscuro y la barra de arriba del celular.
+  - La barra de abajo y «Más» son blancas, así que llevan el anillo petróleo, metido hacia
+    adentro en los ítems de ancho completo.
+- **Botones:** principal, secundario, peligro y link, en 38 o 32 px (44 en el celular), con un
+  solo radio y el mismo espacio entre ícono y texto. «Guardar y seguir editando» y los demás
+  contornos pasaron a secundario. Los «Eliminar» repetidos (turnos del SUM, filas de SQLAdmin)
+  ahora son links rojos: el diálogo de confirmación no cambia.
+- **Encabezado común:** el botón principal de cada pantalla (Nuevo reclamo, «+ Agregar» de
+  SQLAdmin) va al lado del título; en el celular, abajo y a lo ancho.
+- **Tablas:**
+  - fila de 48 px, encabezado chico gris y hover suave;
+  - números a la derecha con cifras parejas;
+  - en escritorio, el texto largo se corta con «…» (el texto completo queda en `title`); en el
+    celular va completo.
+- **Tarjetas:** las mismas en todo el panel. Ya no se estiran al alto de la de al lado
+  (Usuarios, Configuración del SUM, ficha del reclamo).
+- **Estado vacío:** un solo bloque (macro `empty_state`: ícono, la frase de `help.py` y, si
+  hace falta, un botón), en Conversaciones, Reclamos, Teléfonos, Verificaciones, SUM, Reclamos
+  por edificio y las listas de SQLAdmin.
+- **SQLAdmin:**
+  - formularios con la etiqueta arriba, sin caja gris y con los interruptores alineados;
+  - errores en rojo debajo del campo, con `aria-describedby` y `aria-invalid`;
+  - una sola marca de obligatorio (« *» rojo);
+  - listas sin el título repetido y con el buscador, la paginación y los filtros al estilo del
+    panel;
+  - fichas en dos columnas (`dl`), sin la doble caja.
+- **Menú:**
+  - el ítem activo con fondo y una barra clara a la izquierda;
+  - aire entre los bloques;
+  - al pie, quién entró y «Salir»: el admin de rescate aparece como «Administrador»;
+  - en el celular, el nombre va dentro de «Más», arriba de Salir.
+- **Métricas:**
+  - los números del mes en tarjetas como las de Pendientes;
+  - las conversaciones por día en un gráfico compacto de 30 columnas, con un `aria-label`
+    (total, el día con más y el día con menos);
+  - debajo, «Ver por día» plegable con la tabla.
+- **Ingreso:** el logo arriba del título.
+- **Capturas:**
+  - antes: `docs/panel-capturas/5f1-antes/`;
+  - después: `docs/panel-capturas/5f1/`, con los mismos nombres más las de 1024 px;
+  - el recorrido con teclado: `teclado-*.png`;
+  - las imágenes de la guía se rehicieron con la base de demo.
+
 ## Actualización 5e.4: el menú del admin ordenado y la guía fácil de consultar (2026-10-12)
 
 Sin cambios de URLs, permisos ni reglas.

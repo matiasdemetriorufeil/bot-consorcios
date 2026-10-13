@@ -1,7 +1,11 @@
-{# The frame of sqladmin/error.html for someone not logged in: no menu. #}
+{# The frame of sqladmin/error.html for someone not logged in: no menu, the studio's logo. #}
 {% extends "sqladmin/base.html" %}
+{% block page_title %}{% block screen_title %}{% endblock %} · Panel · Estudio Diego Rufeil{% endblock %}
 {% block body %}
-<div class="page page-center">
-  <div class="container-tight py-4">{% block content %}{% endblock %}</div>
-</div>
+<main id="contenido" tabindex="-1" class="page page-center bare-page">
+  <div class="container-tight py-4">
+    <p class="bare-brand">Estudio Diego Rufeil</p>
+    {% block content %}{% endblock %}
+  </div>
+</main>
 {% endblock %}

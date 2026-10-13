@@ -25,25 +25,27 @@ Login: the users of panel_users (admin | operator) plus the .env user as rescue 
 AdminOnly, nor the SUM's set-up.
 """
 
-import hashlib
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import sqladmin
 from fastapi import FastAPI
+from jinja2 import pass_context
 from sqladmin import Admin, ModelView
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app.admin import formatting, help, i18n, labels, pending
+from app.admin import errors, formatting, help, i18n, labels, pending
 from app.admin.amenities import AmenitiesView
-from app.admin.auth import AdminAuth, LoginLimiter
+from app.admin.auth import AdminAuth, LoginLimiter, current_user_id
 from app.admin.claims import ClaimsView, claim_links
 from app.admin.claims_setup import (
     BuildingClaimsView,
@@ -57,6 +59,7 @@ from app.admin.guide import GUIDE_FILES_DIR, GuideView
 from app.admin.inbox import Sender
 from app.admin.pending_view import PendingView
 from app.admin.phones import PhonesView
+from app.admin.static_cache import StaticCache, versions
 from app.admin.users import UsersView
 from app.admin.verifications import VerificationsView
 from app.admin.views import (
@@ -72,7 +75,7 @@ from app.admin.views import (
 from app.admin.wa_media import WaMediaView
 from app.claims.notify import Notifier
 from app.config import Settings
-from app.db.models import BotSettings, ClaimSettings
+from app.db.models import BotSettings, ClaimSettings, PanelUser
 from app.db.session import SessionLocal
 from app.whatsapp.bot import WhatsAppBot
 from app.whatsapp.client import WhatsAppError
@@ -81,6 +84,7 @@ from app.whatsapp.simulator import build_client
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_PATH = "/static"
+SQLADMIN_STATIC_DIR = Path(sqladmin.__file__).parent / "statics"
 BOT_SETTINGS_IDENTITY = "bot-settings"
 CLAIM_SETTINGS_IDENTITY = "claim-settings"
 # In the menu's order: first what the operators use, then the admin-only ones (AdminOnly,
@@ -196,12 +200,59 @@ def _menu_counts(session_maker: sessionmaker) -> Callable[[Request], dict[str, i
     return get
 
 
-def static_version() -> str:
-    """A short hash of the panel's style sheet and script."""
-    digest = hashlib.sha256()
-    for name in ("panel.css", "panel.js"):
-        digest.update((STATIC_DIR / name).read_bytes())
-    return digest.hexdigest()[:10]
+RESCUE_NAME = "Administrador"
+
+
+def _panel_user_name(session_maker: sessionmaker) -> Callable[[Request], str]:
+    """Who is in, at the foot of the menu (and in «Más» on phones): her name in the panel,
+    read once per request. The rescue admin of the .env (no row in the base) is
+    "Administrador"; so is anyone whose row cannot be read."""
+
+    def get(request: Request) -> str:
+        cached = getattr(request.state, "panel_user_name", None)
+        if cached is None:
+            cached = RESCUE_NAME
+            user_id = current_user_id(request)
+            if user_id is not None:
+                try:
+                    with session_maker() as session:
+                        row = session.get(PanelUser, user_id)
+                        if row is not None:
+                            cached = row.display_name or row.username
+                except Exception:
+                    cached = RESCUE_NAME
+            request.state.panel_user_name = cached
+        return cached
+
+    return get
+
+
+def asset_versions() -> dict[str, dict[str, str]]:
+    """The version of every static file, by its mount: a hash of its content, computed once at
+    start-up (app.admin.static_cache)."""
+    return {"panel-static": versions(STATIC_DIR), "statics": versions(SQLADMIN_STATIC_DIR)}
+
+
+def _asset_url(known: dict[str, dict[str, str]]) -> Callable[..., str]:
+    """asset_url('panel-static', 'panel.css') in the templates: its URL with ?v=<its hash>."""
+
+    @pass_context
+    def asset_url(context: Any, mount: str, path: str) -> str:
+        url = context["request"].url_for(f"admin:{mount}", path=path)
+        return f"{url}?v={known[mount][path]}"
+
+    return asset_url
+
+
+def panel_env(settings: Settings) -> dict[str, bool]:
+    """What the environment shows. The technical detail of an error, only when APP_ENV is
+    exactly "development"; the «Desarrollo» label unless APP_ENV is set to "production" (a
+    missing APP_ENV also shows it: an alarm, not a silence)."""
+    explicit = "app_env" in settings.model_fields_set
+    return {
+        "show_details": explicit and settings.app_env == "development",
+        "dev_label": not (explicit and settings.app_env == "production"),
+    }
 
 
 def _install_texts(env: object, timezone: str) -> None:
@@ -219,8 +270,9 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["state"] = labels.state
     env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
     env.globals["menu_groups"] = MENU_GROUPS  # type: ignore[attr-defined]
-    # In the style sheet's and script's URLs: a change reaches every browser (no stale cache).
-    env.globals["static_version"] = static_version()  # type: ignore[attr-defined]
+    env.globals["error_texts"] = errors.texts  # type: ignore[attr-defined]
+    # In every static file's URL (asset_url): a change reaches every browser (no stale cache).
+    env.globals["asset_url"] = _asset_url(asset_versions())  # type: ignore[attr-defined]
 
 
 def setup_admin(
@@ -249,7 +301,20 @@ def setup_admin(
     )
     _install_texts(admin.templates.env, settings.timezone)
     admin.templates.env.globals["menu_counts"] = _menu_counts(session_maker)
+    admin.templates.env.globals["panel_user_name"] = _panel_user_name(session_maker)
+    env_flags = panel_env(settings)
+    admin.templates.env.globals["panel_env"] = env_flags
     auth.templates = admin.templates
+    # Errors in Spanish and in the panel's style (app.admin.errors): SQLAdmin's HTTPException
+    # handler replaced; any other error caught inside the session (the page keeps its menu).
+    admin.admin.exception_handlers[HTTPException] = errors.http_error_handler(
+        admin.templates, env_flags["show_details"]
+    )
+    admin.admin.user_middleware.append(
+        Middleware(
+            errors.ServerErrors, templates=admin.templates, show_details=env_flags["show_details"]
+        )
+    )
     sender = sender_factory or whatsapp_sender(settings)
     conversations: dict[str, object] = {
         "timezone": settings.timezone,
@@ -311,10 +376,22 @@ def setup_admin(
     routes = admin.admin.router.routes
     routes[:] = [r for r in routes if getattr(r, "name", None) != "index"]
     routes.insert(0, Route("/", endpoint=_home, name="index"))
-    routes.insert(0, Mount(STATIC_PATH, StaticFiles(directory=STATIC_DIR), name="panel-static"))
+    # Static files with a long cache when versioned, gzip only for text (app.admin.static_cache).
+    routes[:] = [
+        Mount(r.path, StaticCache(r.app), name="statics")
+        if isinstance(r, Mount) and r.name == "statics"
+        else r
+        for r in routes
+    ]
+    routes.insert(
+        0, Mount(STATIC_PATH, StaticCache(StaticFiles(directory=STATIC_DIR)), name="panel-static")
+    )
     # The guide's pictures (invented data only: they are in the repository).
     routes.insert(
-        0, Mount("/guide-files", StaticFiles(directory=GUIDE_FILES_DIR), name="guide-files")
+        0,
+        Mount(
+            "/guide-files", StaticCache(StaticFiles(directory=GUIDE_FILES_DIR)), name="guide-files"
+        ),
     )
     # Before SQLAdmin's "/{identity}/list".
     for identity, model in (

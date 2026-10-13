@@ -32,6 +32,7 @@ from sqladmin.flash import Flash
 from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
@@ -1025,7 +1026,7 @@ class ClaimsView(BaseView):
                 select(Claim.id).where(Claim.number == request.path_params["number"])
             )
         if claim_id is None:
-            return Response("Reclamo inexistente", status_code=404)
+            raise HTTPException(status_code=404)
         return _redirect(request, "claim", claim_id=claim_id)
 
     async def _fragment(self, request: Request, name: str, context: dict[str, Any]) -> Response:
@@ -1064,7 +1065,7 @@ class ClaimsView(BaseView):
         with self.session_maker() as session:
             claim = load_claim(session, request.path_params["claim_id"])
             if claim is None:
-                return Response("Reclamo inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             context = self._detail_context(session, claim)
             return await self._page(request, "claim.html", f"Reclamo #{claim.number}", **context)
 
@@ -1089,7 +1090,7 @@ class ClaimsView(BaseView):
         with self.session_maker() as session:
             claim = session.get(Claim, claim_id, with_for_update=True)
             if claim is None:
-                return Response("Reclamo inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             try:
                 extra = action(session, claim, form)
             except ClaimProblem as exc:

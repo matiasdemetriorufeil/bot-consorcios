@@ -16,7 +16,7 @@
 <div class="col-12 col-xl-7">
   <div class="panel-stack">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">{{ c.category.list_title }}</h3></div>
+    <div class="card-header"><h2 class="card-title">{{ c.category.list_title }}</h2></div>
     <div class="card-body">
       <dl class="row mb-0 claim-data">
         <dt class="col-5 col-sm-4">Edificio</dt><dd class="col-7 col-sm-8">{{ page.building }}</dd>
@@ -44,7 +44,7 @@
   </div>
 
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Quién reclamó</h3></div>
+    <div class="card-header"><h2 class="card-title">Quién reclamó</h2></div>
     <div class="list-group list-group-flush" id="claim-reporters">
       {% for p in [page.reporter] + page.joined %}
       <div class="list-group-item">
@@ -64,7 +64,7 @@
 
   {% if page.photos %}
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Fotos</h3></div>
+    <div class="card-header"><h2 class="card-title">Fotos</h2></div>
     <div class="card-body claim-photos">
       {% for photo in page.photos %}
       {% set src = url_for('admin:view-wa-media', message_id=photo.message_id) %}
@@ -89,7 +89,7 @@
       refuse a hidden required field before the dialog opens; the dialog and the server check
       them. -#}
   <div class="card" id="claim-actions">
-    <div class="card-header"><h3 class="card-title">Qué hacer</h3></div>
+    <div class="card-header"><h2 class="card-title">Qué hacer</h2></div>
     <div class="card-body">
       {% if page.attention %}
       <div class="alert alert-warning" id="claim-attention">{{ page.attention }}.</div>
@@ -187,7 +187,7 @@
   {% endif %}
 
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Historia</h3></div>
+    <div class="card-header"><h2 class="card-title">Historia</h2></div>
     <ol class="list-group list-group-flush claim-history" id="claim-history">
       {% for e in page.events %}
       <li class="list-group-item claim-event-{{ e.kind }}">

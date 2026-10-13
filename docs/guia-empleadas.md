@@ -37,11 +37,16 @@ y aparece un aviso cuando entra una conversación a «Esperando persona», un re
 reclamo que necesita atención. Si los avisos están apagados, una franja arriba te lo recuerda.
 El navegador solo deja sonar después de que tocaste algo en la página: al cambiar de pantalla,
 con el primer clic ya queda listo. El número entre paréntesis en la pestaña del navegador
-(«(3) Panel…») te dice cuántas cosas esperan aunque estés en otra pestaña.
+(«(3) Pendientes · Panel…») te dice cuántas cosas esperan aunque estés en otra pestaña.
 
 **En el celular:** abajo hay una barra con **Pendientes**, **Conversaciones**, **Reclamos** y
 **Más** (Teléfonos, Verificaciones, Reservas de SUM, Guía y Salir), con los mismos números. Los
 avisos son la campana de arriba: si está tachada, tocala para activarlos.
+
+**Como una app en el celular:** en el navegador del celular, elegí **Agregar a inicio** (en el
+iPhone, desde el botón de compartir de Safari). Queda un ícono «DR» que abre el panel a
+pantalla completa; para volver, usá **← Volver** en cada ficha o la barra de abajo. Si lo
+agregaste al inicio del iPhone, la primera vez ingresá de nuevo con tu usuario.
 
 **Al aprobar, rechazar o cerrar algo**, la página no se recarga: la fila se va o el bloque se
 actualiza, y abajo aparece un aviso chico que se va solo. Si algo sale mal, el aviso queda

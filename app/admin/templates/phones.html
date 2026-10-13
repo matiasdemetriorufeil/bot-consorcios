@@ -1,4 +1,5 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
 {% set approve_many_url = url_for('admin:view-phones-approve') %}
 <div class="col-12">
@@ -70,8 +71,8 @@
       <table class="table table-vcenter card-table rows-table" id="phones">
         <thead>
           <tr>
-            {% if result.tab == 'review' %}<th class="w-1"></th>{% endif %}
-            <th>Teléfono</th><th>Persona</th><th>Unidades</th><th>Origen</th><th>Estado</th><th>Fecha</th><th></th>
+            {% if result.tab == 'review' %}<th class="w-1"><span class="visually-hidden">Elegir</span></th>{% endif %}
+            <th>Teléfono</th><th>Persona</th><th>Unidades</th><th>Origen</th><th>Estado</th><th>Fecha</th><th><span class="visually-hidden">Acciones</span></th>
           </tr>
         </thead>
         <tbody>
@@ -82,11 +83,9 @@
       </table>
     </div>
     {% else %}
-    <div class="card-body text-secondary">
-      <p class="empty-help mb-0">{% if result.query or result.status or result.source %}{{ empty_texts['phones:search'] }}
-      {% elif result.tab == 'review' %}{{ empty_texts['phones:review'] }}
-      {% else %}{{ empty_texts['phones:all'] }}{% endif %}</p>
-    </div>
+    {{ empty_state(empty_texts['phones:search'] if result.query or result.status or result.source
+                   else empty_texts['phones:review'] if result.tab == 'review' else empty_texts['phones:all'],
+                   'fa-address-book') }}
     {% endif %}
 
     <div class="card-footer d-flex flex-wrap align-items-center gap-2">

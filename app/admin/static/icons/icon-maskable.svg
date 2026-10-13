@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The logo for «Agregar a inicio»: full bleed (the phone cuts its own shape), «DR» inside
+       the central 80 % that every mask keeps. Source of icons/maskable-*.png and
+       apple-touch-icon-180.png. -->
+  <rect width="64" height="64" fill="#1f5f7a"/>
+  <text x="32" y="39.5" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif"
+        font-size="20" font-weight="700" fill="#ffffff" letter-spacing="1">DR</text>
+</svg>

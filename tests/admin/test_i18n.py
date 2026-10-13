@@ -205,7 +205,7 @@ def test_every_list_has_a_page_title(
     logged_in: Panel, data: dict[str, int], url: str, title: str
 ) -> None:
     page = logged_in.client.get(url).text
-    assert f'<h2 class="page-title">{title}</h2>' in page
+    assert f'<h1 class="page-title">{title}</h1>' in page
 
 
 # --- Login ------------------------------------------------------------------------------------
@@ -213,7 +213,7 @@ def test_every_list_has_a_page_title(
 
 def test_the_login_page(panel: Panel) -> None:
     page = panel.client.get("/admin/login").text
-    for text in ("Ingresar al panel del Estudio Diego Rufeil", "Usuario", "Contraseña"):
+    for text in ("Estudio Diego Rufeil", "Usuario", "Contraseña"):
         assert text in page
     assert re.search(r">\s*Ingresar\s*</button>", page)
     assert english_in(page) == []
@@ -339,4 +339,4 @@ def test_the_style_sheet_logo_and_favicon(logged_in: Panel) -> None:
     for name in ("panel.css", "panel.js", "logo.svg"):
         assert logged_in.client.get(f"/admin/static/{name}").status_code == 200
     page = logged_in.client.get("/admin/conversations").text
-    assert '<link rel="icon" href="/admin/static/logo.svg">' in page
+    assert re.search(r'<link rel="icon" href="[^"]*/admin/static/logo\.svg\?v=\w{10}"', page)

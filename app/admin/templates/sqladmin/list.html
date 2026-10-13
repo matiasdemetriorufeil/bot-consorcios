@@ -1,7 +1,49 @@
 {#- Copy of SQLAdmin 0.32.0's sqladmin/list.html (pinned in pyproject.toml), changed for this
     panel: "Acciones" only with batch actions, row buttons with their text, filters folded
-    and one card per row on phones (data-label). tests/admin/test_sqladmin_pin.py fails when the original changes. -#}
+    and one card per row on phones (data-label); since 5f.1 its buttons beside the page's title
+    (not repeated in the card), the empty block of the panel and long text cut on computers. tests/admin/test_sqladmin_pin.py fails when the original changes. -#}
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
+{#- The page's buttons (export, import, «+ Nuevo») beside its title, like the panel's own pages
+    (layout.html header_actions): the card no longer repeats the title. -#}
+{% block header_actions %}
+<div class="col-auto d-flex flex-wrap gap-2">
+  {% block model_menu_bar %}
+  {% if model_view.can_export and model_view.check_can_export(request) %}
+  {% if model_view.export_types | length > 1 %}
+  <div class="dropdown">
+    <a href="#" class="btn btn-secondary dropdown-toggle" id="dropdownMenuButton1"
+      data-bs-toggle="dropdown" aria-expanded="false">
+      {{ _("Export") }}
+    </a>
+    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
+      {% for export_type in model_view.export_types %}
+      <li><a class="dropdown-item"
+          href="{{ url_for('admin:export', identity=model_view.identity, export_type=export_type) }}">{{
+          export_type | upper }}</a></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% elif model_view.export_types | length == 1 %}
+    <a href="{{ url_for('admin:export', identity=model_view.identity, export_type=model_view.export_types[0]) }}"
+      class="btn btn-secondary">
+      {{ _("Export") }}
+    </a>
+  {% endif %}
+  {% endif %}
+  {% if can_import %}
+    <a class="btn btn-primary" id="action-import" href="#" data-name="{{ model_view.name }}"
+      data-url="{{ url_for('admin:import', identity=model_view.identity) }}" data-bs-toggle="modal"
+      data-bs-target="#modal-import">{{ _("Import CSV") }}</a>
+  {% endif %}
+  {% if model_view.can_create and model_view.check_can_create(request) %}
+    <a href="{{ url_for('admin:create', identity=model_view.identity) }}" class="btn btn-primary">
+      + {{ _("New %(name)s", name=model_view.name) }}
+    </a>
+  {% endif %}
+  {% endblock %}
+</div>
+{% endblock %}
 {% block content %}
 {% set show_rows = can_list is not defined or can_list %}
 {% set can_delete_any = show_rows and model_view._can_delete_any(request) %}
@@ -12,53 +54,7 @@
       <div class="d-flex flex-column-reverse flex-lg-row gap-3 min-w-0">
         <div class="flex-grow-1 min-w-0">
           <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">{{ model_view.name_plural }}</h3>
-              <div class="ms-auto">
-                {% block model_menu_bar %}
-                {% if model_view.can_export and model_view.check_can_export(request) %}
-                {% if model_view.export_types | length > 1 %}
-                <div class="ms-3 d-inline-block dropdown">
-                  <a href="#" class="btn btn-secondary dropdown-toggle" id="dropdownMenuButton1"
-                    data-bs-toggle="dropdown" aria-expanded="false">
-                    {{ _("Export") }}
-                  </a>
-                  <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
-                    {% for export_type in model_view.export_types %}
-                    <li><a class="dropdown-item"
-                        href="{{ url_for('admin:export', identity=model_view.identity, export_type=export_type) }}">{{
-                        export_type | upper }}</a></li>
-                    {% endfor %}
-                  </ul>
-                </div>
-                {% elif model_view.export_types | length == 1 %}
-                <div class="ms-3 d-inline-block">
-                  <a href="{{ url_for('admin:export', identity=model_view.identity, export_type=model_view.export_types[0]) }}"
-                    class="btn btn-secondary">
-                    {{ _("Export") }}
-                  </a>
-                </div>
-                {% endif %}
-                {% endif %}
-                {% if can_import %}
-                <div class="ms-3 d-inline-block">
-                  <a class="btn btn-primary" id="action-import" href="#" data-name="{{ model_view.name }}"
-                    data-url="{{ url_for('admin:import', identity=model_view.identity) }}" data-bs-toggle="modal"
-                    data-bs-target="#modal-import">{{ _("Import CSV") }}</a>
-                </div>
-                {% endif %}
-                {% if model_view.can_create and model_view.check_can_create(request) %}
-                <div class="ms-3 d-inline-block">
-                  <a href="{{ url_for('admin:create', identity=model_view.identity) }}" class="btn btn-primary">
-                    + {{ _("New %(name)s", name=model_view.name) }}
-                  </a>
-                </div>
-                {% endif %}
-                {% endblock %}
-              </div>
-
-            </div>
-            <div class="card-body border-bottom py-3">
+            <div class="card-body border-bottom">
               <div class="row">
                 {% if error %}
                 <div class="alert alert-danger" role="alert">{{ error }}</div>
@@ -110,9 +106,9 @@
                       data-search-auto-submit="{{ 'true' if model_view.search_auto_submit else 'false' }}"
                       placeholder="{{ _('Search') }}: {{ model_view.search_placeholder() }}"
                       value="{{ request.query_params.get('search', '') }}">
-                    <button id="search-button" class="btn" type="button">{{ _("Search") }}</button>
-                    <button id="search-reset" class="btn" type="button" {% if not request.query_params.get('search')
-                      %}disabled{% endif %}><i class="fa-solid fa-times"></i></button>
+                    <button id="search-button" class="btn btn-secondary" type="button">{{ _("Search") }}</button>
+                    <button id="search-reset" class="btn btn-secondary" type="button" aria-label="Borrar la búsqueda" {% if not request.query_params.get('search')
+                      %}disabled{% endif %}><i class="fa-solid fa-times" aria-hidden="true"></i></button>
                   </div>
                 </div>
                 {% endif %}
@@ -129,19 +125,19 @@
                     <th class="w-1"><input class="form-check-input m-0 align-middle" type="checkbox"
                         aria-label="{{ _('Select all') }}" id="select-all"></th>
                     {% endif %}
-                    <th class="w-1"></th>
+                    <th class="w-1"><span class="visually-hidden">Ver y editar</span></th>
                     {% for name in model_view._list_prop_names %}
                     {% set label = model_view._column_labels.get(name, name) %}
                     <th>
                       {% if name in model_view._sort_fields %}
                       {% if request.query_params.get("sortBy") == name and request.query_params.get("sort") == "asc" %}
-                      <a href="{{ request.url.include_query_params(sort='desc') }}"><i class="fa-solid fa-arrow-up"></i>
+                      <a href="{{ request.url.include_query_params(sort='desc') }}"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
                         {{
                         label }}</a>
                       {% elif request.query_params.get("sortBy") == name and request.query_params.get("sort") == "desc"
                       %}
                       <a href="{{ request.url.include_query_params(sort='asc') }}"><i
-                          class="fa-solid fa-arrow-down"></i> {{ label
+                          class="fa-solid fa-arrow-down" aria-hidden="true"></i> {{ label
                         }}</a>
                       {% else %}
                       <a href="{{ request.url.include_query_params(sortBy=name, sort='asc') }}">{{ label }}</a>
@@ -166,16 +162,16 @@
                     <td class="list-row-buttons">
                       {% if model_view.check_can_view_details(request, row) %}
                       <a href="{{ model_view._build_url_for('admin:details', request, row) }}"
-                        class="btn btn-sm btn-secondary"><i class="fa-solid fa-eye me-1"></i>{{ _('View') }}</a>
+                        class="btn btn-sm btn-secondary"><i class="fa-solid fa-eye" aria-hidden="true"></i>{{ _('View') }}</a>
                       {% endif %}
                       {% if model_view.check_can_edit(request, row) %}
                       <a href="{{ model_view._build_url_for('admin:edit', request, row) }}{% if request.url.query %}?{{ request.url.query }}{% endif %}"
-                        class="btn btn-sm btn-primary"><i class="fa-solid fa-pen-to-square me-1"></i>{{ _('Edit') }}</a>
+                        class="btn btn-sm btn-primary"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>{{ _('Edit') }}</a>
                       {% endif %}
                       {% if model_view.check_can_delete(request, row) %}
                       <a href="#" data-name="{{ model_view.name }}" data-pk="{{ get_object_identifier(row) }}"
                         data-url="{{ model_view._url_for_delete(request, row) }}" data-bs-toggle="modal"
-                        data-bs-target="#modal-delete" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash me-1"></i>{{ _('Delete') }}</a>
+                        data-bs-target="#modal-delete" class="btn btn-sm btn-link-danger"><i class="fa-solid fa-trash" aria-hidden="true"></i>{{ _('Delete') }}</a>
                       {% endif %}
                     </td>
                     {% for name in model_view._list_prop_names %}
@@ -204,22 +200,22 @@
                     <td data-label="{{ cell_label }}"><a href="{{ model_view._url_for_details_with_prop(request, row, name) }}">{{ formatted_value
                         }}</a></td>
                     {% else %}
-                    <td data-label="{{ cell_label }}">{{ formatted_value }}</td>
+                    <td data-label="{{ cell_label }}"><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
                     {% endif %}
                     {% endif %}
                     {% else %}
-                    <td data-label="{{ cell_label }}">{{ formatted_value }}</td>
+                    <td data-label="{{ cell_label }}"><span class="cell-cut" {% if formatted_value is string and formatted_value | length > 30 %}title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span></td>
                     {% endif %}
                     {% endfor %}
                   </tr>
                   {% else %}
-                  <tr class="list-empty"><td colspan="99"><p class="empty-help mb-0">{{ empty_for(model_view.identity) }}</p></td></tr>
+                  <tr class="list-empty"><td colspan="99">{{ empty_state(empty_for(model_view.identity)) }}</td></tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
             {% endblock %}
-            <div class="card-footer d-flex justify-content-between align-items-center gap-2">
+            <div class="card-footer list-footer">
               <p class="m-0 text-muted">
                 {{ _("Showing %(start)s to %(end)s of %(count)s items",
                 start=((pagination.page - 1) * pagination.page_size) + 1,
@@ -233,7 +229,7 @@
                     {% else %}
                     <a class="page-link" href="#">
                       {% endif %}
-                      <i class="fa-solid fa-chevron-left"></i>
+                      <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                       {{ _("prev") }}
                     </a>
                 </li>
@@ -248,13 +244,13 @@
                     <a class="page-link" href="#">
                       {% endif %}
                       {{ _("next") }}
-                      <i class="fa-solid fa-chevron-right"></i>
+                      <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                     </a>
                 </li>
               </ul>
               <div class="dropdown text-muted">
                 {{ _("Show") }}
-                <a href="#" class="btn btn-sm btn-light dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true"
+                <a href="#" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true"
                   aria-expanded="false">
                   {{ _("%(size)s / Page", size=request.query_params.get("pageSize") or model_view.page_size) }}
                 </a>
@@ -275,7 +271,7 @@
         <div class="col-lg-3 filter-sidebar-col">
           <details id="filter-sidebar" class="card list-filters-card" data-open-wide>
             <summary class="card-header">
-              <h3 class="card-title">{{ _("Filters") }}</h3>
+              <h2 class="card-title">{{ _("Filters") }}</h2>
             </summary>
             <div class="card-body">
               {% for filter in model_view.get_filters() %}

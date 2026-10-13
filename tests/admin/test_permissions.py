@@ -381,7 +381,7 @@ def test_the_403_page_of_an_admin_is_not_about_admins(boss: Panel, ids: Ids) -> 
 def test_an_error_page_without_login_has_no_menu(panel: Panel) -> None:
     response = panel.client.get("/admin/no-existe")
     assert response.status_code == 404
-    assert "No se encontró esta página." in response.text
+    assert "No encontramos esa página" in response.text
     assert "navbarSupportedContent" not in response.text
 
 

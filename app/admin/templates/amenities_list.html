@@ -1,9 +1,10 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
 <div class="col-12">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Edificios con SUM</h3>
+      <h2 class="card-title">Edificios con SUM</h2>
     </div>
     {% if rows %}
     <div class="list-group list-group-flush" id="amenities">
@@ -38,14 +39,14 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="card-body"><p class="empty-help mb-0">{{ empty_texts['amenities:admin' if is_admin else 'amenities:operator'] }}</p></div>
+    {{ empty_state(empty_texts['amenities:admin' if is_admin else 'amenities:operator'], 'fa-calendar-days') }}
     {% endif %}
   </div>
 </div>
 {% if is_admin %}
 <div class="col-12 col-lg-6">
   <div class="card">
-    <div class="card-header"><h3 class="card-title">Agregar el SUM a un edificio</h3></div>
+    <div class="card-header"><h2 class="card-title">Agregar el SUM a un edificio</h2></div>
     <div class="card-body">
       {% if buildings %}
       <form method="POST" action="{{ url_for('admin:view-amenity-new') }}" class="row g-2">

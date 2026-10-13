@@ -13,6 +13,7 @@ from sqladmin.flash import Flash
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -191,7 +192,7 @@ class UsersView(AdminOnly, BaseView):
         with self.session_maker() as session:
             user = session.get(PanelUser, user_id)
             if user is None:
-                return Response("Usuario inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             if request.method == "POST":
                 try:
                     message = update_user(

@@ -20,6 +20,7 @@ from sqladmin.flash import Flash
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
+from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
@@ -366,7 +367,7 @@ class AmenitiesView(BaseView):
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
-                return Response("SUM inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             if request.method == "POST":
                 try:
                     changed = update_amenity(
@@ -401,7 +402,7 @@ class AmenitiesView(BaseView):
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
-                return Response("SUM inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             user = admin_user(request)
             try:
                 if form.get("copy_from") is not None:
@@ -443,7 +444,7 @@ class AmenitiesView(BaseView):
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
-                return Response("SUM inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             try:
                 remove_slot(
                     session,
@@ -474,7 +475,7 @@ class AmenitiesView(BaseView):
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
-                return Response("SUM inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             cells = availability(
                 session, amenity, days[0], days[-1], now=self.now(), timezone=self.timezone
             )
@@ -531,10 +532,10 @@ class AmenitiesView(BaseView):
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
-                return Response("SUM inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             slot = session.get(AmenitySlot, slot_id) if slot_id else None
             if slot is None or slot.amenity_id != amenity.id or day is None:
-                return Response("Turno inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             error: BookingError | None = None
             unit_id = _int(source.get("unit_id"))
             notes = str(source.get("notes", ""))
@@ -636,7 +637,7 @@ class AmenitiesView(BaseView):
                 )
             )
             if reservation is None:
-                return Response("Reserva inexistente", status_code=404)
+                raise HTTPException(status_code=404)
             error = None
             if request.method == "POST":
                 form = await request.form()

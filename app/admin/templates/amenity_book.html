@@ -5,7 +5,7 @@
     <input type="hidden" name="slot" value="{{ slot.id }}">
     <input type="hidden" name="date" value="{{ day.isoformat() }}">
     <div class="card-header">
-      <h3 class="card-title">{{ weekdays[day.weekday()] }} {{ day.strftime("%d/%m/%Y") }} · {{ slot_text }}</h3>
+      <h2 class="card-title">{{ weekdays[day.weekday()] }} {{ day.strftime("%d/%m/%Y") }} · {{ slot_text }}</h2>
     </div>
     <div class="card-body">
       {% if error %}

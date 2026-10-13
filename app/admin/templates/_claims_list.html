@@ -1,5 +1,6 @@
 {#- The list of «Reclamos» (the page and, redrawn, GET /admin/claims?...&partial=1): the tabs
     with their numbers, one line per claim on a computer (a card on a phone) and the footer. -#}
+{% from "sqladmin/_macros.html" import empty_state %}
 {% set f = result.filters %}
 <div class="card-header">
   <ul class="nav nav-tabs card-header-tabs" id="claim-tabs">
@@ -29,7 +30,12 @@
         <td data-label="Lo atiende">{{ row.attends }}</td>
         <td data-label="Estado">
           <span class="state state-{{ row.group }}" title="{{ row.status_long }}">{{ row.status_label }}</span>
-          <div class="claim-row-sub">{{ row.ago }}{% if row.attention %} · <span class="claim-row-attention">{{ row.attention }}</span>{% endif %}</div>
+          {#- How long ago and, on its own line, why it needs someone: cut with «…» on a computer
+              (the whole text in title), whole on a phone. -#}
+          <div class="claim-row-more">
+            <div class="claim-row-sub">{{ row.ago }}</div>
+            {% if row.attention %}<div class="claim-row-attention cell-cut" title="{{ row.attention }}">{{ row.attention }}</div>{% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -37,9 +43,7 @@
   </table>
 </div>
 {% else %}
-<div class="card-body text-secondary">
-  <p class="empty-help mb-0">{% if f.query or f.any_filter %}{{ empty_texts['claims:search'] }}{% else %}{{ empty_texts['claims:' ~ f.tab] }}{% endif %}</p>
-</div>
+{{ empty_state(empty_texts['claims:search'] if f.query or f.any_filter else empty_texts['claims:' ~ f.tab], 'fa-screwdriver-wrench') }}
 {% endif %}
 <div class="card-footer d-flex flex-wrap align-items-center gap-2">
   <span class="small text-secondary">{{ result.total }} reclamo(s){% if result.pages > 1 %} · página {{ f.page }} de {{ result.pages }}{% endif %}</span>
