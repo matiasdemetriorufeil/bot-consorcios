@@ -270,7 +270,21 @@ def test_the_list_of_buildings(logged_in: Panel) -> None:
     assert help.PAGE_HELP["view-building-claims"] in page
     row = page.split("TORRE INVENTADA", 1)[1].split("</tr>", 1)[0]
     assert re.findall(r"<td[^>]*>(\d+)</td>", row)[:1] == ["2"]
-    assert 'state-waiting">1<' in row
+    assert re.search(r'state-waiting">(<i [^>]*></i>)?1<', row)  # 5g: with its warning icon
+
+
+def test_the_list_of_buildings_narrows(logged_in: Panel) -> None:
+    """5g: the search and the filters only narrow the rows (Con pendientes: without provider)."""
+    s = _setup(logged_in.session)
+    cf.assign(logged_in.session, s["building"].id, s["water"])
+    logged_in.session.commit()
+    get = logged_in.client.get
+    assert "OTRA FICTICIA" not in _text(get("/admin/building-claims?q=torre").text)
+    assert "TORRE INVENTADA" in _text(get("/admin/building-claims?q=torre").text)
+    pending = _text(get("/admin/building-claims?provider=pending").text)
+    assert "TORRE INVENTADA" in pending and "OTRA FICTICIA" not in pending
+    page = get("/admin/building-claims?bot=yes&q=nada").text
+    assert "Ningún edificio coincide" in page and 'class="segmented-item active"' in page
 
 
 def test_the_table_of_a_building(logged_in: Panel) -> None:

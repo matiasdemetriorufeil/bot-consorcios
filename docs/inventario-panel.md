@@ -45,6 +45,15 @@ Solo cambia cómo se ve Pendientes; los números, los permisos y los links son l
     SQLAdmin;
   - al pie, «N registros» y las páginas;
   - ya no se puede borrar varios a la vez (no había casillas en el diseño).
+- **Reclamos por edificio** (`templates/building_claims_list.html`, con las mismas clases):
+  - un buscador de edificio (`?q=`) y dos filtros: Sin proveedor (Todos / Con pendientes,
+    `?provider=pending`) y Reclamos por el bot (Todos / Sí / No, `?bot=yes|no`). Achican las
+    filas que ya arma la vista, en el template, sin otra consulta;
+  - las cuentas van centradas: en negrita si hay, el 0 en gris, y «Sin proveedor» como etiqueta
+    naranja con un triángulo;
+  - el bot se muestra como ✓ o ✗;
+  - «Configurar» va bajo «Acciones»;
+  - al pie, cuántos edificios se ven.
 
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 

@@ -1,31 +1,77 @@
+{#- «Reclamos por edificio» (app.admin.claims_setup): every active building, how many problems
+    it has on and how many of them without a provider. Drawn like «Edificios» (5g, its same
+    classes): the search and the filters (?q=, ?provider=pending, ?bot=yes|no) narrow the rows
+    the view already gives, here, without another query. -#}
 {% extends "sqladmin/layout.html" %}
 {% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
-<div class="col-12 col-xl-9">
-  <div class="card">
-    <div class="card-header"><h2 class="card-title">Edificios</h2></div>
+{% set q = request.query_params.get('q', '').strip() %}
+{% set provider = request.query_params.get('provider', '') %}
+{% set bot = request.query_params.get('bot', '') %}
+{% set shown = namespace(rows=[]) %}
+{% for row in rows %}
+{% if (not q or q | lower in row.name | lower)
+   and (provider != 'pending' or row.studio)
+   and (bot not in ('yes', 'no') or row.building.claims_bot_enabled == (bot == 'yes')) %}
+{% set shown.rows = shown.rows + [row] %}
+{% endif %}
+{% endfor %}
+{% macro segment(param, value, text, current) %}
+{% set href = request.url.remove_query_params(param) if not value else request.url.include_query_params(**{param: value}) %}
+<a class="segmented-item{{ ' active' if current == value }}" href="{{ href }}"{% if current == value %} aria-current="true"{% endif %}>{{ text }}</a>
+{% endmacro %}
+<div class="col-12">
+  <div class="card building-list">
+    <div class="card-body building-list-top">
+      <div class="building-search">
+        <form class="building-search-field" method="get" action="{{ request.url.path }}" role="search">
+          {% if provider %}<input type="hidden" name="provider" value="{{ provider }}">{% endif %}
+          {% if bot %}<input type="hidden" name="bot" value="{{ bot }}">{% endif %}
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" name="q" class="form-control" aria-label="Buscar edificio" placeholder="Buscar edificio" value="{{ q }}">
+        </form>
+        <div class="building-filter" role="group" aria-label="Sin proveedor">
+          <span class="building-filter-title" aria-hidden="true">Sin proveedor</span>
+          <div class="segmented">
+            {{ segment('provider', '', 'Todos', provider if provider == 'pending' else '') }}
+            {{ segment('provider', 'pending', 'Con pendientes', provider) }}
+          </div>
+        </div>
+        <div class="building-filter" role="group" aria-label="Reclamos por el bot">
+          <span class="building-filter-title" aria-hidden="true">Reclamos por el bot</span>
+          <div class="segmented">
+            {% set bot_now = bot if bot in ('yes', 'no') else '' %}
+            {{ segment('bot', '', 'Todos', bot_now) }}
+            {{ segment('bot', 'yes', 'Sí', bot_now) }}
+            {{ segment('bot', 'no', 'No', bot_now) }}
+          </div>
+        </div>
+        {% if q %}<a class="btn btn-link" href="{{ request.url.remove_query_params('q') }}">Borrar la búsqueda</a>{% endif %}
+      </div>
+    </div>
     <div class="table-responsive">
-      <table class="table table-vcenter card-table rows-table" id="building-claims">
-        <thead><tr><th>Edificio</th><th>Problemas habilitados</th><th>Sin proveedor</th><th>Reclamos por el bot</th><th><span class="visually-hidden">Acciones</span></th></tr></thead>
+      <table class="table table-vcenter card-table rows-table building-table" id="building-claims">
+        <thead><tr><th>Edificio</th><th class="text-center">Problemas habilitados</th><th class="text-center">Sin proveedor</th><th class="text-center">Reclamos por el bot</th><th class="text-end">Acciones</th></tr></thead>
         <tbody>
-          {% for row in rows %}
+          {% for row in shown.rows %}
           <tr>
-            <td data-label="Edificio">{{ row.name }}</td>
-            <td data-label="Problemas habilitados">{{ row.enabled }}</td>
-            <td data-label="Sin proveedor">{% if row.studio %}<span class="state state-waiting">{{ row.studio }}</span>{% else %}0{% endif %}</td>
-            <td data-label="Reclamos por el bot">{% if row.building.claims_bot_enabled %}<span class="state state-ok">Sí</span>{% else %}No{% endif %}</td>
-            <td class="row-actions">
-              <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-building-claims-table', building_id=row.building.id) }}"><i class="fa-solid fa-pen-to-square me-1"></i>Configurar</a>
+            <td data-label="Edificio" class="building-cell-name">{{ row.name }}</td>
+            <td data-label="Problemas habilitados" class="text-center{{ ' building-count-on' if row.enabled else ' building-count-off' }}">{{ row.enabled }}</td>
+            <td data-label="Sin proveedor" class="text-center{{ '' if row.studio else ' building-count-off' }}">{% if row.studio %}<span class="state state-waiting"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>{{ row.studio }}</span>{% else %}0{% endif %}</td>
+            <td data-label="Reclamos por el bot" class="text-center">{% if row.building.claims_bot_enabled %}<i class="fa fa-check text-success" aria-hidden="true"></i><span class="visually-hidden">Sí</span>{% else %}<i class="fa fa-times text-danger" aria-hidden="true"></i><span class="visually-hidden">No</span>{% endif %}</td>
+            <td class="row-actions building-row-actions">
+              <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-building-claims-table', building_id=row.building.id) }}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Configurar</a>
             </td>
           </tr>
           {% else %}
-          <tr class="list-empty"><td colspan="5">{{ empty_state(empty_texts['building-claims'], 'fa-building') }}</td></tr>
+          <tr class="list-empty"><td colspan="5">{{ empty_state(empty_texts['building-claims'] if not rows else 'Ningún edificio coincide con la búsqueda o los filtros.', 'fa-building') }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <div class="card-footer small text-secondary">
-      «Reclamos por el bot» se prende o se apaga en Edificios.
+    <div class="card-footer building-list-foot">
+      <span>{{ shown.rows | length }} edificio{{ 's' if shown.rows | length != 1 }}</span>
+      <span>«Reclamos por el bot» se prende o se apaga en Edificios.</span>
     </div>
   </div>
 </div>
