@@ -88,7 +88,8 @@ def test_all_tab_shows_every_phone_with_person_units_and_status(
     page = _page(logged_in, tab="all")
     assert _shown(page) == set(ALL)
     assert "Ana Inventada" in page
-    assert "1A (propietario)" in page and "2B (inquilino)" in page
+    # The role may break after its slash (<wbr>: a narrow column at 1024 px).
+    assert "1A (propietario/<wbr>a)" in page and "2B (inquilino/<wbr>a)" in page
     assert "Por WhatsApp" in page and "ConsorPlus" in page
     assert "+549" not in page
     for status in ("Verificado", "A revisar", "En conflicto", "Sin verificar"):

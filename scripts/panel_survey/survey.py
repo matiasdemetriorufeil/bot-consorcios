@@ -105,6 +105,8 @@ def pages() -> list[tuple[str, str, str]]:
         ("05-reclamos", "/admin/claims", "op"),
         ("06-reclamo", f"/admin/claims/{claim}", "op"),
         ("07-nuevo-reclamo", "/admin/claims/new", "op"),
+        ("07b-vecinos", f"/admin/neighbors?building_id={building}", "op"),
+        ("07c-vecinos-busqueda", "/admin/neighbors?q=ejemplo", "op"),
         ("08-telefonos", "/admin/phones", "op"),
         ("09-verificaciones", "/admin/verifications", "op"),
         ("10-aprobar-verificacion", f"/admin/verifications/{verification}/approve", "op"),
@@ -139,6 +141,7 @@ def pages() -> list[tuple[str, str, str]]:
         ("43-chat-de-prueba", "/admin/dev-chat", "admin"),
         ("44-configuracion-sum", f"/admin/amenities/{amenity}/config", "admin"),
         ("45-pendientes-admin", "/admin/pending", "admin"),
+        ("47-vecinos-admin", f"/admin/neighbors?building_id={building}", "admin"),
         ("46-error-403", "/admin/users", "op"),
     ]  # fmt: skip
 

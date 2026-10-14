@@ -38,8 +38,8 @@ def test_handoff_note() -> None:
     assert note.splitlines() == [
         "🤖 Derivado por el bot",
         "Motivo: Quiere un plan de pago · Prioridad: normal",
-        "Quién escribe: Ana Prueba — RODAS II 04-C (propietario); RODAS II Cochera 3 "
-        "(propietario); PEÑA ALTA 01-A (inquilino)",
+        "Quién escribe: Ana Prueba — RODAS II 04-C (propietario/a); RODAS II Cochera 3 "
+        "(propietario/a); PEÑA ALTA 01-A (inquilino/a)",
         "Identificación: teléfono del canal (confiable)",
         "Resumen: Quiere pagar en cuotas.",
     ]

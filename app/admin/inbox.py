@@ -112,7 +112,7 @@ class UnitLine:
     unit_id: int
     building: str
     label: str
-    role: str  # labels.PERSON_ROLE: "propietario", "inquilino", "familiar u otro"
+    role: str  # labels.PERSON_ROLE: "propietario/a", "inquilino/a", "familiar u otro"
 
     @property
     def text(self) -> str:

@@ -766,7 +766,7 @@ def test_trim_history_never_starts_with_a_tool_result() -> None:
 
 def test_context_lists_the_unit_id_of_own_units(world: World) -> None:
     text = describe_identity(identify_by_phone(world.session, OWNER_PHONE))
-    assert f"RODAS II 04-C (unit_id {world.unit_id}, propietario)" in text
+    assert f"RODAS II 04-C (unit_id {world.unit_id}, propietario/a)" in text
 
 
 def test_context_and_tools_name_the_resident_role(world: World) -> None:

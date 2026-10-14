@@ -224,7 +224,7 @@ def test_contact_card(db_session: Session, owner: int) -> None:
 
     assert card.known and card.name == "Ana Prueba" and not card.verified
     owner_unit, tenant_unit = card.units
-    assert owner_unit.unit.role == "propietario" and tenant_unit.unit.role == "inquilino"
+    assert owner_unit.unit.role == "propietario/a" and tenant_unit.unit.role == "inquilino/a"
     assert owner_unit.debt is not None
     assert owner_unit.debt.total == "$165.060,00" and not owner_unit.debt.up_to_date
     assert owner_unit.debt.fetched_at == "hoy 09:00"  # the card's day, in Argentina's time

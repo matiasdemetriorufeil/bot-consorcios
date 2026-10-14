@@ -2,14 +2,15 @@
 
 The menu, for everyone: "Pendientes" (what waits for someone of the studio: the first page,
 app.admin.pending_view), "Conversaciones" (the WhatsApp inbox, app.admin.conversations),
-"Reclamos" (app.admin.claims), "Teléfonos" (app.admin.phones), "Verificaciones"
-(app.admin.verifications), "Reservas de SUM" (app.admin.amenities) and "Guía"
-(app.admin.guide). Then, under "Administración" and only for admins: buildings and their
-information, the claims' set-up (providers, kinds of problem and who attends each one in each
-building: app.admin.claims_setup), the bot settings, the WhatsApp templates and quick replies of
-the inbox, the panel users (app.admin.users), metrics, sync runs (read only) and, in development
-only, the test chat (app.admin.dev_chat). Out of the menu: the attachments of WhatsApp messages
-(app.admin.wa_media). /admin/ (and the login) go to "Pendientes".
+"Reclamos" (app.admin.claims), "Vecinos" (app.admin.neighbors), "Teléfonos"
+(app.admin.phones), "Verificaciones" (app.admin.verifications), "Reservas de SUM"
+(app.admin.amenities) and "Guía" (app.admin.guide). Then, under "Administración" and only for
+admins: buildings and their information, the claims' set-up (providers, kinds of problem and
+who attends each one in each building: app.admin.claims_setup), the bot settings, the WhatsApp
+templates and quick replies of the inbox, the panel users (app.admin.users), metrics, sync runs
+(read only) and, in development only, the test chat (app.admin.dev_chat). Out of the menu: the
+attachments of WhatsApp messages (app.admin.wa_media). /admin/ (and the login) go to
+"Pendientes".
 
 Every page asks for the panel's numbers every few seconds (app.admin.pending, panel.js): the
 menu's counters (next to Conversaciones, Reclamos, Teléfonos and Verificaciones: the views'
@@ -57,6 +58,7 @@ from app.admin.conversations import ConversationsView
 from app.admin.dev_chat import DevChatView
 from app.admin.guide import GUIDE_FILES_DIR, GuideView
 from app.admin.inbox import Sender
+from app.admin.neighbors import NeighborsView
 from app.admin.pending_view import PendingView
 from app.admin.phones import PhonesView
 from app.admin.static_cache import StaticCache, versions
@@ -93,6 +95,7 @@ VIEWS = (
     PendingView,
     ConversationsView,
     ClaimsView,
+    NeighborsView,
     PhonesView,
     VerificationsView,
     AmenitiesView,
@@ -338,6 +341,7 @@ def setup_admin(
         PendingView: pending_view,
         ConversationsView: conversations,
         VerificationsView: {"timezone": settings.timezone, "session_maker": session_maker},
+        NeighborsView: {"timezone": settings.timezone, "session_maker": session_maker},
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},
         AmenitiesView: {"timezone": settings.timezone, "session_maker": session_maker},

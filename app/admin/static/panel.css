@@ -638,7 +638,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
    table still fits at 1024 px. */
 .phone-state .state { white-space: nowrap; }
 @media (min-width: 768px) and (max-width: 1279.98px) {
-  .rows-table > tbody > tr > td.phone-state { padding-left: var(--sp-1); padding-right: var(--sp-1); } }
+  .rows-table > tbody > tr > td.phone-state { padding-left: var(--sp-1); padding-right: var(--sp-1); }
+  /* With the person's units in «A revisar» the eight columns need a narrower margin to fit. */
+  #phones > :not(caption) > * > * { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  #phones > :not(caption) > * > :first-child { padding-left: var(--sp-4); } }
 @media (max-width: 767.98px) {
   .rows-table thead { display: none; }
   .rows-table, .rows-table tbody, .rows-table tr, .rows-table td { display: block; width: 100%; }
@@ -786,6 +789,44 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   .building-row-actions .btn { flex: 1; }
   .building-row-actions .btn + .btn { margin-left: 0; }
   .building-list-foot { flex-direction: column; align-items: flex-start; }
+}
+
+/* --- Vecinos (app.admin.neighbors): Edificios' search and filters; one <tbody> per unit -------- */
+.neighbors .building-select .form-control { width: 18rem; min-width: 0; }
+.neighbors .building-select { margin: 0; }
+.building-filters .neighbors-refresh { margin: 0 0 0 auto; }
+.neighbors-count { margin: 0; padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--c-border); color: var(--c-text-2); }
+.neighbors-count strong { color: var(--c-text); }
+.neighbors-table tbody.neighbor-unit { border-top: 1px solid var(--c-border-strong); }
+.neighbors-table .neighbor-unit-label { font-weight: var(--fw-bold); white-space: nowrap; vertical-align: top; }
+.neighbors-table .neighbor-building { font-weight: var(--fw-bold); vertical-align: top; }
+.neighbors-table .neighbor-name { font-weight: var(--fw-bold); }
+/* The 2nd and next people of a unit start with a name, not the unit: the same margin as the
+   other cells (not the first column's wider one). */
+@media (min-width: 768px) {
+  .neighbors-table.card-table > tbody > tr > td:first-child:not(.neighbor-building) { padding-left: var(--sp-3); } }
+.neighbor-phone-list { display: block; min-width: 0; }
+.neighbor-phone { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.neighbor-phone + .neighbor-phone { margin-top: var(--sp-1); }
+.neighbor-phone .state { white-space: nowrap; text-decoration: none; }
+.neighbor-none { color: var(--c-placeholder); }
+.neighbors-removed > summary { cursor: pointer; list-style: none; }
+.neighbors-removed > summary::-webkit-details-marker { display: none; }
+.neighbors-removed > summary .card-title::after { content: " ▾"; color: var(--c-text-2); }
+.neighbors-removed[open] > summary .card-title::after { content: " ▴"; }
+@media (max-width: 767.98px) {
+  .neighbors .building-select .form-control { width: auto; flex: 1; }
+  .building-filters .neighbors-refresh { flex: 1 1 100%; margin: 0; }
+  .neighbors-refresh .btn { width: 100%; }
+  /* A card per unit, its people inside (no card of their own). */
+  .neighbors-table tbody.neighbor-unit { margin: var(--sp-3) var(--sp-4); width: auto; border: 1px solid var(--c-border);
+    border-radius: var(--radius-md); overflow: hidden; }
+  .neighbors-table tbody.neighbor-unit tr:last-child { border-bottom: 0; }
+  .neighbors-table .neighbor-unit-label, .neighbors-table .neighbor-building { display: block; width: auto;
+    margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-4)) var(--sp-2); padding: var(--sp-2) var(--sp-4);
+    background: var(--c-surface-2); border: 0; }
+  .neighbors-table .neighbor-building + .neighbor-unit-label { margin-top: calc(-1 * var(--sp-2)); padding-top: 0; }
+  .rows-table.card-table.neighbors-table tr td.neighbor-none { display: block; }
 }
 
 /* --- Small shared helpers ----------------------------------------------------------------------- */

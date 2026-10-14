@@ -1,5 +1,67 @@
 # Inventario del panel `/admin`
 
+## Actualización 5h.2: «Vecinos», el padrón de cada edificio (2026-10-14)
+
+Pantalla nueva para **ver y buscar**. Agregar, editar y quitar personas llega en el paso
+siguiente.
+
+- **Menú:** «Vecinos» (ícono de casa con personas), para la operadora y el admin, entre
+  Reclamos y Teléfonos. En el celular está en «Más». Línea de ayuda: «Las personas de cada
+  edificio, con su unidad y su teléfono. El bot reconoce a quien escribe desde un teléfono de
+  esta lista.»
+- **Arriba** (`templates/neighbors.html`, con las clases de Edificios 5g):
+  - **Edificio:** un campo con lista. Escribís parte del nombre, el navegador muestra los que
+    coinciden y, al elegir uno, la página lo abre.
+  - Si dos edificios activos tuvieran el mismo nombre, la lista los muestra con su código, y
+    escribir solo el nombre avisa «Hay más de un edificio con ese nombre…» en lugar de elegir
+    uno. Hoy no hay ninguno repetido.
+  - **Buscador** «Buscar por nombre, teléfono o unidad», con lupa: busca en **todos** los
+    edificios y suma la columna Edificio. Entiende los mismos números que Teléfonos
+    («351 555-0101», «0351 15 555-0101», «+54 9 351…»). Un número de menos de 6 cifras se toma
+    como unidad, no como teléfono: «10° C» no trae teléfonos que tengan un 10.
+- **Tabla** (`templates/_neighbors_results.html`): una fila por persona y unidad, con las
+  unidades en el mismo orden que el listado de ConsorPlus.
+  - **Columnas:** Unidad, Nombre y apellido, Rol (Propietario/a, Inquilino/a, Familiar u otro),
+    Teléfonos y Origen (ConsorPlus, Cargado a mano, Por WhatsApp).
+  - **Teléfonos:** formateados, uno por renglón. Si no hay ninguno dice «Sin teléfono», en gris.
+    Los teléfonos en conflicto o a revisar llevan su etiqueta de estado (5f.1), con link a
+    Teléfonos para ese número.
+  - **Unidades vacías:** las activas sin nadie aparecen igual, con «Sin datos».
+  - **Páginas:** 50 unidades por página. Una unidad nunca queda partida entre dos páginas.
+- **Encima de la tabla:** «N de M unidades con teléfono del propietario». Cuenta un teléfono
+  del propietario que no esté en conflicto; uno a revisar sí cuenta, porque igual reconoce.
+  Filtros Todos / Sin teléfono / Cargados a mano:
+  - **Sin teléfono:** las unidades que faltan para completar ese número.
+  - **Cargados a mano:** las personas con el vínculo o algún teléfono cargado a mano.
+- **Solo admin** (el servidor revisa el rol; la operadora recibe 403, o «Esta acción es solo
+  para administradores.» sin recargar):
+  - **«Actualizar desde ConsorPlus»:** vuelve a leer el edificio en ConsorPlus, solo lectura,
+    igual que cada noche. Mientras lee, el botón queda deshabilitado y dice «Actualizando…».
+    - Al terminar avisa con números («Listo: se leyeron N unidades…»), sin nombres, y redibuja
+      la tabla.
+    - Si la sincronización de la noche está corriendo, avisa «Ya se está sincronizando, probá
+      en unos minutos.».
+    - Si ConsorPlus no responde, avisa «No se pudo leer el edificio en ConsorPlus. Probá más
+      tarde.».
+    - Queda registrada como «En el momento», así que no tapa una noche que falló en
+      Pendientes.
+  - **«Quitados a mano (N)»:** se despliega y muestra qué se quitó (unidad, rol y persona, o
+    el teléfono), quién lo quitó y cuándo. «Restaurar» lo saca de la lista, y la próxima vez
+    que se lean los datos de ConsorPlus del edificio, vuelve.
+- **Celular (390 px):** una tarjeta por unidad, con la unidad arriba y sus personas adentro. Sin
+  desplazamiento de costado.
+- **Roles en todo el panel y en el bot:** el texto de cada rol pasó a «propietario/a»,
+  «inquilino/a» y «familiar u otro». Es uno solo para todo: notas de derivación, contexto del
+  bot, Conversaciones, Reclamos y Teléfonos.
+- **Teléfonos a 1024 px:** con las unidades de la persona en «A revisar», la tabla no entraba.
+  - Ahora el rol puede cortarse después de la barra («propietario/» y «a»).
+  - Entre 768 y 1279 px, las celdas tienen 8 px de margen a los costados.
+- **Medición:** `scripts/panel_survey` suma vecinos inventados con los tres roles y los tres
+  orígenes, una unidad vacía, un teléfono a revisar, uno en conflicto y dos cosas quitadas a
+  mano. Suma también las pantallas `07b-vecinos`, `07c-vecinos-busqueda` y `47-vecinos-admin`.
+  En la demo, «Actualizar desde ConsorPlus» nunca llega a ConsorPlus.
+- **Capturas:** `docs/panel-capturas/5h2/` (fuera de Git).
+
 ## Actualización 5g: «Pendientes» con el diseño nuevo (2026-10-13)
 
 Solo cambia cómo se ve Pendientes; los números, los permisos y los links son los mismos.

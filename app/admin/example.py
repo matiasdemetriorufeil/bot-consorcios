@@ -74,12 +74,12 @@ def _row(
 
 def context(now: datetime, timezone: str, tab: str) -> dict[str, Any]:
     """Everything conversations.html reads, invented (tab: the real one to go back to)."""
-    ana_unit = inbox.UnitLine(unit_id=1, building=BUILDING, label="4-B", role="propietario")
+    ana_unit = inbox.UnitLine(unit_id=1, building=BUILDING, label="4-B", role="propietario/a")
     rows = [
         _row(1, "Ana Ejemplo", ANA, WAITING, 4, now, "¿Pueden venir a ver?",
              units=[ana_unit], urgent=True, reason="emergency", unread=2),
         _row(2, "Bruno Prueba", BRUNO, WAITING, 35, now, "Me figura una deuda que ya pagué",
-             units=[inbox.UnitLine(2, BUILDING, "2-A", "propietario")], reason="debt_claim",
+             units=[inbox.UnitLine(2, BUILDING, "2-A", "propietario/a")], reason="debt_claim",
              unread=1),
         _row(3, "Carla Inventada", CARLA, WaConversationStatus.BOT, 90, now,
              "Gracias, con eso me alcanza", units=[]),

@@ -1,0 +1,73 @@
+{#- The units of «Vecinos» (the page, and redrawn after «Actualizar desde ConsorPlus»:
+    app.admin.neighbors). One <tbody> per unit: on phones each one is a card with its people. -#}
+{% from "sqladmin/_macros.html" import empty_state %}
+{% set search = result.mode == 'search' %}
+{% if result.mode == 'choose' %}
+{{ empty_state(empty_texts['neighbors:choose'], 'fa-people-roof') }}
+{% else %}
+{% if result.mode == 'building' %}
+<p class="neighbors-count"><strong>{{ result.with_owner_phone }}</strong> de <strong>{{ result.active_units }}</strong> unidades con teléfono del propietario</p>
+{% endif %}
+{% if result.groups %}
+<div class="table-responsive">
+  <table class="table card-table table-vcenter rows-table neighbors-table">
+    <thead>
+      <tr>
+        {% if search %}<th>Edificio</th>{% endif %}
+        <th>Unidad</th><th>Nombre y apellido</th><th>Rol</th><th>Teléfonos</th><th>Origen</th>
+      </tr>
+    </thead>
+    {% for group in result.groups %}
+    <tbody class="neighbor-unit">
+      {% for person in group.people %}
+      <tr>
+        {% if loop.first %}
+        {% if search %}<td class="neighbor-building" rowspan="{{ group.people | length }}">{{ group.building }}</td>{% endif %}
+        <th scope="rowgroup" class="neighbor-unit-label" rowspan="{{ group.people | length }}">{{ group.label }}</th>
+        {% endif %}
+        <td data-label="Nombre" class="neighbor-name">{{ person.name }}</td>
+        <td data-label="Rol">{{ person.role }}</td>
+        <td data-label="Teléfonos" class="neighbor-phones"><span class="neighbor-phone-list">
+          {% for phone in person.phones %}
+          <span class="neighbor-phone">
+            <span class="text-nowrap">{{ phone.number }}</span>
+            {% if phone.status %}<a class="state state-{{ phone.status | state('phone') }}" href="{{ url_for('admin:view-phones') }}?{{ {'tab': 'all', 'q': phone.search} | urlencode }}">{{ phone.status_label }}</a>{% endif %}
+          </span>
+          {% else %}
+          <span class="neighbor-none">Sin teléfono</span>
+          {% endfor %}
+        </span></td>
+        <td data-label="Origen">{{ person.source }}</td>
+      </tr>
+      {% else %}
+      <tr>
+        {% if search %}<td class="neighbor-building">{{ group.building }}</td>{% endif %}
+        <th scope="rowgroup" class="neighbor-unit-label">{{ group.label }}</th>
+        <td colspan="4" class="neighbor-none">Sin datos</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+{{ empty_state(empty_texts['neighbors:search'] if search else empty_texts['neighbors:filter'], 'fa-people-roof') }}
+{% endif %}
+<div class="card-footer building-list-foot">
+  <span>{{ result.total }} unidad{{ 'es' if result.total != 1 }}</span>
+  {% if result.pages > 1 %}
+  <ul class="pagination m-0">
+    <li class="page-item {% if result.page <= 1 %}disabled{% endif %}">
+      <a class="page-link" href="{{ link(page=result.page - 1) if result.page > 1 else '#' }}" aria-label="Página anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+    </li>
+    {% for number in range(1, result.pages + 1) %}
+    <li class="page-item {% if number == result.page %}active{% endif %}"><a class="page-link" href="{{ link(page=number) }}"{% if number == result.page %} aria-current="page"{% endif %}>{{ number }}</a></li>
+    {% endfor %}
+    <li class="page-item {% if result.page >= result.pages %}disabled{% endif %}">
+      <a class="page-link" href="{{ link(page=result.page + 1) if result.page < result.pages else '#' }}" aria-label="Página siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+    </li>
+  </ul>
+  {% endif %}
+  <span class="building-list-source">Datos sincronizados desde ConsorPlus</span>
+</div>
+{% endif %}

@@ -1,7 +1,8 @@
 /* The panel's own script, loaded after SQLAdmin's (templates/sqladmin/base.html): the few
    texts SQLAdmin writes from its JavaScript, in Spanish, the folded filters, the panel's
    numbers and alerts on every page (app.admin.pending), the one confirmation dialog before
-   what cannot be undone, and the tour of "Conversaciones".
+   what cannot be undone, sending a form when a building is picked from its list (Vecinos), and
+   the tour of "Conversaciones".
    No libraries: everything here is plain DOM. */
 (function () {
   "use strict";
@@ -690,6 +691,19 @@
   window.addEventListener("pageshow", function (event) {
     if (!event.persisted) return;
     document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
+  });
+
+  // --- A field with a list to pick from (<input list data-submit-on-pick>): picking one of its
+  // options sends its form at once (Vecinos' building). The value is the name of a field to
+  // empty first (the search, so the building is what shows).
+  document.addEventListener("change", function (event) {
+    var input = event.target;
+    if (!input.matches || !input.matches("input[list][data-submit-on-pick]") || !input.form) return;
+    var options = input.list ? Array.prototype.map.call(input.list.options, function (o) { return o.value; }) : [];
+    if (options.indexOf(input.value) < 0) return;
+    var clear = input.dataset.submitOnPick && input.form.elements[input.dataset.submitOnPick];
+    if (clear) clear.value = "";
+    input.form.requestSubmit();
   });
 
   // --- The blocks of «Administración» (admins: the menu and «Más») ---------------------------

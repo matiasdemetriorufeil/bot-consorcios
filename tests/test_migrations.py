@@ -7,7 +7,17 @@ from types import ModuleType
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.db.models import Building, DataSource, Person, PersonRole, Phone, Unit, UnitPerson
+from app.db.models import (
+    Building,
+    DataSource,
+    Person,
+    PersonRole,
+    Phone,
+    RosterSuppression,
+    SuppressionKind,
+    Unit,
+    UnitPerson,
+)
 
 VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 
@@ -88,3 +98,27 @@ def test_consorplus_name_backfill_only_for_people_linked_from_consorplus(
 
     assert db_session.get(Person, from_cp.id).consorplus_name == "PERSONA DE CONSORPLUS"
     assert db_session.get(Person, by_hand.id).consorplus_name is None
+
+
+def test_suppressions_get_the_building_of_their_unit(db_session: Session) -> None:
+    building = Building(consorplus_code=9902, name="EDIFICIO INVENTADO")
+    db_session.add(building)
+    db_session.flush()
+    unit = Unit(building_id=building.id, consorplus_unit_value="1", label="1-A")
+    db_session.add(unit)
+    db_session.flush()
+    link = RosterSuppression(
+        kind=SuppressionKind.LINK, unit_id=unit.id, role=PersonRole.OWNER, name_key="x",
+        created_by="inventada",
+    )  # fmt: skip
+    phone = RosterSuppression(
+        kind=SuppressionKind.PHONE, e164="+5493515550999", name_key="x", created_by="inventada"
+    )
+    db_session.add_all([link, phone])
+    db_session.flush()
+
+    db_session.execute(text(_migration("suppressions_building")._BACKFILL_LINK_BUILDING))
+    db_session.expire_all()
+
+    assert db_session.get(RosterSuppression, link.id).building_id == building.id
+    assert db_session.get(RosterSuppression, phone.id).building_id is None

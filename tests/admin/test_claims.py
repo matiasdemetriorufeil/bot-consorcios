@@ -1047,7 +1047,7 @@ def test_from_a_conversation_with_one_unit(logged_in: Panel, w: World) -> None:
     assert f'name="person" value="{w.unit.id}-{w.ana_id}"' in page
     chosen = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", page.split('id="claim-chosen"')[1]))
     assert "Quién reclama: Ana Inventada" in chosen
-    assert "TORRE INVENTADA · 01-A (propietario)" in page
+    assert "TORRE INVENTADA · 01-A (propietario/a)" in page
 
     response = logged_in.client.post(
         "/admin/claims/new",
@@ -1087,8 +1087,8 @@ def test_from_a_conversation_with_several_units(logged_in: Panel, w: World) -> N
     s.commit()
     page = _text(logged_in.client.get(f"/admin/claims/new?conversation={conv.id}").text)
     assert 'id="claim-form"' not in page  # she picks the unit first
-    assert "TORRE INVENTADA · 01-A (propietario)" in page
-    assert "TORRE INVENTADA · 02-B (inquilino)" in page
+    assert "TORRE INVENTADA · 01-A (propietario/a)" in page
+    assert "TORRE INVENTADA · 02-B (inquilino/a)" in page
     assert f"person_id={w.ana_id}&unit_id={w.unit_b.id}&conversation={conv.id}" in page
 
 
@@ -1224,7 +1224,7 @@ def test_choosing_the_person_brings_the_form(logged_in: Panel, w: World) -> None
     assert "Portón" in other and "Ascensor" not in other and 'id="name"' in other
     # Without JavaScript: the search reloads the page with the results.
     page = _text(logged_in.client.get("/admin/claims/new", params={"q": "Ana"}).text)
-    assert "TORRE INVENTADA · 01-A (propietario)" in page
+    assert "TORRE INVENTADA · 01-A (propietario/a)" in page
 
 
 def test_a_person_of_another_building_is_refused(logged_in: Panel, w: World) -> None:

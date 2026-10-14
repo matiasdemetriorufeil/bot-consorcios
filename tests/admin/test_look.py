@@ -115,7 +115,7 @@ def test_the_bottom_bar_with_its_counters(operator: Panel) -> None:
     # «Más»: what is not in the bar, with its counters, and Salir; no «Administración».
     sheet = page.split('id="more-sheet"', 1)[1].split("</dialog>", 1)[0]
     names = re.findall(r'<span class="more-item-name">([^<]+)</span>', sheet)
-    assert names == ["Teléfonos", "Verificaciones", "Reservas de SUM", "Guía", "Salir"]
+    assert names == ["Vecinos", "Teléfonos", "Verificaciones", "Reservas de SUM", "Guía", "Salir"]
     assert 'data-counter="phones"' in sheet and "Administración" not in sheet
 
 
@@ -463,6 +463,7 @@ MAIN_PAGES = [
     ("/admin/pending", "Pendientes"),
     ("/admin/conversations", "Conversaciones"),
     ("/admin/claims", "Reclamos"),
+    ("/admin/neighbors", "Vecinos"),
     ("/admin/phones", "Teléfonos"),
     ("/admin/verifications", "Verificaciones"),
     ("/admin/amenities", "Reservas de SUM"),

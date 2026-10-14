@@ -67,6 +67,7 @@ OPERATOR_MENU = [
     "Pendientes",
     "Conversaciones",
     "Reclamos",
+    "Vecinos",
     "Teléfonos",
     "Verificaciones",
     "Reservas de SUM",

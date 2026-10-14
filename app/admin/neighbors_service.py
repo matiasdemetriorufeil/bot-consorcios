@@ -173,12 +173,23 @@ def _suppress_link(session: Session, user: str, link: UnitPerson) -> None:
                 unit_id=link.unit_id,
                 role=link.role,
                 name_key=key,
+                building_id=link.unit.building_id,
+                person_name=link.person.full_name,
                 created_by=user,
             )
         )
 
 
-def _suppress_phone(session: Session, user: str, phone: Phone) -> None:
+def _building_of(person: Person) -> int | None:
+    """The building a phone removal is listed in («Quitados a mano»): the one of the person's
+    first unit."""
+    links = sorted(person.units, key=lambda link: link.unit_id)
+    return links[0].unit.building_id if links else None
+
+
+def _suppress_phone(
+    session: Session, user: str, phone: Phone, building_id: int | None = None
+) -> None:
     key = consorplus_key(phone.person)
     exists = session.scalar(
         select(RosterSuppression.id).where(
@@ -190,7 +201,12 @@ def _suppress_phone(session: Session, user: str, phone: Phone) -> None:
     if exists is None:
         session.add(
             RosterSuppression(
-                kind=SuppressionKind.PHONE, e164=phone.e164, name_key=key, created_by=user
+                kind=SuppressionKind.PHONE,
+                e164=phone.e164,
+                name_key=key,
+                building_id=building_id or _building_of(phone.person),
+                person_name=phone.person.full_name,
+                created_by=user,
             )
         )
 
@@ -362,6 +378,7 @@ def remove_from_unit(
     link = _link(session, unit_id, person_id, PersonRole(role))
     person = link.person
     source = str(link.source)
+    building_id = link.unit.building_id
     if link.source == DataSource.CONSORPLUS:
         _suppress_link(session, user, link)
     session.delete(link)
@@ -373,7 +390,7 @@ def remove_from_unit(
     if not left:
         for phone in list(person.phones):
             if phone.source == DataSource.CONSORPLUS:
-                _suppress_phone(session, user, phone)
+                _suppress_phone(session, user, phone, building_id)
             phones += 1
         session.delete(person)
     log_admin_action(
@@ -509,9 +526,7 @@ def refresh_building(
                 source = ConsorPlusClient.from_settings(get_settings())
             report = sync_roster(session, source, [code], kind=SyncKind.LIVE)
     except AlreadyRunningError:
-        raise NeighborError(
-            "Ya hay una sincronización con ConsorPlus en curso. Probá de nuevo en unos minutos."
-        ) from None
+        raise NeighborError("Ya se está sincronizando, probá en unos minutos.") from None
     log_admin_action(
         session,
         user,

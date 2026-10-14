@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 
 from app.admin import setup_admin  # noqa: E402
 from app.admin.auth import hash_password  # noqa: E402
+from app.admin.neighbors import NeighborsView  # noqa: E402
 from app.claims.service import (  # noqa: E402
     Reporter,
     close_claim,
@@ -40,6 +41,7 @@ from app.claims.service import (  # noqa: E402
     provider_declined,
 )
 from app.config import Settings  # noqa: E402
+from app.consorplus.errors import ConsorPlusUnavailableError  # noqa: E402
 from app.db.models import (  # noqa: E402
     Amenity,
     AmenitySlot,
@@ -62,6 +64,8 @@ from app.db.models import (  # noqa: E402
     QuickReply,
     Reservation,
     ReservationSource,
+    RosterSuppression,
+    SuppressionKind,
     SyncJob,
     SyncKind,
     SyncRun,
@@ -406,6 +410,7 @@ def seed(s: Session, empty: bool) -> None:
             unit_id=unit2.id, person_id=ana.id, role=PersonRole.TENANT, source=DataSource.CONSORPLUS
         )
     )
+    neighbors(s, torre, ana)
     # Last night's reading of ConsorPlus: one with errors.
     s.add_all(
         [
@@ -428,6 +433,66 @@ def seed(s: Session, empty: bool) -> None:
         ]
     )
     s.commit()
+
+
+class DemoNoConsorPlus:
+    """The roster source of the demo: ConsorPlus is never reached."""
+
+    def list_buildings(self) -> list:
+        return []
+
+    def list_roster(self, building_code: str) -> list:
+        raise ConsorPlusUnavailableError("demo: sin ConsorPlus")
+
+
+def neighbors(s: Session, torre: Building, ana: Person) -> None:
+    """Vecinos of TORRE EJEMPLO (invented): the three roles and the three origins, a unit
+    without anyone, a phone to review, one in conflict and two things removed by hand."""
+    cp, manual, bot = DataSource.CONSORPLUS, DataSource.MANUAL, DataSource.BOT_VERIFIED
+    units = {
+        value: Unit(building=torre, consorplus_unit_value=value, label=value, active=True)
+        for value in ("2B", "3C", "4D", "10A")
+    }
+    s.add_all(units.values())
+    s.flush()
+
+    def person(name: str, *phones: tuple[str, DataSource, dict]) -> Person:
+        p = Person(full_name=name, consorplus_name=name)
+        s.add(p)
+        s.flush()
+        for e164, source, flags in phones:
+            s.add(Phone(person_id=p.id, e164=e164, source=source, **flags))
+        return p
+
+    def link(unit: str, p: Person, role: PersonRole, source: DataSource) -> None:
+        s.add(UnitPerson(unit_id=units[unit].id, person_id=p.id, role=role, source=source))
+
+    bruno = person("Bruno Ejemplo", ("+5493515550201", manual, {"verified": True}))
+    carla = person("Carla Ejemplo", ("+5493515550202", bot, {"verified": True}))
+    rita = person("Rita Ejemplo")
+    dario = person("Dario Ejemplo", ("+5493515550203", cp, {"needs_review": True}))
+    elsa = person(
+        "Elsa Ejemplo", ("+5493515550204", cp, {"conflict": True}), ("+5493515550205", cp, {})
+    )
+    link("2B", bruno, PersonRole.OWNER, manual)
+    link("2B", carla, PersonRole.TENANT, bot)
+    link("2B", rita, PersonRole.RESIDENT, manual)
+    link("3C", dario, PersonRole.OWNER, cp)
+    link("4D", elsa, PersonRole.OWNER, cp)
+    link("4D", ana, PersonRole.RESIDENT, manual)
+    s.add_all(
+        [
+            RosterSuppression(
+                kind=SuppressionKind.LINK, unit_id=units["3C"].id, role=PersonRole.TENANT,
+                name_key="ejemplo ex", building_id=torre.id, person_name="Ex Inquilino Ejemplo",
+                created_by="jefa",
+            ),
+            RosterSuppression(
+                kind=SuppressionKind.PHONE, e164="+5493515550299", name_key="bruno ejemplo",
+                building_id=torre.id, person_name="Bruno Ejemplo", created_by="jefa",
+            ),
+        ]
+    )  # fmt: skip
 
 
 def demo_settings(url: str, production: bool) -> Settings:
@@ -463,6 +528,10 @@ def main() -> None:
     with Session(engine) as s:
         seed(s, args.empty)
     app = FastAPI()
+    # «Actualizar desde ConsorPlus» in the demo: never ConsorPlus (it answers «no se pudo
+    # leer»), with the demo's own lock.
+    NeighborsView.roster_source = DemoNoConsorPlus()
+    NeighborsView.lock_engine = engine
     from tests.whatsapp.fakes import FakeWhatsApp  # invented sends: nothing leaves the machine
 
     fake = FakeWhatsApp()

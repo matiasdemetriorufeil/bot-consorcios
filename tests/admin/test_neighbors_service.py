@@ -103,7 +103,7 @@ def test_a_number_of_another_person_changes_nothing_until_moved(db_session: Sess
     assert taken == added
     assert isinstance(taken, svc.PhoneTaken)
     assert (taken.person_id, taken.full_name) == (owner.id, "Dueño Inventado")
-    assert taken.units == ["RODAS FICTICIO · 04-C (propietario)"]
+    assert taken.units == ["RODAS FICTICIO · 04-C (propietario/a)"]
     assert db_session.scalar(select(Person).where(Person.full_name == "Otra")) is None
     assert _events(db_session) == []
 
@@ -199,7 +199,8 @@ def _synced_building(db_session: Session) -> FakeSource:
 def test_refresh_with_the_nightly_lock_taken(db_session: Session, db_engine: Engine) -> None:
     source = _synced_building(db_session)
 
-    with advisory_lock(db_engine), pytest.raises(svc.NeighborError, match="en curso"):
+    busy = pytest.raises(svc.NeighborError, match="Ya se está sincronizando")
+    with advisory_lock(db_engine), busy:
         svc.refresh_building(db_session, USER, "7", source=source, engine=db_engine)
 
 

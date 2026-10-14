@@ -246,6 +246,12 @@ class RosterSuppression(Base):
     # kind "phone": the number removed from the person.
     e164: Mapped[str | None] = mapped_column(String(20))
     name_key: Mapped[str] = mapped_column(String(200))
+    # Where and whom «Quitados a mano» shows it: the building (a phone: the one of the person's
+    # first unit) and the name shown when it was removed.
+    building_id: Mapped[int | None] = mapped_column(
+        ForeignKey("buildings.id", ondelete="CASCADE"), index=True
+    )
+    person_name: Mapped[str | None] = mapped_column(String(200))
     created_by: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 

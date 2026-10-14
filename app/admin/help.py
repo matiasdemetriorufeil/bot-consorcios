@@ -28,6 +28,10 @@ PAGE_HELP: dict[str, str] = {
     "view-conversation": (
         "Tomá la conversación para contestar vos. Cuando termines, resolvela o devolvésela al bot."
     ),
+    "view-neighbors": (
+        "Las personas de cada edificio, con su unidad y su teléfono. El bot reconoce a quien "
+        "escribe desde un teléfono de esta lista."
+    ),
     "view-phones": (
         "Números de los propietarios e inquilinos. En «A revisar» están los que hay que "
         "confirmar antes de que el bot los reconozca."
@@ -213,6 +217,19 @@ EMPTY: dict[str, str] = {
         "y fijate que los filtros no estén limitando la búsqueda."
     ),
     "phones:all": "Todavía no hay teléfonos cargados.",
+    "neighbors:choose": (
+        "Elegí un edificio para ver a sus vecinos, o buscá a alguien por nombre, teléfono o "
+        "unidad en todos los edificios."
+    ),
+    "neighbors:search": (
+        "No se encontró a nadie. Probá con otra parte del nombre, con menos números o con el "
+        "nombre de la unidad."
+    ),
+    "neighbors:filter": "No hay unidades para mostrar con este filtro.",
+    "neighbors:removed": (
+        "No hay nada quitado a mano en este edificio. Lo que se quite a mano va a aparecer acá, "
+        "y lo podés restaurar."
+    ),
     "verifications": (
         "No hay verificaciones pendientes. Aparecen cuando alguien se identifica por WhatsApp "
         "y en su unidad no hay un email del propietario para confirmarlo solo."
