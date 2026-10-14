@@ -111,6 +111,7 @@ class ProviderAdmin(AdminOnly, AuditedView, model=Provider):
     name_plural = "Proveedores"
     icon = "fa-solid fa-helmet-safety"
     audit_name = "provider"
+    list_template = "provider_list.html"  # like «Edificios» (5g); same links and filters
     can_delete = False  # deactivated instead: buildings may still point to it
     column_list = [
         Provider.name,

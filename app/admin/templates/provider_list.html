@@ -1,0 +1,125 @@
+{#- «Proveedores» (ProviderAdmin.list_template): SQLAdmin's list (sqladmin/list.html) drawn like
+    «Edificios» (building_list.html, its same classes): the search (SQLAdmin's main.js:
+    #search-input, #search-button, #search-reset) and «Activo» as Todos / Sí / No in the card,
+    the contact under the company, the WhatsApp with its icon, the state as a label, «Ver» and
+    «Editar» under «Acciones», and at the foot how many, the pages and how many per page. -#}
+{% extends "sqladmin/list.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
+{% block header_actions %}
+{% if model_view.can_create and model_view.check_can_create(request) %}
+<div class="col-auto">
+  <a href="{{ url_for('admin:create', identity=model_view.identity) }}" class="btn btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i>Agregar proveedor</a>
+</div>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% set secondary = model_view.column_secondary if model_view.column_secondary is defined else [] %}
+{% macro sort_header(name, label) %}
+{% if name in model_view._sort_fields %}
+{% set sorted_here = request.query_params.get("sortBy") == name %}
+{% set direction = request.query_params.get("sort") %}
+<a class="building-sort" href="{{ request.url.include_query_params(sortBy=name, sort='desc' if sorted_here and direction == 'asc' else 'asc') }}">{{ label }}{% if sorted_here %} <i class="fa-solid fa-arrow-{{ 'up' if direction == 'asc' else 'down' }}" aria-hidden="true"></i>{% endif %}</a>
+{% else %}{{ label }}{% endif %}
+{% endmacro %}
+<div class="col-12">
+  <div class="card building-list">
+    <div class="card-body building-list-top">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <div class="building-search">
+        <div class="building-search-field">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input id="search-input" type="search" class="form-control" aria-label="Buscar proveedores"
+            data-search-auto-submit="{{ 'true' if model_view.search_auto_submit else 'false' }}"
+            placeholder="Empresa, contacto, email o WhatsApp" value="{{ request.query_params.get('search', '') }}">
+        </div>
+        <button id="search-button" class="btn btn-primary" type="button">Buscar</button>
+        {% for filter in model_view.get_filters() %}
+        {% set current = request.query_params.get(filter.parameter_name, 'all') %}
+        <div class="building-filter" role="group" aria-label="{{ filter.title }}">
+          <span class="building-filter-title" aria-hidden="true">{{ filter.title }}</span>
+          <div class="segmented">
+            {% for value, text in filter.lookups(request, model_view.model, model_view._run_arbitrary_query) %}
+            {% set href = request.url.remove_query_params(filter.parameter_name) if value == 'all' else request.url.include_query_params(**{filter.parameter_name: value}) %}
+            <a class="segmented-item{{ ' active' if current == value }}" href="{{ href }}"{% if current == value %} aria-current="true"{% endif %}>{{ text }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        {% if request.query_params.get('search') %}
+        <button id="search-reset" class="btn btn-link" type="button">Borrar la búsqueda</button>
+        {% endif %}
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter rows-table building-table">
+        <thead>
+          <tr>
+            <th>{{ sort_header("name", "Empresa") }}</th>
+            <th>WhatsApp</th>
+            <th class="text-center col-secondary">Edificios</th>
+            <th class="text-center col-secondary">Problemas que atiende</th>
+            <th class="text-center">{{ sort_header("active", "Estado") }}</th>
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in pagination.rows %}
+          {% set phone = model_view.get_list_value(row, "whatsapp_e164", request)[1] %}
+          <tr>
+            <td data-label="Empresa" class="building-cell-name">
+              <span class="provider-name">{{ row.name }}</span>
+              {% if row.contact_name %}<span class="provider-contact">Contacto: {{ row.contact_name }}</span>{% endif %}
+            </td>
+            <td data-label="WhatsApp">{% if row.whatsapp_e164 %}<span class="provider-whatsapp"><i class="fa-regular fa-comment" aria-hidden="true"></i>{{ phone }}</span>{% else %}<span class="building-count-off">Sin WhatsApp</span>{% endif %}</td>
+            {% for name in ("buildings", "problems") %}
+            {% set formatted = model_view.get_list_value(row, name, request)[1] %}
+            <td data-label="{{ model_view._column_labels.get(name, name) }}" class="text-center col-secondary cell-list"><span class="cell-cut"{% if formatted is string and formatted | length > 30 %} title="{{ formatted }}"{% endif %}>{{ formatted }}</span></td>
+            {% endfor %}
+            <td data-label="Estado" class="text-center">
+              {% if row.active %}<span class="state state-ok"><i class="fa-solid fa-check" aria-hidden="true"></i>Activo</span>
+              {% else %}<span class="state provider-inactive"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Inactivo</span>{% endif %}
+            </td>
+            <td class="building-row-actions">
+              {% if model_view.check_can_view_details(request, row) %}
+              <a href="{{ model_view._build_url_for('admin:details', request, row) }}" class="btn btn-sm btn-secondary"><i class="fa-regular fa-eye" aria-hidden="true"></i>Ver</a>
+              {% endif %}
+              {% if model_view.check_can_edit(request, row) %}
+              <a href="{{ model_view._build_url_for('admin:edit', request, row) }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" class="btn btn-sm btn-primary"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr class="list-empty"><td colspan="99">{{ empty_state(empty_for(model_view.identity)) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer building-list-foot">
+      {% set first = ((pagination.page - 1) * pagination.page_size) + 1 if pagination.count else 0 %}
+      <span>Mostrando {{ first }}–{{ min(pagination.page * pagination.page_size, pagination.count) }} de {{ pagination.count }} proveedor{{ 'es' if pagination.count != 1 }}</span>
+      <div class="provider-pages">
+        <ul class="pagination m-0">
+          <li class="page-item {% if not pagination.has_previous %}disabled{% endif %}">
+            <a class="page-link" href="{{ pagination.previous_page.url if pagination.has_previous else '#' }}" aria-label="Página anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+          </li>
+          {% for page_control in pagination.page_controls %}
+          <li class="page-item {% if page_control.number == pagination.page %}active{% endif %}"><a class="page-link" href="{{ page_control.url }}">{{ page_control.number }}</a></li>
+          {% endfor %}
+          <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="{{ pagination.next_page.url if pagination.has_next else '#' }}" aria-label="Página siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+          </li>
+        </ul>
+        <div class="dropdown">
+          Mostrar
+          <a href="#" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">{{ request.query_params.get("pageSize") or model_view.page_size }} por página</a>
+          <div class="dropdown-menu">
+            {% for size in model_view.page_size_options %}
+            <a class="dropdown-item" href="{{ request.url.include_query_params(pageSize=size, page=pagination.resize(size).page) }}">{{ size }} por página</a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

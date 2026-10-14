@@ -747,6 +747,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 /* Reclamos por edificio: the counts in bold, the zeros in grey. */
 .building-count-on { font-weight: var(--fw-bold); }
 .building-count-off { color: var(--c-placeholder); }
+/* Proveedores: the contact under the company, the WhatsApp with its icon, inactive in red, the
+   pages and how many per page together on the right. */
+.provider-name, .provider-contact { display: block; }
+.provider-contact { font-size: var(--fs-small); font-weight: var(--fw-regular); color: var(--c-text-2); }
+.provider-whatsapp { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--c-primary); white-space: nowrap; }
+.provider-inactive { background: var(--c-danger-soft); color: var(--c-danger); border-color: var(--c-danger-border); }
+.provider-pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .building-row-actions .building-delete { width: var(--btn-h-sm); padding: 0; }
 .building-row-actions { white-space: nowrap; text-align: right; }
 .building-row-actions .btn + .btn { margin-left: var(--sp-1); }

@@ -356,14 +356,14 @@ def test_one_empty_block_everywhere(operator: Panel) -> None:
 
 
 def test_sqladmin_lists_use_the_same_empty_block(logged_in: Panel) -> None:
-    page = logged_in.client.get("/admin/provider/list").text
+    page = logged_in.client.get("/admin/claim-category/list").text
     block = _empty_block(page)
-    text = html_escape(help.empty_for("provider"), quote=False)
+    text = html_escape(help.empty_for("claim-category"), quote=False)
     assert f'<p class="empty-help">{text}</p>' in block
     # Its «+ Agregar» beside the page's title, the title not repeated in the card.
     header = page.split('class="page-header', 1)[1].split('class="page-body', 1)[0]
-    assert "+ Agregar Proveedor" in header
-    assert '<h3 class="card-title">Proveedores</h3>' not in page
+    assert "+ Agregar Tipo de problema" in header
+    assert '<h3 class="card-title">Tipos de problema</h3>' not in page
 
 
 def _menu_user(page: str) -> str:
@@ -707,8 +707,8 @@ def test_secondary_columns_are_listed_and_kept_in_the_record(view: str) -> None:
 
 
 def test_a_list_marks_its_secondary_columns(logged_in: Panel) -> None:
-    page = logged_in.client.get("/admin/provider/list").text
-    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Edificios', page)
+    page = logged_in.client.get("/admin/claim-category/list").text
+    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Orden', page)
     assert 'class="table-responsive table-scroll-hint"' in page
     assert '<div class="list-layout">' in page and 'class="filter-sidebar-col"' in page
 
@@ -733,6 +733,15 @@ def test_building_info_has_the_same_list(logged_in: Panel) -> None:
     assert '<option value="horarios" selected>' in page and "Borrar la búsqueda" in page
     assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Actualizado', page)
     assert "Agregar información de edificio" in page and 'id="modal-delete"' in page
+
+
+def test_providers_have_the_same_list(logged_in: Panel) -> None:
+    """5g: like «Edificios»: the contact under the company, the state as a label."""
+    page = logged_in.client.get("/admin/provider/list").text
+    assert 'id="search-input"' in page and page.count('class="segmented"') == 1
+    assert "filter-sidebar-col" not in page and "Agregar proveedor" in page
+    assert re.search(r'<th class="text-center col-secondary">Edificios</th>', page)
+    assert "Mostrando 0–0 de 0 proveedores" in page
 
 
 def test_the_rules_that_keep_tables_inside_their_card() -> None:

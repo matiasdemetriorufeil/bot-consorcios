@@ -54,6 +54,16 @@ Solo cambia cómo se ve Pendientes; los números, los permisos y los links son l
   - el bot se muestra como ✓ o ✗;
   - «Configurar» va bajo «Acciones»;
   - al pie, cuántos edificios se ven.
+- **Proveedores** (`templates/provider_list.html`, con las mismas clases):
+  - el botón de arriba dice «+ Agregar proveedor»;
+  - el buscador y «Activo» (Todos / Sí / No) van en la tarjeta;
+  - el contacto va abajo de la empresa;
+  - el WhatsApp lleva su ícono, y si falta dice «Sin WhatsApp»;
+  - el estado es una etiqueta («✓ Activo» en verde, «✕ Inactivo» en rojo);
+  - al pie, «Mostrando 1–N de N proveedores», las páginas y cuántos por página;
+  - ya no se desplaza a 1440 px: lo que se anotó en 5f.4 quedó resuelto, porque la tabla
+    tiene una columna menos (el contacto va junto a la empresa) y no tiene los filtros al
+    costado.
 
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 
