@@ -257,7 +257,9 @@ def test_save_buttons_keep_working(logged_in: Panel, data: dict[str, int]) -> No
 def test_actions_only_where_there_are_batch_actions(logged_in: Panel, data: dict[str, int]) -> None:
     for url in ("/admin/building/list", "/admin/wa-template/list", "/admin/sync-run/list"):
         page = logged_in.client.get(url).text
-        assert "Acciones" not in page and 'id="dropdownMenuButton"' not in page, url
+        assert 'id="dropdownMenuButton"' not in page, url
+        # Edificios (5g) titles its «Ver» / «Editar» column «Acciones»: no batch menu.
+        assert url == "/admin/building/list" or "Acciones" not in page, url
     # Information and quick replies can be deleted in batch.
     page = logged_in.client.get("/admin/quick-reply/list").text
     assert "Acciones" in page and "Borrar los elegidos" in page

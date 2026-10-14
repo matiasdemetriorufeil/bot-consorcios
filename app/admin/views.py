@@ -103,6 +103,7 @@ class BuildingAdmin(AdminOnly, AuditedView, model=Building):
     name_plural = "Edificios"
     icon = "fa-solid fa-building"
     audit_name = "building"
+    list_template = "building_list.html"  # the list's own look (5g); same links and filters
     # Buildings come from ConsorPlus (roster sync): only these fields are edited here.
     can_create = False
     can_delete = False

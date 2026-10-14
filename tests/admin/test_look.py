@@ -707,10 +707,22 @@ def test_secondary_columns_are_listed_and_kept_in_the_record(view: str) -> None:
 
 
 def test_a_list_marks_its_secondary_columns(logged_in: Panel) -> None:
-    page = logged_in.client.get("/admin/building/list").text
-    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Dirección', page)
+    page = logged_in.client.get("/admin/building-info/list").text
+    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Actualizado', page)
     assert 'class="table-responsive table-scroll-hint"' in page
     assert '<div class="list-layout">' in page and 'class="filter-sidebar-col"' in page
+
+
+def test_buildings_have_their_own_list(logged_in: Panel) -> None:
+    """5g: the search and the Todos / Sí / No filters in the card, «Acciones» on the right."""
+    f.building(logged_in.session, "001 TORRE INVENTADA")
+    logged_in.session.commit()
+    page = logged_in.client.get("/admin/building/list?active=true").text
+    assert 'id="search-input"' in page and 'id="search-button"' in page
+    assert "filter-sidebar-col" not in page and page.count('class="segmented"') == 3
+    assert re.search(r'class="segmented-item active"[^>]*>Sí</a>', page)
+    assert re.search(r'<th class="col-secondary">\s*Dirección', page)
+    assert ">Acciones</th>" in page and "1 edificio<" in page
 
 
 def test_the_rules_that_keep_tables_inside_their_card() -> None:

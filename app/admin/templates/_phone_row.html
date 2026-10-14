@@ -8,7 +8,7 @@
   <td data-label="Persona">{{ row.person }}</td>
   <td data-label="Unidades">{{ row.units or '—' }}</td>
   <td data-label="Origen">{{ row.source }}</td>
-  <td data-label="Estado"><span class="state state-{{ row.status | state('phone') }}">{{ row.status_label }}</span></td>
+  <td data-label="Estado" class="phone-state"><span class="state state-{{ row.status | state('phone') }}">{{ row.status_label }}</span></td>
   <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
   <td class="row-actions">
     {% if row.status == 'review' %}

@@ -22,6 +22,19 @@ Solo cambia cómo se ve Pendientes; los números, los permisos y los links son l
   - el SUM vacío dice «No hay turnos reservados para hoy ni para mañana.».
 - **Administración:** un título y tres tarjetas chicas. La que tiene un problema se ve en rojo.
 - **Capturas:** `docs/panel-capturas/5g/` (fuera de Git).
+- **Teléfonos:** «A revisar» va en un solo renglón (a 1024 px su celda tiene menos margen, para
+  que la tabla siga entrando).
+- **Edificios** (`templates/building_list.html`, solo esa lista; el resto de SQLAdmin sigue
+  igual):
+  - el buscador tiene la lupa adentro, con «Buscar» en petróleo y «Borrar la búsqueda» como
+    link (solo si hay una búsqueda);
+  - los filtros Activo / Prueba piloto / Reclamos por el bot son botones Todos / Sí / No en la
+    misma tarjeta, sin el panel de costado;
+  - el nombre va en negrita y las columnas Sí / No están centradas;
+  - «Ver» y «Editar» van uno al lado del otro, bajo «Acciones»;
+  - al pie, «N edificios» y «Datos sincronizados desde ConsorPlus», con las páginas en el medio
+    si hay más de 25 edificios;
+  - ya no está el selector de cuántos edificios mostrar por página.
 
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 
