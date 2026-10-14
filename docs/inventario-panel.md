@@ -1,5 +1,28 @@
 # Inventario del panel `/admin`
 
+## Actualización 5g: «Pendientes» con el diseño nuevo (2026-10-13)
+
+Solo cambia cómo se ve Pendientes; los números, los permisos y los links son los mismos.
+
+- **Arriba:** el saludo va sobre el título, y el título es más grande. La línea de ayuda ahora
+  dice «Todo lo que espera a alguien del estudio. Cada tarjeta te lleva a su lista.». Los
+  avisos con sonido van en una tarjeta a la derecha del título («Avisos con sonido apagados» y
+  «Activar»), así que en esta pantalla la barra de arriba no se ve en la computadora. En el
+  celular sigue la campana.
+- **Resumen:** cuántas tareas necesitan atención y cuántas listas están al día. El SUM se
+  cuenta siempre como al día.
+- **Tarjetas:**
+  - van de a tres (de a dos por debajo de 1280 px y de a una en el celular);
+  - cada una tiene un ícono, una etiqueta («Por revisar», «Urgente», «Al día» u «Hoy y
+    mañana»), el número y el título;
+  - la que tiene algo se marca con un borde petróleo, o rojo si es urgente;
+  - en las que están en cero, el 0 se ve gris y el botón es blanco.
+- **Textos:**
+  - «Reclamos que necesitan atención» pasa a «Reclamos con atención»;
+  - el SUM vacío dice «No hay turnos reservados para hoy ni para mañana.».
+- **Administración:** un título y tres tarjetas chicas. La que tiene un problema se ve en rojo.
+- **Capturas:** `docs/panel-capturas/5g/` (fuera de Git).
+
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 
 **5f.3, en una línea:** un 403 de permiso (el JSON de `errors.py`) ya no se toma como sesión

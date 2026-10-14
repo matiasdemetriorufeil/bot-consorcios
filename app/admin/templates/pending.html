@@ -1,8 +1,17 @@
-{#- «Pendientes» (app.admin.pending_view): the greeting and the cards, which panel.js redraws
-    with the panel's numbers every few seconds (data-pending-cards). -#}
+{#- «Pendientes» (app.admin.pending_view): the greeting above the title, the alerts beside it
+    (not in the bar on top) and the cards, which panel.js redraws with the panel's numbers every
+    few seconds (data-pending-cards). -#}
 {% extends "sqladmin/layout.html" %}
-{% block under_title %}
-<p class="pending-greeting mb-1" id="pending-greeting">{{ greeting }} · {{ today }}</p>
+{% block main_class %} class="pending-page"{% endblock %}
+{% block alerts %}{% endblock %}
+{% block above_title %}
+<p class="pending-greeting" id="pending-greeting">{{ greeting }} · {{ today }}</p>
+{% endblock %}
+{% block header_actions %}
+<div class="col-auto pending-alerts">
+  {% set alerts_look = "pending" %}
+  {% include "_alerts.html" %}
+</div>
 {% endblock %}
 {% block content %}
 <div class="col-12 pending-cards" id="pending-cards" data-pending-cards>

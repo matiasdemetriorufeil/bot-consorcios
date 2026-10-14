@@ -54,29 +54,25 @@
      data-login-url="{{ url_for('admin:login') }}"
      data-title-count="{{ counts.get('waiting', 0) + counts.get('claims_urgent', 0) }}"
      data-title="{{ self.screen_title() | trim }} · Panel · Estudio Diego Rufeil">
-  <div class="panel-notice alerts-off" id="alerts-off" hidden>
-    <span data-alerts-text="off">{{ alert_texts.off }}</span>
-    <span data-alerts-text="blocked" hidden>{{ alert_texts.blocked }}</span>
-    <button type="button" class="btn btn-sm btn-primary" data-alerts-enable>Activar</button>
-  </div>
+  {#- «Pendientes» shows them beside its title instead (pending.html). -#}
+  {% block alerts %}{% include "_alerts.html" %}{% endblock %}
   <div class="panel-notice session-gone" id="session-gone" hidden>
     <span>{{ alert_texts.session }}</span>
     <a class="btn btn-sm btn-primary" href="{{ url_for('admin:login') }}" target="_blank" rel="noopener">Entrar</a>
   </div>
-  <button type="button" class="btn btn-sm btn-secondary panel-alerts-button" id="enable-alerts" data-alerts-enable
-          title="Sonido y notificación del navegador cuando algo espera a alguien del estudio">🔔 Activar avisos</button>
   {#- Phones: the alerts are a bell in the top bar (crossed out while they are off). -#}
   <button type="button" class="panel-bell" id="alerts-bell" data-alerts-enable aria-label="{{ alert_texts.off }} Activar">
     <i class="fa-solid fa-bell-slash" aria-hidden="true"></i>
   </button>
 </header>
     {% endblock %}
-    <main id="contenido" tabindex="-1">
+    <main id="contenido" tabindex="-1"{% block main_class %}{% endblock %}>
       <div class="container-fluid">
         <div class="page-header d-print-none">
           {% block content_header %}
 <div class="row align-items-center g-2">
   <div class="col">
+    {% block above_title %}{% endblock %}
     <h1 class="page-title">{{ screen_name() }}</h1>
     {% block under_title %}{% endblock %}
     {% set help_line = page_help(request) %}

@@ -110,6 +110,7 @@
   --fs-body: .9375rem;       /* 15 px */
   --fs-small: .8125rem;      /* 13 px */
   --fs-display: 2rem;        /* the big numbers (Pendientes, Métricas) */
+  --fs-hero: 2.5rem;         /* Pendientes' title and its cards' numbers, on computers */
   --fs-icon: 1.25rem;        /* the bar at the bottom's icons */
   --fw-regular: 400;
   --fw-bold: 600;
@@ -123,9 +124,11 @@
   --sp-6: 32px;
   --radius-sm: 6px;
   --radius-md: 10px;
+  --radius-lg: 16px;         /* Pendientes' cards */
   --radius-pill: 999px;
   --shadow-1: 0 1px 2px rgba(15, 23, 42, .06), 0 1px 3px rgba(15, 23, 42, .05);
   --shadow-2: 0 .75rem 2rem rgba(15, 23, 42, .22);
+  --shadow-3: 0 .5rem 1.5rem rgba(31, 95, 122, .14);  /* a card that waits for someone (Pendientes) */
   --btn-h: 38px;
   --btn-h-sm: 32px;
   --btn-h-touch: 44px;
@@ -166,7 +169,7 @@ body { font-family: var(--font-sans); font-size: var(--fs-body); color: var(--c-
 .page-wrapper, .page-body { background: var(--c-bg); }
 h1, h2, h3, h4, .h1, .h2, .h3, .h4 { font-weight: var(--fw-bold); }
 .page-title { font-size: var(--fs-title); font-weight: var(--fw-bold); }
-.card-title, .confirm-title, .tour-title, .contact-name, .pending-title { font-size: var(--fs-subtitle); font-weight: var(--fw-bold); }
+.card-title, .confirm-title, .tour-title, .contact-name { font-size: var(--fs-subtitle); font-weight: var(--fw-bold); }
 .small, small, .form-hint, .text-muted.small { font-size: var(--fs-small); }
 .form-label { font-size: var(--fs-body); font-weight: var(--fw-bold); }
 .text-muted, .text-secondary, .form-hint, .text-body-secondary { color: var(--c-text-2) !important; }
@@ -767,31 +770,87 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .session-gone { background: var(--c-danger-soft); color: var(--c-danger); font-weight: var(--fw-bold); }
 .panel-alerts-button { white-space: nowrap; }
 
-.pending-greeting { font-size: var(--fs-subtitle); font-weight: var(--fw-bold); }
+/* The title: the greeting above it, larger, and the alerts in a card on its right (not in the bar
+   on top, which goes away here while it has nothing to say). */
+.pending-page .page-header { margin: var(--sp-6) 0 var(--sp-5); }
+@media (min-width: 1280px) { .pending-page .container-fluid { padding-left: var(--sp-6); padding-right: var(--sp-6); } }
+.pending-page .page-title { margin: 0; font-size: var(--fs-hero); line-height: 1.15; letter-spacing: -.02em; }
+.pending-page .page-help { margin-top: var(--sp-2); }
+.pending-greeting { margin: 0 0 var(--sp-1); color: var(--c-text-2); }
+@media (min-width: 992px) {
+  .panel-topbar:not(:has(.alerts-off, .panel-alerts-button, .session-gone:not([hidden]))) { display: none; }
+}
+.panel-notice.pending-alerts-off { gap: var(--sp-3); margin: 0; padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  font-size: var(--fs-body); color: var(--c-text-2); background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-1); }
+.pending-alerts-off > i { color: var(--c-notice-text); }
+.pending-alerts-off [data-alerts-text="blocked"] { max-width: 26rem; }
+
 .row-deck > .pending-cards { display: block; }  /* Tabler's columns are flex: the grid, full width */
-.pending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--sp-4); }
-.pending-card, .stat { margin: 0; border-left: 4px solid var(--c-primary); }
-.pending-card .card-body, .stat .card-body { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* How many need someone and how many are up to date. */
+.pending-summary { display: flex; flex-flow: row wrap; align-items: center; gap: var(--sp-3) var(--sp-5); margin: 0 0 var(--sp-5);
+  padding: var(--sp-4) var(--sp-5); border-radius: var(--radius-lg); }
+.pending-summary-item { display: flex; align-items: center; gap: var(--sp-3); margin: 0; font-size: var(--fs-subtitle); color: var(--c-text-2); }
+.pending-summary-item strong { color: var(--c-text); }
+.pending-summary .pending-summary-count { min-width: 2.25rem; height: 2.25rem; font-size: var(--fs-body); }
+.pending-summary-count-attention { background: var(--c-waiting-bg); color: var(--c-waiting); }
+.pending-summary-count-ok { background: var(--c-ok-bg); color: var(--c-ok); }
+.pending-summary-divider { align-self: stretch; width: 1px; background: var(--c-border); }
+
+/* The cards: three across (two under 1280 px, one on phones), as tall as the tallest of their row. */
+.pending-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-5); }
+.pending-card { margin: 0; border-radius: var(--radius-lg); }
+.pending-card .card-body { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-5); }
+.pending-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.pending-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 2.75rem; width: 2.75rem; height: 2.75rem;
+  border-radius: var(--radius-md); background: var(--c-surface-3); color: var(--c-text-2); font-size: var(--fs-subtitle); }
 .pending-head { display: flex; align-items: baseline; gap: var(--sp-3); }
-.pending-number, .stat-number { font-size: var(--fs-display); font-weight: var(--fw-bold); line-height: 1; color: var(--c-primary); flex-shrink: 0; }
-.pending-title { margin: 0; }
-.pending-text, .stat-text { margin: 0; color: var(--c-text-2); }
+.pending-number { font-size: var(--fs-hero); font-weight: var(--fw-bold); line-height: 1; letter-spacing: -.02em; color: var(--c-primary); flex-shrink: 0; }
+.pending-title { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-bold); }
+.pending-text { margin: 0; color: var(--c-text-2); line-height: 1.6; }
 .pending-detail { margin: 0; font-weight: var(--fw-bold); }
-.pending-button { align-self: flex-start; margin-top: auto; }
-.pending-card .pending-button { margin-top: var(--sp-2); }
-.pending-card-urgent { border-left-color: var(--c-danger); }
-.pending-card-urgent .pending-number { color: var(--c-danger); }
-.pending-card-done { border-left-color: var(--c-border-strong); background: var(--c-surface-2); }
-.pending-card-done .pending-title, .pending-card-done .pending-text { color: var(--c-text-2); }
+.pending-card .pending-button { align-self: flex-start; margin-top: auto; min-height: var(--btn-h-touch); padding: 0 var(--sp-5); }
+/* Its secondary button: white, with a line (the panel's one is grey). */
+.pending-card .btn-secondary { --tblr-btn-bg: var(--c-surface); --tblr-btn-hover-bg: var(--c-surface-2); background-color: var(--c-surface); }
+.pending-card .btn-secondary:hover { background-color: var(--c-surface-2); }
+/* Something waits: outlined in petrol (red if urgent), a little raised. */
+.pending-card-active { border: 2px solid var(--c-primary); box-shadow: var(--shadow-3); }
+.pending-card-active .card-body { padding: calc(var(--sp-5) - 1px); }
+.pending-card-active .pending-icon { background: var(--c-primary-soft); color: var(--c-primary); }
+.pending-card-urgent { border-color: var(--c-danger); }
+.pending-card-urgent .pending-number, .pending-card-urgent .pending-icon { color: var(--c-danger); }
+.pending-card-urgent .pending-icon { background: var(--c-danger-soft); }
+/* Up to date: the number in grey. */
+.pending-card-done .pending-number { color: var(--c-placeholder); }
 .pending-done { font-weight: var(--fw-bold); color: var(--c-ok); white-space: nowrap; flex-shrink: 0; }
-.pending-card-info, .stat-info { border-left-color: var(--c-border-strong); }
 .pending-number-info { color: var(--c-text); }
 .pending-sum { margin: 0; padding-left: var(--sp-4); }
 .all-clear { border-left: 4px solid var(--c-ok); }
 .all-clear-title { font-size: var(--fs-title); font-weight: var(--fw-bold); color: var(--c-ok); margin-bottom: var(--sp-1); }
-.pending-admin { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); margin-top: var(--sp-4); padding: var(--sp-3) var(--sp-4);
-  font-size: var(--fs-small); border: 1px dashed var(--c-border-strong); border-radius: var(--radius-sm); }
-.pending-admin-title { font-weight: var(--fw-bold); color: var(--c-text-2); }
+
+/* «Administración» (admins only): three small cards, the one with a problem in red. */
+.pending-admin { margin-top: var(--sp-6); }
+.pending-admin-title { margin: 0 0 var(--sp-3); font-size: var(--fs-small); font-weight: var(--fw-bold); letter-spacing: .06em;
+  text-transform: uppercase; color: var(--c-text-2); }
+.pending-admin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-5); }
+.pending-admin-item { flex-direction: row; align-items: center; gap: var(--sp-3); margin: 0; min-height: 4.5rem; padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--radius-lg); color: var(--c-text-2); text-decoration: none; transition: border-color var(--t-fast); }
+.pending-admin-item:hover { border-color: var(--c-primary-border); color: var(--c-text-2); text-decoration: none; }
+.pending-admin-label { flex: 1; min-width: 0; }
+.pending-admin-number { font-size: var(--fs-title); color: var(--c-text); }
+.pending-admin-icon { font-size: var(--fs-subtitle); }
+.pending-admin-stack { display: flex; flex-direction: column; min-width: 0; }
+.pending-admin-small { font-size: var(--fs-small); }
+.pending-admin-value { font-size: var(--fs-subtitle); color: var(--c-text); }
+.pending-admin-item-problem, .pending-admin-item-problem:hover { background: var(--c-danger-soft); border-color: var(--c-danger-border); color: var(--c-danger); }
+.pending-admin-item-problem .pending-admin-number, .pending-admin-item-problem .pending-admin-value { color: var(--c-danger); }
+
+/* Métricas' cards: what they shared with the old cards of Pendientes, as it was. */
+.stat { margin: 0; border-left: 4px solid var(--c-primary); }
+.stat .card-body { display: flex; flex-direction: column; gap: var(--sp-1); }
+.stat-number { font-size: var(--fs-display); font-weight: var(--fw-bold); line-height: 1; color: var(--c-primary); flex-shrink: 0; }
+.stat-text { margin: 0; color: var(--c-text-2); }
+.stat-info { border-left-color: var(--c-border-strong); }
 /* «Todo al día»: the cards in zero, one line each. */
 .pending-lines { display: flex; flex-direction: column; }
 .pending-line { display: flex; align-items: center; gap: var(--sp-3); min-height: 48px; padding: var(--sp-2) var(--sp-4);
@@ -801,9 +860,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .pending-line i { width: 1.25rem; text-align: center; color: var(--c-text-2); }
 .pending-line-title { flex: 1; }
 .pending-line-link { color: var(--c-primary); font-weight: var(--fw-bold); }
+@media (max-width: 1279.98px) {
+  .pending-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+  .pending-admin-grid { grid-template-columns: 1fr; gap: var(--sp-3); }
+}
+@media (max-width: 991.98px) {
+  /* Phones: the alerts are the bell of the top bar. */
+  .pending-alerts { display: none; }
+  .pending-page .page-header { margin: var(--sp-4) 0 !important; }
+  .pending-page .page-title { font-size: var(--fs-title); letter-spacing: 0; }
+  .pending-greeting { font-size: var(--fs-small); }
+}
 @media (max-width: 767.98px) {
-  .pending-grid { grid-template-columns: 1fr; gap: var(--sp-3); }
-  .pending-admin { flex-direction: column; }
+  .pending-grid, .pending-admin-grid { grid-template-columns: 1fr; gap: var(--sp-3); }
+  .pending-summary { flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin-bottom: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+  .pending-summary-item { font-size: var(--fs-body); }
+  .pending-summary .pending-summary-count { min-width: 2rem; height: 2rem; }
+  .pending-summary-divider { display: none; }
+  .pending-card .card-body { gap: var(--sp-3); padding: var(--sp-4); }
+  .pending-card-active .card-body { padding: calc(var(--sp-4) - 1px); }
+  .pending-top { margin-bottom: 0; }
+  .pending-icon { flex-basis: 2.5rem; width: 2.5rem; height: 2.5rem; }
+  .pending-number { font-size: var(--fs-display); }
+  .pending-title { font-size: var(--fs-subtitle); }
+  .pending-card .pending-button { align-self: stretch; }
+  .pending-admin { margin-top: var(--sp-5); }
   .panel-topbar { padding: var(--sp-1) var(--sp-3); }
 }
 

@@ -1,0 +1,13 @@
+{#- The alerts' notice («off» or «blocked», with its own «Activar») and the button that shows
+    once they are on (panel.js finds both by id: one of each per page). In the bar on top of
+    every page (layout.html); «Pendientes» puts them beside its title, as a card with an icon
+    (alerts_look = "pending"). -#}
+{% set beside_title = alerts_look is defined and alerts_look == "pending" %}
+<div class="panel-notice alerts-off{{ ' pending-alerts-off' if beside_title }}" id="alerts-off" hidden>
+  {% if beside_title %}<i class="fa-solid fa-volume-xmark" aria-hidden="true"></i>{% endif %}
+  <span data-alerts-text="off">{{ alert_texts.off_short if beside_title else alert_texts.off }}</span>
+  <span data-alerts-text="blocked" hidden>{{ alert_texts.blocked }}</span>
+  <button type="button" class="btn {{ '' if beside_title else 'btn-sm ' }}btn-primary" data-alerts-enable>Activar</button>
+</div>
+<button type="button" class="btn {{ '' if beside_title else 'btn-sm ' }}btn-secondary panel-alerts-button" id="enable-alerts" data-alerts-enable
+        title="Sonido y notificación del navegador cuando algo espera a alguien del estudio">🔔 Activar avisos</button>

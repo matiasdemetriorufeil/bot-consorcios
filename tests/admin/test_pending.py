@@ -56,9 +56,10 @@ def _numbers(panel: Panel, **params: Any) -> dict[str, Any]:
 
 
 def _cards(page: str) -> dict[str, str]:
-    """Each card -> its number, or «Al día»."""
+    """Each card -> its number, or «Al día» (its label, above the 0)."""
     found = re.findall(
-        r'data-card="(\w+)">.*?<span class="(?:pending-number[^"]*|pending-done)">([^<]+)</span>',
+        r'data-card="(\w+)">.*?<span class="(?:pending-number[^"]*|pending-done|state state-ok)">'
+        r"([^<]+)</span>",
         page,
         re.S,
     )
@@ -230,7 +231,7 @@ def test_all_clear(operator: Panel) -> None:
     assert {cards[k] for k in ("waiting", "mine", "claims", "phones", "verifications")} == {
         "Al día"
     }
-    assert cards["sum"] == "0" and "No hay reservas del SUM para hoy ni para mañana." in page
+    assert cards["sum"] == "0" and "No hay turnos reservados para hoy ni para mañana." in page
     assert "Buen día, Marta · miércoles 30/09" in _text(page)
 
 

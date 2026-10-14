@@ -17,10 +17,7 @@ from starlette.requests import Request
 
 PAGE_HELP: dict[str, str] = {
     # What the operators use
-    "view-pending": (
-        "Todo lo que espera a alguien del estudio. Empezá el día acá: cada tarjeta te lleva a "
-        "su lista."
-    ),
+    "view-pending": ("Todo lo que espera a alguien del estudio. Cada tarjeta te lleva a su lista."),
     "view-conversations": (
         "Las charlas de WhatsApp. En «Esperando persona» están las que el bot no pudo "
         "resolver y necesitan a alguien del estudio. Para un repaso, tocá «Cómo usar»."
@@ -206,7 +203,7 @@ EMPTY: dict[str, str] = {
         "aviso."
     ),
     "pending:card": "Al día",
-    "pending:sum": "No hay reservas del SUM para hoy ni para mañana.",
+    "pending:sum": "No hay turnos reservados para hoy ni para mañana.",
     "phones:review": (
         "No hay teléfonos para revisar. Cuando aparezca un número que hay que confirmar, va a "
         "estar acá."
@@ -290,7 +287,7 @@ PENDING_CARDS: dict[str, dict[str, str]] = {
         "button": "Ver mías",
     },
     "claims": {
-        "title": "Reclamos que necesitan atención",
+        "title": "Reclamos con atención",
         "text": "Urgentes, o con algún problema con el proveedor o la demora.",
         "button": "Ver reclamos",
     },
@@ -315,6 +312,8 @@ PENDING_CARDS: dict[str, dict[str, str]] = {
 
 ALERTS: dict[str, str] = {
     "off": "Los avisos con sonido están apagados.",
+    # The same, shorter, in the card beside the title of «Pendientes».
+    "off_short": "Avisos con sonido apagados",
     "blocked": (
         "Los avisos están bloqueados en este navegador. Para activarlos, tocá el candado al lado "
         "de la dirección, después «Notificaciones» y elegí «Permitir»."

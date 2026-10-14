@@ -1,18 +1,26 @@
 {#- The cards of «Pendientes» (the page and, redrawn, the panel's numbers): p is an
-    app.admin.pending.Pending. A card in zero is dimmed and says «Al día»; when everything is
-    («Todo al día») each one is a single line. No names, phones nor units here. -#}
+    app.admin.pending.Pending. Above them, how many need someone and how many are up to date. A
+    card with something is outlined (red if urgent); one in zero says «Al día» and its number is
+    grey; when everything is («Todo al día») each one is a single line. No names, phones nor
+    units here. -#}
+{% set icons = {'waiting': 'fa-regular fa-comment', 'mine': 'fa-regular fa-user',
+                'claims': 'fa-solid fa-triangle-exclamation', 'phones': 'fa-solid fa-mobile-screen',
+                'verifications': 'fa-solid fa-shield-halved', 'sum': 'fa-regular fa-calendar'} %}
 {% macro card(key, number, href, detail="", urgent=False) %}
 {% set texts = pending_cards[key] %}
-{% set icons = {'waiting': 'fa-comments', 'mine': 'fa-user', 'claims': 'fa-screwdriver-wrench',
-                'phones': 'fa-address-book', 'verifications': 'fa-user-check'} %}
 {% if p.all_clear %}
-<a class="pending-line" href="{{ href }}" data-card="{{ key }}"><i class="fa-solid {{ icons[key] }}" aria-hidden="true"></i><span class="pending-line-title">{{ texts.title }}</span><span class="pending-done">{{ empty_texts['pending:card'] }}</span><span class="pending-line-link">Ver</span></a>
+<a class="pending-line" href="{{ href }}" data-card="{{ key }}"><i class="{{ icons[key] }}" aria-hidden="true"></i><span class="pending-line-title">{{ texts.title }}</span><span class="pending-done">{{ empty_texts['pending:card'] }}</span><span class="pending-line-link">Ver</span></a>
 {% else %}
-<section class="card pending-card{% if not number %} pending-card-done{% elif urgent %} pending-card-urgent{% endif %}" data-card="{{ key }}">
+<section class="card pending-card{% if not number %} pending-card-done{% else %} pending-card-active{% if urgent %} pending-card-urgent{% endif %}{% endif %}" data-card="{{ key }}">
   <div class="card-body">
+    <div class="pending-top">
+      <span class="pending-icon"><i class="{{ icons[key] }}" aria-hidden="true"></i></span>
+      {% if not number %}<span class="state state-ok">{{ empty_texts['pending:card'] }}</span>
+      {% elif urgent %}<span class="state state-urgent">Urgente</span>
+      {% else %}<span class="state state-waiting">Por revisar</span>{% endif %}
+    </div>
     <div class="pending-head">
-      {% if number %}<span class="pending-number">{{ number }}</span>
-      {% else %}<span class="pending-done">{{ empty_texts['pending:card'] }}</span>{% endif %}
+      <span class="pending-number">{{ number }}</span>
       <h2 class="pending-title">{{ texts.title }}</h2>
     </div>
     <p class="pending-text">{{ texts.text }}</p>
@@ -29,6 +37,15 @@
     <p class="mb-0">{{ empty_texts['pending'] }}</p>
   </div>
 </div>
+{% else %}
+{#- The SUM is only information: it counts among the lists up to date. -#}
+{% set attention = [p.waiting, p.mine, p.claims, p.phones, p.verifications] | select | list | length %}
+{% set up_to_date = 6 - attention %}
+<div class="card pending-summary" id="pending-summary">
+  <p class="pending-summary-item"><span class="count pending-summary-count pending-summary-count-attention">{{ attention }}</span><strong>{{ 'tarea necesita' if attention == 1 else 'tareas necesitan' }} atención</strong></p>
+  <span class="pending-summary-divider" aria-hidden="true"></span>
+  <p class="pending-summary-item"><span class="count pending-summary-count pending-summary-count-ok">{{ up_to_date }}</span>{{ 'lista' if up_to_date == 1 else 'listas' }} al día</p>
+</div>
 {% endif %}
 <div class="{{ 'card pending-lines mb-3' if p.all_clear else 'pending-grid' }}">
   {% set waiting_detail %}{% if p.waiting_urgent %}{{ p.waiting_urgent }} urgente{{ 's' if p.waiting_urgent != 1 }} · {% endif %}la más vieja espera {{ p.waiting_oldest }}{% endset %}
@@ -43,15 +60,19 @@
 <div class="pending-grid">
 {% endif %}
   {% set sum_texts = pending_cards["sum"] %}
-  <section class="card pending-card pending-card-info" data-card="sum">
+  {% set any_sum = p.sum_days | selectattr('buildings') | list %}
+  <section class="card pending-card pending-card-info{{ ' pending-card-done' if not any_sum }}" data-card="sum">
     <div class="card-body">
+      <div class="pending-top">
+        <span class="pending-icon"><i class="{{ icons['sum'] }}" aria-hidden="true"></i></span>
+        <span class="state state-info">Hoy y mañana</span>
+      </div>
       <div class="pending-head">
         <span class="pending-number pending-number-info">{{ p.sum_days | sum(attribute='total') }}</span>
         <h2 class="pending-title">{{ sum_texts.title }}</h2>
       </div>
-      <p class="pending-text">{{ sum_texts.text }}</p>
-      {% set any_sum = p.sum_days | selectattr('buildings') | list %}
       {% if any_sum %}
+      <p class="pending-text">{{ sum_texts.text }}</p>
       <ul class="pending-sum">
         {% for d in p.sum_days if d.buildings %}
         <li><strong>{{ d.label }}:</strong>
@@ -60,7 +81,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="pending-detail">{{ empty_texts['pending:sum'] }}</p>
+      <p class="pending-text">{{ empty_texts['pending:sum'] }}</p>
       {% endif %}
       <a class="btn btn-secondary pending-button" href="{{ url_for('admin:view-amenities') }}">{{ sum_texts.button }}</a>
     </div>
@@ -68,10 +89,24 @@
 </div>
 {% if p.admin %}
 {% set a = p.admin %}
-<div class="pending-admin" id="pending-admin">
-  <span class="pending-admin-title">Administración</span>
-  <a class="{{ 'text-danger fw-bold' if a.sync_problem }}" href="{{ url_for('admin:list', identity='sync-run') }}">Última sincronización: {{ a.sync_text }}</a>
-  <a class="{{ 'text-danger fw-bold' if a.providers_without_whatsapp }}" href="{{ url_for('admin:list', identity='provider') }}">Proveedores sin WhatsApp con edificios: {{ a.providers_without_whatsapp }}</a>
-  <a href="{{ url_for('admin:view-conversations') }}?reason=no_answer">Preguntas que el bot no supo responder esta semana: {{ a.no_answer_week }}</a>
-</div>
+<section class="pending-admin" id="pending-admin" aria-labelledby="pending-admin-title">
+  <h2 class="pending-admin-title" id="pending-admin-title">Administración</h2>
+  <div class="pending-admin-grid">
+    <a class="card pending-admin-item{{ ' pending-admin-item-problem' if a.sync_problem }}" href="{{ url_for('admin:list', identity='sync-run') }}">
+      <i class="fa-solid fa-arrows-rotate pending-admin-icon" aria-hidden="true"></i>
+      <span class="pending-admin-stack">
+        <span class="pending-admin-small">Última sincronización<span class="visually-hidden">:</span></span>
+        <strong class="pending-admin-value">{{ a.sync_text }}</strong>
+      </span>
+    </a>
+    <a class="card pending-admin-item{{ ' pending-admin-item-problem' if a.providers_without_whatsapp }}" href="{{ url_for('admin:list', identity='provider') }}">
+      <span class="pending-admin-label">Proveedores sin WhatsApp con edificios<span class="visually-hidden">:</span></span>
+      <strong class="pending-admin-number">{{ a.providers_without_whatsapp }}</strong>
+    </a>
+    <a class="card pending-admin-item" href="{{ url_for('admin:view-conversations') }}?reason=no_answer">
+      <span class="pending-admin-label">Preguntas que el bot no supo responder esta semana<span class="visually-hidden">:</span></span>
+      <strong class="pending-admin-number">{{ a.no_answer_week }}</strong>
+    </a>
+  </div>
+</section>
 {% endif %}
