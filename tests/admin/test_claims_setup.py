@@ -101,7 +101,10 @@ def test_a_whatsapp_of_an_owner_warns_but_saves(logged_in: Panel) -> None:
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "ese WhatsApp también es de un propietario o inquilino" in _text(response.text)
+    assert (
+        "ese WhatsApp también es de alguien del padrón (propietario, inquilino o familiar)"
+        in _text(response.text)
+    )
     assert _count(logged_in.session, Provider) == 1
 
 

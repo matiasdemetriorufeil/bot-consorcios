@@ -69,14 +69,14 @@ def provider_with_whatsapp(
 
 
 def whatsapp_in_use_warning(session: Session, e164: str | None) -> str | None:
-    """A warning (it does not block) when the number is of an owner or tenant of the roster
+    """A warning (it does not block) when the number is of someone of the roster
     or wrote to the studio (a contact of Conversaciones): from step 8.5 the messages of a
     provider's number go to the providers' flow."""
     if not e164:
         return None
     whose = []
     if session.scalar(select(Phone.id).where(Phone.e164 == e164).limit(1)):
-        whose.append("de un propietario o inquilino")
+        whose.append("de alguien del padrón (propietario, inquilino o familiar)")
     if session.scalar(
         select(WaContact.id)
         .where(WaContact.phone_e164 == e164, WaContact.simulated.is_(False))

@@ -129,7 +129,9 @@ def test_warning_when_the_number_is_of_an_owner_or_a_contact(db_session: Session
     assert whatsapp_in_use_warning(db_session, WA_1) is None
     assert whatsapp_in_use_warning(db_session, None) is None
     f.person(db_session, "Persona Inventada", phone=WA_1)
-    assert "propietario o inquilino" in (whatsapp_in_use_warning(db_session, WA_1) or "")
+    assert "del padrón (propietario, inquilino o familiar)" in (
+        whatsapp_in_use_warning(db_session, WA_1) or ""
+    )
 
     db_session.add(WaContact(phone_e164=WA_2, wa_id=WA_2[1:]))
     db_session.flush()

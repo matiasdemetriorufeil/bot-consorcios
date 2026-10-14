@@ -2,7 +2,7 @@
 
 from app.bot.identity import Identity, UnitAccess
 from app.bot.tools import Handoff
-from app.channels.handoff import handoff_labels, handoff_note, slug
+from app.channels.handoff import describe_person, handoff_labels, handoff_note, slug
 from app.db.models import PersonRole
 
 ANA = Identity(
@@ -46,3 +46,12 @@ def test_handoff_note() -> None:
     unknown = handoff_note(Handoff("upset", "x", "urgent"), Identity(), phone_trusted=True)
     assert "Prioridad: URGENTE" in unknown
     assert "Número no verificado" in unknown
+
+
+def test_describe_person_names_every_role_with_the_same_text() -> None:
+    rita = Identity(
+        person_id=2,
+        full_name="Rita Prueba",
+        units=(UnitAccess(1, "031 RODAS II", "04-C", PersonRole.RESIDENT, 10),),
+    )
+    assert describe_person(rita) == "Rita Prueba — RODAS II 04-C (familiar u otro)"

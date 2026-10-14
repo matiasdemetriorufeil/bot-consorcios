@@ -3,6 +3,7 @@ and filters all read these (never the raw value: "pending", "consorplus", "night
 
 from typing import Any
 
+from app import person_roles
 from app.channels.handoff import REASONS
 from app.db.models import (
     BuildingInfoCategory,
@@ -17,6 +18,7 @@ from app.db.models import (
     PersonRole,
     ReservationSource,
     ReservationStatus,
+    SuppressionKind,
     SyncJob,
     SyncKind,
     SyncStatus,
@@ -71,7 +73,10 @@ RESERVATION_SOURCE = {
     ReservationSource.BOT: "Por WhatsApp",
     ReservationSource.PANEL: "Desde el panel",
 }
-PERSON_ROLE = {PersonRole.OWNER: "propietario", PersonRole.TENANT: "inquilino"}
+# The one text of each role (app.person_roles: also the bot's and the handoffs').
+PERSON_ROLE = person_roles.PERSON_ROLE
+# roster_suppressions: what was removed by hand ("Quitados a mano").
+SUPPRESSION_KIND = {SuppressionKind.LINK: "Unidad", SuppressionKind.PHONE: "Teléfono"}
 PANEL_ROLE = {PanelRole.ADMIN: "Admin", PanelRole.OPERATOR: "Operadora"}
 CLAIM_SCOPE = {ClaimScope.BUILDING: "Todo el edificio", ClaimScope.UNIT: "Una unidad"}
 # "¿Quién lo atiende?" without a provider.
@@ -192,6 +197,8 @@ SYNC_STATS = {
     "verified_phones_kept": "Teléfonos verificados conservados",
     "links_added": "Vínculos nuevos",
     "links_removed": "Vínculos quitados",
+    "links_suppressed": "Vínculos quitados a mano (no se recrean)",
+    "phones_suppressed": "Teléfonos quitados a mano (no se recrean)",
     "nameless_contacts": "Contactos sin nombre",
     "contacts_ignored": "Contactos ignorados",
     "people_in_several_buildings": "Personas en varios edificios",
@@ -319,6 +326,7 @@ ENUM_TABLES: dict[type, dict[Any, str]] = {
     SyncStatus: SYNC_STATUS,
     ReservationSource: RESERVATION_SOURCE,
     PersonRole: PERSON_ROLE,
+    SuppressionKind: SUPPRESSION_KIND,
     PanelRole: PANEL_ROLE,
     ClaimScope: CLAIM_SCOPE,
     ClaimStatus: CLAIM_STATUS,

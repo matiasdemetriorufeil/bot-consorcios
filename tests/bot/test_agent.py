@@ -17,7 +17,7 @@ from app.bot.agent import FALLBACK_REPLY, MAX_ROUNDS, Agent, trim_history
 from app.bot.bot_config import invalidate_bot_config
 from app.bot.choices import Choice, with_options
 from app.bot.debt_message import FIRST_GREETING
-from app.bot.identity import identify_by_phone
+from app.bot.identity import can_view_unit_finance, identify_by_phone
 from app.bot.prompts import SYSTEM_PROMPT, describe_identity
 from app.bot.tools import ToolContext, run_tool
 from app.config import Settings
@@ -54,6 +54,7 @@ from tests.llm.fakes import (
 
 OWNER_PHONE = "+5493515550101"
 TENANT_PHONE = "+5493515550202"
+RESIDENT_PHONE = "+5493515550303"  # "familiar u otro" of 04-C
 UNKNOWN_PHONE = "+5493515550999"
 PAYMENT_CODE = "0000111122223333444"  # invented, 19 digits
 FETCHED = datetime(2026, 9, 30, 17, 5, tzinfo=UTC)  # 14:05 in Córdoba
@@ -95,6 +96,8 @@ def world(db_session: Session) -> World:
     tenant = f.person(db_session, "Tito Inventado", phone=TENANT_PHONE)
     f.link(db_session, unit, owner)
     f.link(db_session, unit, tenant, PersonRole.TENANT)
+    resident = f.person(db_session, "Rita Familiar", phone=RESIDENT_PHONE)
+    f.link(db_session, unit, resident, PersonRole.RESIDENT)
     snapshot = DebtSnapshot(
         unit_id=unit.id,
         fetched_at=FETCHED,
@@ -270,7 +273,8 @@ def test_second_message_is_not_first(name: str, world: World) -> None:
 
 @pytest.mark.parametrize("name", PROVIDERS)
 @pytest.mark.parametrize(
-    ("phone", "reason"), [(TENANT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")]
+    ("phone", "reason"),
+    [(TENANT_PHONE, "tenant"), (RESIDENT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")],
 )
 def test_get_debt_denied(name: str, phone: str, reason: str, world: World) -> None:
     steps = [
@@ -765,6 +769,25 @@ def test_context_lists_the_unit_id_of_own_units(world: World) -> None:
     assert f"RODAS II 04-C (unit_id {world.unit_id}, propietario)" in text
 
 
+def test_context_and_tools_name_the_resident_role(world: World) -> None:
+    who = identify_by_phone(world.session, RESIDENT_PHONE)
+    assert [u.role for u in who.units] == [PersonRole.RESIDENT]
+    assert f"RODAS II 04-C (unit_id {world.unit_id}, familiar u otro)" in describe_identity(who)
+    assert not can_view_unit_finance(world.session, RESIDENT_PHONE, world.unit_id)
+    assert tools._units_of(who)[0]["role"] == "familiar u otro"
+
+
+def test_resident_is_denied_debt_like_a_tenant(world: World) -> None:
+    ctx = world.ctx(RESIDENT_PHONE)
+    run_tool(ctx, "find_unit", {"building_text": "Rodas II", "unit_text": "4 C"})
+
+    result = run_tool(ctx, "get_debt", {"unit_id": world.unit_id})
+
+    assert result["status"] == "denied" and result["reason"] == "tenant"
+    assert result["next_step"].startswith("Solo los propietarios pueden ver deuda")
+    assert world.refreshed == []
+
+
 # --- Options to tap (offer_choices) --------------------------------------------------------
 
 YES_NO = {"text": "¿Querés que te pase con una persona?", "options": ["Sí, pasame", "No, gracias"]}
@@ -857,7 +880,8 @@ def test_get_payment_info_sends_the_code_without_the_balance(world: World) -> No
 
 
 @pytest.mark.parametrize(
-    ("phone", "reason"), [(TENANT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")]
+    ("phone", "reason"),
+    [(TENANT_PHONE, "tenant"), (RESIDENT_PHONE, "tenant"), (UNKNOWN_PHONE, "not_verified")],
 )
 def test_get_payment_info_has_the_permissions_of_get_debt(
     world: World, phone: str, reason: str

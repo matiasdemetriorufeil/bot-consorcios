@@ -14,6 +14,7 @@ from app.db.models import (
     PanelRole,
     PersonRole,
     ReservationSource,
+    SuppressionKind,
     SyncJob,
     SyncKind,
     SyncStatus,
@@ -37,6 +38,7 @@ ROOT = Path(__file__).parents[2]
         ReservationSource,
         PersonRole,
         PanelRole,
+        SuppressionKind,
     ],
 )
 def test_every_value_of_every_enum_has_its_text(enum: type[StrEnum]) -> None:

@@ -7,7 +7,7 @@ import unicodedata
 from app.bot.identity import Identity
 from app.bot.tools import Handoff
 from app.bot.unit_search import display_building_name
-from app.db.models import PersonRole
+from app.person_roles import role_text
 
 # Handoff reason -> (label, text for the note). The panel's inbox shows the text.
 REASONS: dict[str, tuple[str, str]] = {
@@ -49,8 +49,7 @@ def describe_person(who: Identity) -> str:
     if not who.known:
         return "Número no verificado (no se sabe quién es)."
     units = "; ".join(
-        f"{display_building_name(u.building_name)} {u.unit_label} "
-        f"({'propietario' if u.role == PersonRole.OWNER else 'inquilino'})"
+        f"{display_building_name(u.building_name)} {u.unit_label} ({role_text(u.role)})"
         for u in who.units
     )
     return f"{who.full_name}" + (f" — {units}" if units else " — sin unidades activas")

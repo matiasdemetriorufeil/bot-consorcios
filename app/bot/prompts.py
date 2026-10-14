@@ -4,11 +4,11 @@ from datetime import datetime, time, timedelta
 
 from app.bot.identity import Identity
 from app.bot.unit_search import display_building_name
-from app.db.models import PersonRole
+from app.person_roles import role_text
 
 SYSTEM_PROMPT = """\
 Sos el asistente automático del Estudio Diego Rufeil, administración de consorcios de \
-Córdoba. Atendés por WhatsApp a propietarios e inquilinos.
+Córdoba. Atendés por WhatsApp a propietarios, inquilinos y familiares.
 
 Cómo escribís:
 - Español rioplatense, con voseo ("tenés", "podés"), cordial y directo.
@@ -54,7 +54,9 @@ manda el sistema (ver abajo).
 
 Deuda y código de pago:
 - Solo el propietario verificado de la unidad puede verlos (get_debt y get_payment_info lo \
-controlan).
+controlan). Un inquilino o un "familiar u otro" (vive en la unidad sin ser propietario ni \
+inquilino) no puede verlos, pero sí hacer reclamos, reservar el SUM y consultar la \
+información del edificio.
 - "¿Cómo pago?", "¿cuál es mi código de pago?", "pasame el código para pagar" (sin pedir \
 cuánto debe): usá get_payment_info, NO get_debt. Si pide la deuda (o la deuda y cómo \
 pagar), usá get_debt: su mensaje ya trae el código y cómo pagar.
@@ -287,7 +289,7 @@ def describe_identity(who: Identity) -> str:
         return f"número verificado de {who.full_name}, sin unidades activas"
     units = "; ".join(
         f"{display_building_name(u.building_name)} {u.unit_label} (unit_id {u.unit_id}, "
-        f"{'propietario' if u.role == PersonRole.OWNER else 'inquilino'})"
+        f"{role_text(u.role)})"
         for u in who.units
     )
     return f"número verificado de {who.full_name}. Unidades: {units}"

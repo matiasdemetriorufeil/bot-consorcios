@@ -1,8 +1,11 @@
 """Idempotent sync of the roster (buildings, units, people, phones) from ConsorPlus.
 
 Only links and phones with source="consorplus" are created, replaced or removed here;
-"bot_verified" and "manual" data is never touched. Logs and reports hold counters only,
-never personal data.
+"bot_verified" and "manual" data is never touched. What an operator removed by hand
+(roster_suppressions) is not created again while ConsorPlus lists it for the same person.
+People are matched on the name ConsorPlus gives (people.consorplus_name), so a name corrected
+in the panel does not create another person. Logs and reports hold counters only, never
+personal data.
 """
 
 import copy
@@ -25,6 +28,8 @@ from app.db.models import (
     Person,
     PersonRole,
     Phone,
+    RosterSuppression,
+    SuppressionKind,
     SyncJob,
     SyncKind,
     SyncRun,
@@ -81,6 +86,9 @@ class RosterReport:
     verified_phones_kept: int = 0
     links_added: int = 0
     links_removed: int = 0
+    # Removed by hand in the panel (roster_suppressions): not created again.
+    links_suppressed: int = 0
+    phones_suppressed: int = 0
     nameless_contacts: int = 0
     contacts_ignored: int = 0
     people_in_several_buildings: int = 0
@@ -146,6 +154,29 @@ def _normalize_contact(contact: RosterContact, report: RosterReport) -> _Contact
     )
 
 
+def consorplus_key(person: Person) -> str:
+    """The name key ConsorPlus gives this person ("" for a nameless contact): what the sync
+    matches on and what roster_suppressions store."""
+    name = person.consorplus_name or person.full_name
+    return "" if name == NAMELESS_PERSON else name_key(name)
+
+
+@dataclass(frozen=True)
+class _Suppressions:
+    links: frozenset[tuple[int, PersonRole, str]]  # (unit_id, role, name_key)
+    phones: frozenset[tuple[str, str]]  # (e164, name_key)
+
+    @classmethod
+    def load(cls, session: Session) -> "_Suppressions":
+        links, phones = set(), set()
+        for s in session.scalars(select(RosterSuppression)):
+            if s.kind == SuppressionKind.LINK:
+                links.add((s.unit_id, PersonRole(s.role), s.name_key))
+            else:
+                phones.add((s.e164, s.name_key))
+        return cls(frozenset(links), frozenset(phones))
+
+
 def _upsert_building(session: Session, code: int, name: str) -> Building:
     building = session.scalar(select(Building).where(Building.consorplus_code == code))
     if building is None:
@@ -209,28 +240,26 @@ def _people_sharing_contact(session: Session, contact: _Contact) -> list[Person]
 def _find_person(
     session: Session, unit: Unit, role: PersonRole, contact: _Contact
 ) -> Person | None:
-    if not contact.named:
-        # Nameless contacts are deduplicated only by phone/email, among nameless people.
-        return next(
-            (
-                p
-                for p in _people_sharing_contact(session, contact)
-                if p.full_name == NAMELESS_PERSON
-            ),
-            None,
-        )
-
-    # 1. The person already linked to this unit/role (keeps re-runs idempotent).
     linked = session.scalars(
         select(Person)
         .join(UnitPerson, UnitPerson.person_id == Person.id)
         .where(UnitPerson.unit_id == unit.id, UnitPerson.role == role)
     ).all()
+    if not contact.named:
+        # Nameless contacts are deduplicated by phone/email, among nameless people. Failing
+        # that, the one nameless person of this unit/role (whose phones were removed by hand).
+        sharing = (p for p in _people_sharing_contact(session, contact) if consorplus_key(p) == "")
+        if (person := next(sharing, None)) is not None:
+            return person
+        nameless = [p for p in linked if consorplus_key(p) == ""]
+        return nameless[0] if len(nameless) == 1 else None
+
+    # 1. The person already linked to this unit/role (keeps re-runs idempotent).
     for person in linked:
         if contact.dni and person.dni:
             if person.dni == contact.dni:
                 return person
-        elif name_key(person.full_name) == contact.key:
+        elif consorplus_key(person) == contact.key:
             return person
 
     # 2. Same DNI.
@@ -241,7 +270,7 @@ def _find_person(
 
     # 3. Same normalized name AND a phone or email in common.
     for person in _people_sharing_contact(session, contact):
-        if name_key(person.full_name) != contact.key:
+        if consorplus_key(person) != contact.key:
             continue
         if contact.dni and person.dni and contact.dni != person.dni:
             continue
@@ -257,6 +286,7 @@ def _upsert_person(
         person = Person(full_name=contact.name, dni=contact.dni)
         session.add(person)
         report.people_created += 1
+    person.consorplus_name = contact.name  # full_name may have been corrected in the panel
     if contact.dni and not person.dni:
         person.dni = contact.dni
     if contact.emails and not person.email:
@@ -267,13 +297,20 @@ def _upsert_person(
 
 
 def _sync_phones(
-    session: Session, person: Person, phones: Iterable[NormalizedPhone], report: RosterReport
+    session: Session,
+    person: Person,
+    contact: _Contact,
+    suppressed: _Suppressions,
+    report: RosterReport,
 ) -> None:
-    for phone in phones:
+    for phone in contact.phones:
         if phone.e164 not in report._phones_seen:
             report._phones_seen.add(phone.e164)
             report.phones_valid += 1
             report.needs_review += phone.needs_review
+        if (phone.e164, contact.key) in suppressed.phones:
+            report.phones_suppressed += 1  # removed by hand from this person
+            continue
         existing = session.scalar(select(Phone).where(Phone.e164 == phone.e164))
         if existing is None:
             session.add(
@@ -377,6 +414,7 @@ def sync_building_rows(
     """
     name = next((clean_name(r.building_name) for r in rows if r.building_name), "")
     building = _upsert_building(session, int(building_code), name)
+    suppressed = _Suppressions.load(session)
     wanted_phones: dict[int, set[str]] = defaultdict(set)
     for row in rows:
         unit = _upsert_unit(session, building, row, report)
@@ -394,10 +432,20 @@ def sync_building_rows(
             contact = _normalize_contact(raw_contact, report)
             if contact is None:
                 continue
-            person = _upsert_person(session, unit, role, contact, report)
-            _sync_phones(session, person, contact.phones, report)
+            if (unit.id, role, contact.key) in suppressed.links:
+                # Removed by hand from this unit and role: no link. Their phones still sync if
+                # the person is still in the roster (another unit, or loaded by hand).
+                report.links_suppressed += 1
+                found = _find_person(session, unit, role, contact)
+                if found is None:
+                    continue
+                report._people_ids.add(found.id)
+                person = found
+            else:
+                person = _upsert_person(session, unit, role, contact, report)
+                wanted.add((person.id, role))
+            _sync_phones(session, person, contact, suppressed, report)
             wanted_phones[person.id].update(p.e164 for p in contact.phones)
-            wanted.add((person.id, role))
             if role == PersonRole.OWNER:
                 owner_has_phone |= bool(contact.phones)
                 owner_has_email |= bool(contact.emails)
@@ -418,13 +466,15 @@ def sync_roster(
     building_codes: Iterable[str] | None = None,
     *,
     dry_run: bool = False,
+    kind: SyncKind = SyncKind.NIGHTLY,
 ) -> RosterReport:
     """Sync the given buildings (all of them if None). One failing building does not stop
-    the rest. With dry_run nothing is written (everything is rolled back at the end)."""
+    the rest. With dry_run nothing is written (everything is rolled back at the end). kind is
+    LIVE for one building refreshed from the panel (so it does not count as last night's)."""
     report = RosterReport()
     run: SyncRun | None = None
     if not dry_run:
-        run = SyncRun(kind=SyncKind.NIGHTLY, job=SyncJob.ROSTER)
+        run = SyncRun(kind=kind, job=SyncJob.ROSTER)
         session.add(run)
         session.commit()
 

@@ -26,6 +26,9 @@ from app.db.base import Base
 class PersonRole(StrEnum):
     OWNER = "owner"
     TENANT = "tenant"
+    # "Familiar u otro": lives in the unit without being its owner or tenant. Loaded by hand
+    # (ConsorPlus has no such column); for the bot it is like a tenant.
+    RESIDENT = "resident"
 
 
 class DataSource(StrEnum):
@@ -147,7 +150,11 @@ class Person(Base):
     __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # The name shown everywhere: may be corrected in the panel.
     full_name: Mapped[str] = mapped_column(String(200))
+    # The name as ConsorPlus lists it (None for people loaded by hand): the roster sync matches
+    # on it, so correcting full_name neither duplicates the person nor drops their units.
+    consorplus_name: Mapped[str | None] = mapped_column(String(200))
     dni: Mapped[str | None] = mapped_column(String(20))
     email: Mapped[str | None] = mapped_column(String(254))
 
@@ -194,6 +201,53 @@ class Phone(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     person: Mapped[Person] = relationship(back_populates="phones")
+
+
+class SuppressionKind(StrEnum):
+    LINK = "link"
+    PHONE = "phone"
+
+
+class RosterSuppression(Base):
+    """Roster data removed by hand in the panel ("quitados a mano"): the roster sync does not
+    create it again while ConsorPlus lists it for the same person (name_key: app.sync.normalize
+    .name_key of their ConsorPlus name; "" for nameless contacts). Another person in ConsorPlus
+    is a real change and comes in."""
+
+    __tablename__ = "roster_suppressions"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'link' AND unit_id IS NOT NULL AND role IS NOT NULL AND e164 IS NULL)"
+            " OR (kind = 'phone' AND e164 IS NOT NULL AND unit_id IS NULL AND role IS NULL)",
+            name="shape",
+        ),
+        Index(
+            "uq_roster_suppressions_link",
+            "unit_id",
+            "role",
+            "name_key",
+            unique=True,
+            postgresql_where=text("kind = 'link'"),
+        ),
+        Index(
+            "uq_roster_suppressions_phone",
+            "e164",
+            "name_key",
+            unique=True,
+            postgresql_where=text("kind = 'phone'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[SuppressionKind] = mapped_column(_str_enum(SuppressionKind, "kind_valid"))
+    # kind "link": the unit and role the person was removed from.
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"))
+    role: Mapped[PersonRole | None] = mapped_column(_str_enum(PersonRole, "role_valid"))
+    # kind "phone": the number removed from the person.
+    e164: Mapped[str | None] = mapped_column(String(20))
+    name_key: Mapped[str] = mapped_column(String(200))
+    created_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class DebtSnapshot(Base):

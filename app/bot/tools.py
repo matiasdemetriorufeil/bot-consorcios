@@ -50,6 +50,7 @@ from app.config import Settings
 from app.db.models import BotEvent, Building, BuildingInfo, PersonRole, Unit
 from app.llm import ToolSpec
 from app.notify.email import EmailSender
+from app.person_roles import role_text
 from app.sync.live import DebtResult
 
 logger = logging.getLogger(__name__)
@@ -809,6 +810,10 @@ def _sent_step(ctx: ToolContext, step: str) -> str:
     return step + GREETED_STEP if ctx.first_message else step
 
 
+# Live in the unit but may not see its debt or payment code (same answer for all of them).
+NOT_OWNER_ROLES = frozenset({PersonRole.TENANT, PersonRole.RESIDENT})
+
+
 def _debt_denied(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
     who = identify_by_phone(ctx.session, ctx.phone)
     if not who.known:
@@ -818,7 +823,7 @@ def _debt_denied(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
             "next_step": "El número no está verificado: ofrecé verificarlo por email "
             "(start_email_verification).",
         }
-    if any(u.unit_id == unit_id and u.role == PersonRole.TENANT for u in who.units):
+    if any(u.unit_id == unit_id and u.role in NOT_OWNER_ROLES for u in who.units):
         return {
             "status": "denied",
             "reason": "tenant",
@@ -1001,7 +1006,7 @@ def _units_of(who: identity.Identity) -> list[dict[str, Any]]:
             "unit_id": u.unit_id,
             "building": display_building_name(u.building_name),
             "unit": u.unit_label,
-            "role": "propietario" if u.role == PersonRole.OWNER else "inquilino",
+            "role": role_text(u.role),
         }
         for u in who.units
     ]

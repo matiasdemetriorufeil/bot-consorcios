@@ -4,7 +4,9 @@
                                         the default tab while there is any) and "Todos"
 - POST /admin/phones/{id}/approve       one phone to review is verified
 - POST /admin/phones/approve            the selected ones ("Aprobar seleccionados")
-- POST /admin/phones/{id}/unlink        "Desvincular": the phone is deleted (the person stays)
+- POST /admin/phones/{id}/unlink        "Desvincular": the phone is deleted (the person stays;
+                                        from ConsorPlus, it is not created again at night:
+                                        app.admin.neighbors_service.remove_phone)
 
 The actions answer as always (a Flash and back to the list) or, asked by panel.js, without
 reloading: the rows that changed and the counters (app.admin.fetch).
@@ -26,7 +28,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
-from app.admin import formatting, labels
+from app.admin import formatting, labels, neighbors_service
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
 from app.admin.fetch import fetch_reply, wants_fetch
@@ -180,22 +182,8 @@ def approve_phone(session: Session, phone_id: int, user: str) -> bool:
 
 
 def unlink_phone(session: Session, phone_id: int, user: str) -> bool:
-    phone = session.get(Phone, phone_id, with_for_update=True)
-    if phone is None:
-        return False
-    log_admin_action(
-        session,
-        user,
-        "phone_unlinked",
-        phone_e164=phone.e164,
-        phone_id=phone.id,
-        person_id=phone.person_id,
-        source=str(phone.source),
-        verified=phone.verified,
-    )
-    session.delete(phone)
-    session.commit()
-    return True
+    """Like Vecinos: a number from ConsorPlus does not come back with the next sync."""
+    return neighbors_service.remove_phone(session, user, phone_id)
 
 
 def _int(value: Any, default: int = 0) -> int:
