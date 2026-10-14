@@ -174,6 +174,7 @@ class BuildingInfoAdmin(AdminOnly, AuditedView, model=BuildingInfo):
     name_plural = "Información de edificios"
     icon = "fa-solid fa-book"
     audit_name = "building_info"
+    list_template = "building_info_list.html"  # like «Edificios» (5g); same links and filters
     column_list = [
         BuildingInfo.building,
         BuildingInfo.category,

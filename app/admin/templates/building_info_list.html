@@ -1,0 +1,123 @@
+{#- «Información de edificios» (BuildingInfoAdmin.list_template): SQLAdmin's list
+    (sqladmin/list.html) drawn like «Edificios» (building_list.html, its same classes): the
+    search and the filters as a select each in one form (sent with «Buscar» or Enter, keeping the
+    order and the page size), the category as a label, «Ver», «Editar» and a red «Borrar» per
+    row (SQLAdmin's own dialog, modals/delete.html), and how many there are at the foot. -#}
+{% extends "sqladmin/list.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
+{% block header_actions %}
+{% if model_view.can_create and model_view.check_can_create(request) %}
+<div class="col-auto">
+  <a href="{{ url_for('admin:create', identity=model_view.identity) }}" class="btn btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i>Agregar información de edificio</a>
+</div>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% set secondary = model_view.column_secondary if model_view.column_secondary is defined else [] %}
+<div class="col-12">
+  <div class="card building-list">
+    <div class="card-body building-list-top">
+      {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+      <form class="building-search" method="get" action="{{ request.url.path }}" role="search">
+        {% for key in ("sortBy", "sort", "pageSize") %}{% if request.query_params.get(key) %}
+        <input type="hidden" name="{{ key }}" value="{{ request.query_params.get(key) }}">
+        {% endif %}{% endfor %}
+        <div class="building-search-field">
+          <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+          <input type="search" name="search" class="form-control" aria-label="Buscar información"
+            placeholder="Buscar por título o edificio" value="{{ request.query_params.get('search', '') }}">
+        </div>
+        <button class="btn btn-primary building-search-button" type="submit">Buscar</button>
+        {% for filter in model_view.get_filters() %}
+        {% set current = request.query_params.get(filter.parameter_name, '__all') %}
+        <label class="building-select">
+          <span class="building-filter-title">{{ filter.title }}</span>
+          <select class="form-select" name="{{ filter.parameter_name }}">
+            {% for value, text in filter.lookups(request, model_view.model, model_view._run_arbitrary_query) %}
+            <option value="{{ value }}"{% if current == value %} selected{% endif %}>{{ text }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+        {% set narrowed = namespace(on=request.query_params.get('search', '') != '') %}
+        {% for filter in model_view.get_filters() %}{% if request.query_params.get(filter.parameter_name, '__all') not in ('__all', '') %}{% set narrowed.on = True %}{% endif %}{% endfor %}
+        {% if narrowed.on %}
+        <a class="btn btn-link" href="{{ request.url.path }}">Borrar la búsqueda</a>
+        {% endif %}
+      </form>
+    </div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter rows-table building-table">
+        <thead>
+          <tr>
+            {% for name in model_view._list_prop_names %}
+            {% set label = model_view._column_labels.get(name, name) %}
+            <th{% if name in secondary %} class="col-secondary"{% endif %}>
+              {% if name in model_view._sort_fields %}
+              {% set sorted_here = request.query_params.get("sortBy") == name %}
+              {% set direction = request.query_params.get("sort") %}
+              <a class="building-sort" href="{{ request.url.include_query_params(sortBy=name, sort='desc' if sorted_here and direction == 'asc' else 'asc') }}">{{ label }}{% if sorted_here %} <i class="fa-solid fa-arrow-{{ 'up' if direction == 'asc' else 'down' }}" aria-hidden="true"></i>{% endif %}</a>
+              {% else %}{{ label }}{% endif %}
+            </th>
+            {% endfor %}
+            <th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in pagination.rows %}
+          <tr>
+            {% for name in model_view._list_prop_names %}
+            {% set label = model_view._column_labels.get(name, name) %}
+            {% set value, formatted_value = model_view.get_list_value(row, name, request) %}
+            <td data-label="{{ label }}" class="building-cell-{{ name }}{{ ' col-secondary' if name in secondary }}">
+              {%- if name == "building" -%}
+              <a href="{{ model_view._url_for_details_with_prop(request, row, name) }}">{{ formatted_value }}</a>
+              {%- elif name == "category" -%}
+              <span class="state state-info">{{ formatted_value }}</span>
+              {%- else -%}
+              <span class="cell-cut"{% if formatted_value is string and formatted_value | length > 30 %} title="{{ formatted_value | striptags }}"{% endif %}>{{ formatted_value }}</span>
+              {%- endif -%}
+            </td>
+            {% endfor %}
+            <td class="building-row-actions">
+              {% if model_view.check_can_view_details(request, row) %}
+              <a href="{{ model_view._build_url_for('admin:details', request, row) }}" class="btn btn-sm btn-secondary"><i class="fa-regular fa-eye" aria-hidden="true"></i>Ver</a>
+              {% endif %}
+              {% if model_view.check_can_edit(request, row) %}
+              <a href="{{ model_view._build_url_for('admin:edit', request, row) }}{% if request.url.query %}?{{ request.url.query }}{% endif %}" class="btn btn-sm btn-primary"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar</a>
+              {% endif %}
+              {% if model_view.check_can_delete(request, row) %}
+              <a href="#" data-name="{{ model_view.name }}" data-pk="{{ get_object_identifier(row) }}"
+                data-url="{{ model_view._url_for_delete(request, row) }}" data-bs-toggle="modal" data-bs-target="#modal-delete"
+                class="btn btn-sm btn-outline-danger building-delete" aria-label="Borrar" title="Borrar"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></a>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr class="list-empty"><td colspan="99">{{ empty_state(empty_for(model_view.identity)) }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer building-list-foot">
+      <span>{{ pagination.count }} registro{{ 's' if pagination.count != 1 }}</span>
+      {% if pagination.has_previous or pagination.has_next %}
+      <ul class="pagination m-0">
+        <li class="page-item {% if not pagination.has_previous %}disabled{% endif %}">
+          <a class="page-link" href="{{ pagination.previous_page.url if pagination.has_previous else '#' }}" aria-label="Página anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></a>
+        </li>
+        {% for page_control in pagination.page_controls %}
+        <li class="page-item {% if page_control.number == pagination.page %}active{% endif %}"><a class="page-link" href="{{ page_control.url }}">{{ page_control.number }}</a></li>
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ pagination.next_page.url if pagination.has_next else '#' }}" aria-label="Página siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+        </li>
+      </ul>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% if model_view.can_delete %}
+{% include 'sqladmin/modals/delete.html' %}
+{% endif %}
+{% endblock %}

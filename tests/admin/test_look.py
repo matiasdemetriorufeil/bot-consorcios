@@ -707,8 +707,8 @@ def test_secondary_columns_are_listed_and_kept_in_the_record(view: str) -> None:
 
 
 def test_a_list_marks_its_secondary_columns(logged_in: Panel) -> None:
-    page = logged_in.client.get("/admin/building-info/list").text
-    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Actualizado', page)
+    page = logged_in.client.get("/admin/provider/list").text
+    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Edificios', page)
     assert 'class="table-responsive table-scroll-hint"' in page
     assert '<div class="list-layout">' in page and 'class="filter-sidebar-col"' in page
 
@@ -723,6 +723,16 @@ def test_buildings_have_their_own_list(logged_in: Panel) -> None:
     assert re.search(r'class="segmented-item active"[^>]*>Sí</a>', page)
     assert re.search(r'<th class="col-secondary">\s*Dirección', page)
     assert ">Acciones</th>" in page and "1 edificio<" in page
+
+
+def test_building_info_has_the_same_list(logged_in: Panel) -> None:
+    """5g: like «Edificios», the filters as selects in one form with the search."""
+    page = logged_in.client.get("/admin/building-info/list?category=horarios").text
+    assert '<form class="building-search" method="get"' in page and 'name="search"' in page
+    assert "filter-sidebar-col" not in page and page.count('class="building-select"') == 2
+    assert '<option value="horarios" selected>' in page and "Borrar la búsqueda" in page
+    assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Actualizado', page)
+    assert "Agregar información de edificio" in page and 'id="modal-delete"' in page
 
 
 def test_the_rules_that_keep_tables_inside_their_card() -> None:

@@ -35,6 +35,16 @@ Solo cambia cómo se ve Pendientes; los números, los permisos y los links son l
   - al pie, «N edificios» y «Datos sincronizados desde ConsorPlus», con las páginas en el medio
     si hay más de 25 edificios;
   - ya no está el selector de cuántos edificios mostrar por página.
+- **Información de edificios** (`templates/building_info_list.html`, con las mismas clases que
+  Edificios):
+  - el botón de arriba dice «+ Agregar información de edificio»;
+  - el buscador y los filtros Edificio y Categoría van juntos: dos listas desplegables que se
+    aplican con «Buscar» o Enter, y se mantienen el orden y la cantidad por página;
+  - el edificio va como link en negrita y la categoría como etiqueta gris;
+  - cada fila tiene «Ver», «Editar» y un tachito rojo que abre el mismo diálogo de borrar de
+    SQLAdmin;
+  - al pie, «N registros» y las páginas;
+  - ya no se puede borrar varios a la vez (no había casillas en el diseño).
 
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 

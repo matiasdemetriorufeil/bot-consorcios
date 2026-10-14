@@ -711,7 +711,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   .guide-index li { padding: var(--sp-1) 0; }
 }
 
-/* --- Edificios (building_list.html): search and Todos / Sí / No filters in the card ------------- */
+/* --- Edificios and Información de edificios (building_list.html, building_info_list.html): the
+   search and the filters in the card, «Acciones» on the right --------------------------------- */
 .building-list { margin: 0; }
 .building-list-top { display: flex; flex-direction: column; gap: var(--sp-3); border-bottom: 1px solid var(--c-border); }
 .building-search { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
@@ -738,6 +739,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .building-table .building-sort { color: inherit; text-decoration: none; }
 .building-table .building-sort:hover { color: var(--c-primary); }
 .building-cell-name { font-weight: var(--fw-bold); }
+/* Información de edificios: each filter a select beside «Buscar»; the building as a bold link; a
+   square red «Borrar». */
+.building-select { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 0 var(--sp-3); }
+.building-select .form-select { width: auto; min-width: 10rem; }
+.building-cell-building a { font-weight: var(--fw-bold); text-decoration: none; }
+.building-row-actions .building-delete { width: var(--btn-h-sm); padding: 0; }
 .building-row-actions { white-space: nowrap; text-align: right; }
 .building-row-actions .btn + .btn { margin-left: var(--sp-1); }
 .building-row-actions .btn-secondary { background-color: var(--c-surface); }
@@ -748,6 +755,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   .building-search-field { flex: 1 1 100%; }
   .building-search .btn { flex: 1 1 auto; }
   .building-filter { flex: 1 1 100%; justify-content: space-between; }
+  .building-select { flex: 1 1 100%; justify-content: space-between; margin: 0; }
+  .building-select .form-select { flex: 1; min-width: 0; }
+  .building-row-actions .btn.building-delete { flex: 0 0 var(--btn-h-touch); width: var(--btn-h-touch); }
+  .building-select .building-filter-title { flex: 0 0 4.5rem; }
   .segmented-item { min-height: var(--btn-h-touch); }
   .building-table td.text-center { text-align: left !important; }
   .building-cell-name::before { font-weight: var(--fw-regular); }
