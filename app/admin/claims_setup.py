@@ -245,6 +245,7 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
     name_plural = "Tipos de problema"
     icon = "fa-solid fa-list-check"
     audit_name = "claim_category"
+    list_template = "claim_category_list.html"  # like «Edificios» (5g); same links
     can_delete = False  # deactivated instead
     column_list = [
         ClaimCategory.sort_order,

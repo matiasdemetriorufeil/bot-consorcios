@@ -67,8 +67,10 @@
           {% set phone = model_view.get_list_value(row, "whatsapp_e164", request)[1] %}
           <tr>
             <td data-label="Empresa" class="building-cell-name">
-              <span class="provider-name">{{ row.name }}</span>
-              {% if row.contact_name %}<span class="provider-contact">Contacto: {{ row.contact_name }}</span>{% endif %}
+              <span class="provider-stack">
+                <span class="provider-name">{{ row.name }}</span>
+                {% if row.contact_name %}<span class="provider-contact">Contacto: {{ row.contact_name }}</span>{% endif %}
+              </span>
             </td>
             <td data-label="WhatsApp">{% if row.whatsapp_e164 %}<span class="provider-whatsapp"><i class="fa-regular fa-comment" aria-hidden="true"></i>{{ phone }}</span>{% else %}<span class="building-count-off">Sin WhatsApp</span>{% endif %}</td>
             {% for name in ("buildings", "problems") %}

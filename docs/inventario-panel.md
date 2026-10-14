@@ -64,6 +64,20 @@ Solo cambia cómo se ve Pendientes; los números, los permisos y los links son l
   - ya no se desplaza a 1440 px: lo que se anotó en 5f.4 quedó resuelto, porque la tabla
     tiene una columna menos (el contacto va junto a la empresa) y no tiene los filtros al
     costado.
+- **Tipos de problema** (`templates/claim_category_list.html`, con las mismas clases):
+  - el botón de arriba dice «+ Agregar tipo de problema»;
+  - el buscador y «Activo» van en la tarjeta;
+  - el orden va en una cajita; se esconde por debajo de 1280 px, como en 5f.4, y sigue en la
+    ficha;
+  - el título de la lista de WhatsApp va en negrita, con el problema completo abajo;
+  - el alcance es una etiqueta gris con ícono (edificio o casa), y «Urgente» una roja con un
+    triángulo;
+  - «Activo» es ✓ o ✗;
+  - al pie, «N tipos de problema» y «El orden es el mismo en que el propietario ve la lista en
+    WhatsApp.»;
+  - ya no se desplaza a 1440 px;
+  - en estas listas, las etiquetas no se parten en dos renglones;
+  - los tests de la lista genérica de SQLAdmin ahora miran Sincronizaciones y Plantillas.
 
 ## Actualización 5f.4: ninguna tabla se desplaza dentro de su tarjeta (2026-10-13)
 

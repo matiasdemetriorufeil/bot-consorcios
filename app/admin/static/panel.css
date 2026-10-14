@@ -749,11 +749,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .building-count-off { color: var(--c-placeholder); }
 /* Proveedores: the contact under the company, the WhatsApp with its icon, inactive in red, the
    pages and how many per page together on the right. */
+/* One block (on a phone the cell is a line: its label, then this). */
+.provider-stack { display: block; min-width: 0; }
 .provider-name, .provider-contact { display: block; }
+/* The labels of these lists (Alcance, Estado, Urgente) on one line. */
+.building-table .state { white-space: nowrap; }
 .provider-contact { font-size: var(--fs-small); font-weight: var(--fw-regular); color: var(--c-text-2); }
 .provider-whatsapp { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--c-primary); white-space: nowrap; }
 .provider-inactive { background: var(--c-danger-soft); color: var(--c-danger); border-color: var(--c-danger-border); }
 .provider-pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+/* Tipos de problema: the order in a small box (the title and the problem use .provider-name
+   and .provider-contact: bold above, small below). */
+.category-order { display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; min-height: 1.75rem;
+  padding: 0 var(--sp-2); border: 1px solid var(--c-border); border-radius: var(--radius-sm); background: var(--c-surface-2);
+  font-size: var(--fs-small); font-weight: var(--fw-bold); }
+.category-title { min-width: 0; }
 .building-row-actions .building-delete { width: var(--btn-h-sm); padding: 0; }
 .building-row-actions { white-space: nowrap; text-align: right; }
 .building-row-actions .btn + .btn { margin-left: var(--sp-1); }
