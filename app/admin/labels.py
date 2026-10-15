@@ -201,6 +201,7 @@ SYNC_STATS = {
     "phones_suppressed": "Teléfonos quitados a mano (no se recrean)",
     "nameless_contacts": "Contactos sin nombre",
     "contacts_ignored": "Contactos ignorados",
+    "tenants_without_contact": "Inquilinos sin nombre ni teléfono (no se cargan)",
     "people_in_several_buildings": "Personas en varios edificios",
     "payment_codes_valid": "Códigos de pago válidos",
     "payment_codes_invalid": "Códigos de pago inválidos",

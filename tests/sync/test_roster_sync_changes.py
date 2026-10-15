@@ -43,16 +43,22 @@ def test_unit_type_is_stored_and_reported(db_session) -> None:
 def test_nameless_contact_with_phone_or_email_is_created(db_session) -> None:
     by_phone = RosterContact(name="", phone="3515550505")
     by_email = RosterContact(name="", email="Sin.Nombre@example.com")
-    source = FakeSource({"7": [row("9001", by_phone), row("9002", tenant=by_email)]})
+    tenant_by_phone = RosterContact(name="", mobile="3515550606")
+    source = FakeSource(
+        {"7": [row("9001", by_phone), row("9002", by_email, tenant=tenant_by_phone)]}
+    )
 
     report = sync_roster(db_session, source, ["7"])
 
     people = db_session.scalars(select(Person)).all()
-    assert [p.full_name for p in people] == ["(sin nombre en ConsorPlus)"] * 2
+    assert [p.full_name for p in people] == ["(sin nombre en ConsorPlus)"] * 3
     assert {p.email for p in people} == {None, "sin.nombre@example.com"}
-    assert db_session.scalar(select(Phone)).e164 == "+5493515550505"
-    assert report.nameless_contacts == 2
-    assert report.units_without_owner_phone == 1  # 9002 only has a tenant
+    assert {p.e164 for p in db_session.scalars(select(Phone))} == {
+        "+5493515550505", "+5493515550606",
+    }  # fmt: skip
+    assert report.nameless_contacts == 3
+    assert report.tenants_without_contact == 0
+    assert report.units_without_owner_phone == 1  # 9002's owner only has an email
 
 
 def test_nameless_contacts_are_deduplicated_by_phone_or_email_only(db_session) -> None:
@@ -65,7 +71,7 @@ def test_nameless_contacts_are_deduplicated_by_phone_or_email_only(db_session) -
             "7": [
                 row("9001", first),
                 row("9002", same_phone),
-                row("9003", tenant=same_email),
+                row("9003", same_email),
                 row("9004", other),
             ]
         }
@@ -80,7 +86,7 @@ def test_nameless_contacts_are_deduplicated_by_phone_or_email_only(db_session) -
 
 def test_nameless_contact_is_not_merged_into_a_named_person(db_session) -> None:
     nameless = RosterContact(name="", email="juan@example.com")
-    source = FakeSource({"7": [row("9001", JUAN), row("9002", tenant=nameless)]})
+    source = FakeSource({"7": [row("9001", JUAN), row("9002", nameless)]})
 
     sync_roster(db_session, source, ["7"])
 
@@ -160,3 +166,45 @@ def test_removals_are_skipped_when_the_building_fails(db_session) -> None:
     phones = set(db_session.scalars(select(Phone.e164)))
     assert "+5493515550101" in phones
     assert "+5493515550999" not in phones
+
+
+# --- Nameless tenants without a phone -----------------------------------------------------------
+
+
+def test_a_nameless_tenant_with_only_an_email_is_not_created(db_session) -> None:
+    only_email = RosterContact(name="", email="inquilino.sin.nombre@example.com")
+    bad_phone = RosterContact(name="", phone="12", email="otro@example.com")
+    named = RosterContact(name="RUIZ INQUILINO", email="ruiz@example.com")
+    source = FakeSource(
+        {
+            "7": [
+                row("9001", JUAN, tenant=only_email),
+                row("9002", MARIA, tenant=bad_phone),  # an invalid number is no phone
+                row("9003", ANA, tenant=named),  # with a name: created, as always
+            ]
+        }
+    )
+
+    for _ in range(2):  # and the next night, the same
+        report = sync_roster(db_session, source, ["7"])
+        assert report.tenants_without_contact == 2
+        assert report.nameless_contacts == 0
+        assert (
+            db_session.scalar(select(SyncRun).order_by(SyncRun.id.desc())).stats[
+                "tenants_without_contact"
+            ]
+            == 2
+        )
+
+    names = sorted(p.full_name for p in db_session.scalars(select(Person)))
+    assert names == ["GOMEZ MARIA", "LOPEZ ANA", "PEREZ, JUAN", "RUIZ INQUILINO"]
+    assert count(db_session, UnitPerson) == 4
+
+
+def test_a_nameless_owner_with_only_an_email_is_still_created(db_session) -> None:
+    owner = RosterContact(name="", email="duenio.sin.nombre@example.com")
+    report = sync_roster(db_session, FakeSource({"7": [row("9001", owner)]}), ["7"])
+
+    [person] = db_session.scalars(select(Person)).all()
+    assert person.email == "duenio.sin.nombre@example.com"
+    assert report.tenants_without_contact == 0 and report.nameless_contacts == 1

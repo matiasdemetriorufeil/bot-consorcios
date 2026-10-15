@@ -91,6 +91,9 @@ class RosterReport:
     phones_suppressed: int = 0
     nameless_contacts: int = 0
     contacts_ignored: int = 0
+    # A tenant without name nor a valid phone (maybe an email): identifies nobody and the
+    # email verification only uses owners' emails, so it is not created.
+    tenants_without_contact: int = 0
     people_in_several_buildings: int = 0
     payment_codes_valid: int = 0
     payment_codes_invalid: int = 0  # present but not 19 digits: stored as NULL
@@ -130,7 +133,9 @@ class _Contact:
     emails: tuple[str, ...]
 
 
-def _normalize_contact(contact: RosterContact, report: RosterReport) -> _Contact | None:
+def _normalize_contact(
+    contact: RosterContact, report: RosterReport, role: PersonRole
+) -> _Contact | None:
     name = clean_name(contact.name)
     phones: list[NormalizedPhone] = []
     for cell in (contact.phone, contact.mobile):
@@ -142,6 +147,11 @@ def _normalize_contact(contact: RosterContact, report: RosterReport) -> _Contact
         if not phones and not emails:
             # Nothing to show, match on or reach: skipped.
             report.contacts_ignored += 1
+            return None
+        if role == PersonRole.TENANT and not phones:
+            # Only an email: useless for a tenant (see tenants_without_contact). Nameless
+            # owners are still created: their email verifies them.
+            report.tenants_without_contact += 1
             return None
         report.nameless_contacts += 1
     return _Contact(
@@ -429,7 +439,7 @@ def sync_building_rows(
         for role, raw_contact in contacts:
             if raw_contact is None:
                 continue
-            contact = _normalize_contact(raw_contact, report)
+            contact = _normalize_contact(raw_contact, report, role)
             if contact is None:
                 continue
             if (unit.id, role, contact.key) in suppressed.links:
