@@ -1,7 +1,11 @@
-{#- The units of «Vecinos» (the page, and redrawn after «Actualizar desde ConsorPlus»:
-    app.admin.neighbors). One <tbody> per unit: on phones each one is a card with its people. -#}
+{#- The units of «Vecinos» (the page, and redrawn after every change: app.admin.neighbors).
+    One <tbody> per unit: on phones each one is a card with its people. Each unit has
+    «+ Agregar persona» and each person «Editar» and «Quitar»; their form opens in the unit's
+    last row ([data-editor], panel.js) or, without JavaScript, as a page of its own. -#}
 {% from "sqladmin/_macros.html" import empty_state %}
 {% set search = result.mode == 'search' %}
+{% set add_url = url_for('admin:view-neighbor-add') %}
+{% set remove_url = url_for('admin:view-neighbor-remove') %}
 {% if result.mode == 'choose' %}
 {{ empty_state(empty_texts['neighbors:choose'], 'fa-people-roof') }}
 {% else %}
@@ -14,16 +18,17 @@
     <thead>
       <tr>
         {% if search %}<th>Edificio</th>{% endif %}
-        <th>Unidad</th><th>Nombre y apellido</th><th>Rol</th><th>Teléfonos</th><th>Origen</th>
+        <th>Unidad</th><th>Nombre y apellido</th><th>Rol</th><th>Teléfonos</th><th>Origen</th><th class="text-end">Acciones</th>
       </tr>
     </thead>
     {% for group in result.groups %}
+    {% set add_href = add_url ~ '?' ~ ({'unit_id': group.unit_id, 'back': back} | urlencode) %}
     <tbody class="neighbor-unit">
       {% for person in group.people %}
       <tr>
         {% if loop.first %}
         {% if search %}<td class="neighbor-building" rowspan="{{ group.people | length }}">{{ group.building }}</td>{% endif %}
-        <th scope="rowgroup" class="neighbor-unit-label" rowspan="{{ group.people | length }}">{{ group.label }}</th>
+        {% with rows = group.people | length %}{% include "_neighbor_unit_cell.html" %}{% endwith %}
         {% endif %}
         <td data-label="Nombre" class="neighbor-name">{{ person.name }}</td>
         <td data-label="Rol">{{ person.role }}</td>
@@ -38,14 +43,25 @@
           {% endfor %}
         </span></td>
         <td data-label="Origen">{{ person.source }}</td>
+        <td class="row-actions neighbor-actions">
+          <a class="btn btn-sm btn-secondary" href="{{ url_for('admin:view-neighbor-edit', person_id=person.person_id) }}?{{ {'unit_id': group.unit_id, 'role': person.role_value, 'back': back} | urlencode }}" data-open-editor="{{ group.unit_id }}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar<span class="visually-hidden"> a {{ person.name }}</span></a>
+          <form method="POST" action="{{ remove_url }}" data-fetch {{ neighbor_remove_attrs(person.name, person.role_text, group.label, only_unit=person.only_unit, consorplus=person.from_consorplus, admin=is_admin) | xmlattr }}>
+            <input type="hidden" name="unit_id" value="{{ group.unit_id }}">
+            <input type="hidden" name="person_id" value="{{ person.person_id }}">
+            <input type="hidden" name="role" value="{{ person.role_value }}">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-user-minus" aria-hidden="true"></i>Quitar<span class="visually-hidden"> a {{ person.name }}</span></button>
+          </form>
+        </td>
       </tr>
       {% else %}
       <tr>
         {% if search %}<td class="neighbor-building">{{ group.building }}</td>{% endif %}
-        <th scope="rowgroup" class="neighbor-unit-label">{{ group.label }}</th>
-        <td colspan="4" class="neighbor-none">Sin datos</td>
+        {% with rows = 1 %}{% include "_neighbor_unit_cell.html" %}{% endwith %}
+        <td colspan="5" class="neighbor-none">Sin datos</td>
       </tr>
       {% endfor %}
+      <tr class="neighbor-editor" data-editor="{{ group.unit_id }}" hidden><td colspan="99" data-editor-body></td></tr>
     </tbody>
     {% endfor %}
   </table>

@@ -29,6 +29,8 @@ NOT_PAGES = {
     "view-claim-new-form",
     "view-claim-number",
     "view-wa-media",
+    "view-neighbors-similar",
+    "view-neighbors-phone-check",
 }
 
 

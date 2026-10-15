@@ -34,10 +34,13 @@ from app.db.models import (  # noqa: E402
     Claim,
     ClaimCategory,
     PanelUser,
+    Person,
     Provider,
     QuickReply,
     Reservation,
     SyncRun,
+    Unit,
+    UnitPerson,
     VerificationRequest,
     WaContact,
     WaConversation,
@@ -97,6 +100,10 @@ def pages() -> list[tuple[str, str, str]]:
     reply = one(select(QuickReply.id))
     template = one(select(WaTemplate.id))
     run = one(select(SyncRun.id))
+    empty_unit = one(select(Unit.id).where(Unit.label == "10A"))
+    elsa = one(select(Person.id).where(Person.full_name == "Elsa Ejemplo"))
+    elsa_unit = one(select(UnitPerson.unit_id).where(UnitPerson.person_id == elsa))
+    edit_query = f"unit_id={elsa_unit}&role=owner"
     return [
         ("01-pendientes", "/admin/pending", "op"),
         ("02-conversaciones", "/admin/conversations", "op"),
@@ -107,6 +114,8 @@ def pages() -> list[tuple[str, str, str]]:
         ("07-nuevo-reclamo", "/admin/claims/new", "op"),
         ("07b-vecinos", f"/admin/neighbors?building_id={building}", "op"),
         ("07c-vecinos-busqueda", "/admin/neighbors?q=ejemplo", "op"),
+        ("07d-vecinos-agregar", f"/admin/neighbors/add?unit_id={empty_unit}", "op"),
+        ("07e-vecinos-editar", f"/admin/neighbors/{elsa}/edit?{edit_query}", "op"),
         ("08-telefonos", "/admin/phones", "op"),
         ("09-verificaciones", "/admin/verifications", "op"),
         ("10-aprobar-verificacion", f"/admin/verifications/{verification}/approve", "op"),

@@ -1,0 +1,13 @@
+{#- «¿Es la misma persona…?» while she types the name of «Agregar persona» (panel.js). -#}
+{% if people %}
+<ul class="neighbor-similar-list">
+  {% for person in people %}
+  <li>
+    <span>¿Es la misma persona que está en {{ person.places | join('; ') if person.places else 'el padrón, sin unidad' }}? <strong>{{ person.name }}</strong></span>
+    <button class="btn btn-sm btn-secondary" type="button" data-pick-person="{{ person.person_id }}" data-person-name="{{ person.name }}">Sí, es la misma persona</button>
+  </li>
+  {% endfor %}
+</ul>
+{% elif searched %}
+<p class="neighbor-hint mb-0">{{ empty_texts['neighbors:similar'] }}</p>
+{% endif %}

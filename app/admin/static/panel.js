@@ -1,8 +1,9 @@
 /* The panel's own script, loaded after SQLAdmin's (templates/sqladmin/base.html): the few
    texts SQLAdmin writes from its JavaScript, in Spanish, the folded filters, the panel's
    numbers and alerts on every page (app.admin.pending), the one confirmation dialog before
-   what cannot be undone, sending a form when a building is picked from its list (Vecinos), and
-   the tour of "Conversaciones".
+   what cannot be undone, sending a form when a building is picked from its list (Vecinos), the
+   forms of «Agregar persona» and «Editar» inside Vecinos' list, and the tour of
+   "Conversaciones".
    No libraries: everything here is plain DOM. */
 (function () {
   "use strict";
@@ -568,6 +569,24 @@
     if (first) first.focus();
   }, true);
 
+  // The same dialog for a question that is not a form's (Vecinos' «Pasarlo a esta persona»).
+  window.panelAsk = function (title, text, button, kind, onOk) {
+    var dialog = document.getElementById("confirm-dialog");
+    if (!dialog || typeof dialog.showModal !== "function") {
+      if (window.confirm(title + "\n\n" + text)) onOk();
+      return;
+    }
+    document.getElementById("confirm-title").textContent = title;
+    document.getElementById("confirm-text").textContent = text;
+    var ok = document.getElementById("confirm-ok");
+    ok.textContent = button;
+    ok.className = "btn " + (kind === "primary" ? "btn-primary" : "btn-danger");
+    ok.onclick = null;
+    dialog.onclose = function () { if (dialog.returnValue === "ok") onOk(); };
+    dialog.returnValue = "";
+    dialog.showModal();
+  };
+
   // --- Small notices at the bottom (#panel-toasts) ---------------------------------------------
   // The page's Flashes (layout.html) and what an action without reloading says. A success
   // goes away after 4 s; an error stays until «×» (role="alert").
@@ -666,6 +685,10 @@
     }).then(function (data) {
       if (!data) return;
       applyReply(data);
+      // Saved from a form opened inside the list (Vecinos): it closes, unless the answer drew it
+      // again (then this one is no longer in the page).
+      var editor = data.ok && form.closest ? form.closest("[data-editor]") : null;
+      if (editor && document.body.contains(editor)) closeEditor(editor);
       window.panelToast(data.message, data.level);
       if (window.panelRefreshNumbers) window.panelRefreshNumbers();
     }).catch(function () {
@@ -704,6 +727,176 @@
     var clear = input.dataset.submitOnPick && input.form.elements[input.dataset.submitOnPick];
     if (clear) clear.value = "";
     input.form.requestSubmit();
+  });
+
+  // --- Vecinos: «Agregar persona» and «Editar» inside the list (app.admin.neighbors) -----------
+  // A link with data-open-editor="<unit id | top>" opens its form (the server's, ?fragment=1) in
+  // [data-editor="<the same>"]; «Cancelar» closes it; one open at a time. While she types the
+  // name: similar people of the roster, and «Sí, es la misma persona» links that one instead of
+  // creating someone else. Each phone is checked when she leaves its field (how it is saved,
+  // what is wrong, whose it is); «Pasarlo a esta persona» is asked first and done on saving.
+  // The confirmation adds the owner's sentence while the role is Propietario/a.
+  function closeEditor(editor) {
+    editor.hidden = true;
+    var body = editor.querySelector("[data-editor-body]");
+    if (body) body.innerHTML = "";
+  }
+  function fetchFragment(url) {
+    return fetch(url, { credentials: "same-origin" }).then(function (response) {
+      return window.panelSessionCheck(response, "html") === "ok" ? response.text() : null;
+    });
+  }
+  function showMorePhones(root) {
+    root.querySelectorAll("[data-add-phone]").forEach(function (button) { button.hidden = false; });
+  }
+  showMorePhones(document);
+  function ownerText(form) {
+    if (!form || !form.dataset.confirmBase) return;
+    var role = form.querySelector("[data-role-select]");
+    var owner = role && role.value === "owner";
+    form.dataset.confirmText = form.dataset.confirmBase + (owner ? " " + form.dataset.ownerNote : "");
+  }
+  function phoneField(el) { return el.closest("[data-phone-field]"); }
+  function clearPhone(field) {
+    var input = field.querySelector("input[data-phone-check]");
+    if (input.dataset.name) { input.name = input.dataset.name; delete input.dataset.name; }
+    input.value = "";
+    field.querySelectorAll("input[name=move_phone_id]").forEach(function (el) { el.remove(); });
+    field.querySelector("[data-phone-hint]").textContent = "";
+    input.focus();
+  }
+  function checkPhone(input) {
+    var field = phoneField(input);
+    var hint = field.querySelector("[data-phone-hint]");
+    if (!input.value.trim()) { hint.textContent = ""; return; }
+    var form = input.form;
+    var chosen = form ? form.querySelector("[data-person-id]") : null;
+    var params = new URLSearchParams({ raw: input.value, mode: input.dataset.mode || "add" });
+    var person = input.dataset.person || (chosen ? chosen.value : "");
+    if (person) params.set("person_id", person);
+    ["unit", "role", "back"].forEach(function (key) {
+      if (input.dataset[key]) params.set(key === "unit" ? "unit_id" : key, input.dataset[key]);
+    });
+    var mine = String(Number(input.dataset.asked || 0) + 1);
+    input.dataset.asked = mine;
+    fetchFragment(input.dataset.phoneCheck + "?" + params.toString()).then(function (html) {
+      if (html !== null && input.dataset.asked === mine) hint.innerHTML = html;
+    }).catch(function () { /* the server checks it again on saving */ });
+  }
+  function similar(input) {
+    var box = input.form.querySelector("[data-similar]");
+    if (!box || input.readOnly) return;
+    var mine = String(Number(input.dataset.asked || 0) + 1);
+    input.dataset.asked = mine;
+    var url = input.dataset.similarUrl + "?" + new URLSearchParams({ name: input.value }).toString();
+    fetchFragment(url).then(function (html) {
+      if (html !== null && input.dataset.asked === mine) box.innerHTML = html;
+    }).catch(function () { /* next key */ });
+  }
+  var similarLater = window.panelDebounce(similar, 350);
+  function pick(button) {
+    var form = button.closest("form");
+    var name = form.querySelector("input[name=full_name]");
+    form.querySelector("[data-person-id]").value = button.dataset.pickPerson;
+    name.value = button.dataset.personName;
+    name.readOnly = true;
+    var box = form.querySelector("[data-similar]");
+    box.textContent = "";
+    var note = document.createElement("p");
+    note.className = "neighbor-hint mb-1";
+    note.textContent = "Se va a vincular a " + button.dataset.personName + ", que ya está en el padrón.";
+    var undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "btn btn-sm btn-link";
+    undo.setAttribute("data-unpick", "");
+    undo.textContent = "Es otra persona";
+    box.appendChild(note);
+    box.appendChild(undo);
+  }
+  function openEditor(link) {
+    var editor = document.querySelector('[data-editor="' + link.dataset.openEditor + '"]');
+    if (!editor) return false;
+    document.querySelectorAll("[data-editor]").forEach(function (other) {
+      if (other !== editor && !other.hidden) closeEditor(other);
+    });
+    var url = new URL(link.href);
+    url.searchParams.set("fragment", "1");
+    fetchFragment(url.toString()).then(function (html) {
+      if (html === null) return;
+      editor.querySelector("[data-editor-body]").innerHTML = html;
+      editor.hidden = false;
+      showMorePhones(editor);
+      var first = editor.querySelector("input:not([type=hidden]), select");
+      if (first) first.focus();
+    }).catch(function () { window.location.href = link.href; });
+    return true;
+  }
+  function addPhoneField(more) {
+    var first = more.closest("[data-phones]").querySelector("[data-phone-field]");
+    var copy = first.cloneNode(true);
+    var input = copy.querySelector("input[data-phone-check]");
+    input.value = "";
+    input.name = "phone";
+    delete input.dataset.name;
+    delete input.dataset.asked;
+    copy.querySelectorAll("input[name=move_phone_id]").forEach(function (el) { el.remove(); });
+    copy.querySelector("[data-phone-hint]").textContent = "";
+    more.parentNode.insertBefore(copy, more);
+    input.focus();
+  }
+  function askMove(move) {
+    var field = phoneField(move);
+    window.panelAsk(move.dataset.askTitle, move.dataset.askText, move.dataset.askButton, "primary", function () {
+      var phone = field.querySelector("input[data-phone-check]");
+      phone.dataset.name = phone.name;
+      phone.removeAttribute("name");  // not added again: moved instead (app.admin.neighbors)
+      var hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "move_phone_id";
+      hidden.value = move.dataset.movePhone;
+      field.appendChild(hidden);
+      field.querySelector("[data-phone-hint]").textContent = "Se va a pasar a esta persona al guardar.";
+    });
+  }
+  document.addEventListener("click", function (event) {
+    var target = event.target.closest ? event.target : null;
+    if (!target) return;
+    var open = target.closest("a[data-open-editor]");
+    if (open) { if (openEditor(open)) event.preventDefault(); return; }
+    var close = target.closest("[data-close-editor]");
+    if (close && close.closest("[data-editor]")) {
+      event.preventDefault();
+      closeEditor(close.closest("[data-editor]"));
+      return;
+    }
+    var more = target.closest("[data-add-phone]");
+    if (more) { addPhoneField(more); return; }
+    var chosen = target.closest("[data-pick-person]");
+    if (chosen) { pick(chosen); return; }
+    var unpick = target.closest("[data-unpick]");
+    if (unpick) {
+      var form = unpick.closest("form");
+      form.querySelector("[data-person-id]").value = "";
+      var name = form.querySelector("input[name=full_name]");
+      name.readOnly = false;
+      form.querySelector("[data-similar]").textContent = "";
+      name.focus();
+      return;
+    }
+    var cancel = target.closest("[data-cancel-phone]");
+    if (cancel) { clearPhone(phoneField(cancel)); return; }
+    var move = target.closest("[data-move-phone]");
+    if (move) askMove(move);
+  });
+  document.addEventListener("input", function (event) {
+    var input = event.target;
+    if (input.matches && input.matches("input[data-similar-url]")) similarLater(input);
+  });
+  document.addEventListener("change", function (event) {
+    var el = event.target;
+    if (!el.matches) return;
+    if (el.matches("input[data-phone-check]")) checkPhone(el);
+    if (el.matches("[data-role-select]")) ownerText(el.form);
   });
 
   // --- The blocks of «Administración» (admins: the menu and «Más») ---------------------------

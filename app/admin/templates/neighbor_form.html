@@ -1,0 +1,10 @@
+{#- «Agregar persona» or «Editar» as a page (without JavaScript; panel.js opens the same form
+    inside the list of «Vecinos»). -#}
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-xl-10">
+  <div class="card">
+    <div class="card-body">{% include "_neighbor_form.html" %}</div>
+  </div>
+</div>
+{% endblock %}

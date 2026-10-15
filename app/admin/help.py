@@ -32,6 +32,13 @@ PAGE_HELP: dict[str, str] = {
         "Las personas de cada edificio, con su unidad y su teléfono. El bot reconoce a quien "
         "escribe desde un teléfono de esta lista."
     ),
+    "view-neighbor-add": (
+        "Cargá a alguien que vive en la unidad. Si ya está en el padrón, elegilo para no repetirlo."
+    ),
+    "view-neighbor-edit": (
+        "Corregí el nombre, el rol, la unidad o los teléfonos. Lo que cambies acá no se pasa a "
+        "ConsorPlus."
+    ),
     "view-phones": (
         "Números de los propietarios e inquilinos. En «A revisar» están los que hay que "
         "confirmar antes de que el bot los reconozca."
@@ -226,6 +233,7 @@ EMPTY: dict[str, str] = {
         "nombre de la unidad."
     ),
     "neighbors:filter": "No hay unidades para mostrar con este filtro.",
+    "neighbors:similar": "No hay nadie parecido en el padrón: se va a cargar como persona nueva.",
     "neighbors:removed": (
         "No hay nada quitado a mano en este edificio. Lo que se quite a mano va a aparecer acá, "
         "y lo podés restaurar."
@@ -482,7 +490,77 @@ CONFIRM: dict[str, dict[str, str]] = {
         "button": "Empezar de nuevo",
         "kind": "danger",
     },
+    # Vecinos (app.admin.neighbors). «Quitar» has its own text per person: neighbor_remove_text.
+    "neighbor_add": {
+        "title": "¿Agregar a esta persona?",
+        "text": "El bot la va a reconocer cuando escriba desde los teléfonos que cargues.",
+        "button": "Agregar",
+        "kind": "primary",
+    },
+    "neighbor_save": {
+        "title": "¿Guardar los cambios?",
+        "text": "El bot va a usar estos datos desde ahora.",
+        "button": "Guardar",
+        "kind": "primary",
+    },
+    "neighbor_remove": {
+        "title": "¿Quitar de la unidad?",
+        "text": "El bot va a dejar de reconocer a esta persona en esta unidad.",
+        "button": "Quitar",
+        "kind": "danger",
+    },
+    "neighbor_phone_move": {
+        "title": "¿Pasar el número a esta persona?",
+        "text": (
+            "La otra persona deja de tener este número y el bot reconoce a esta cuando escriba."
+        ),
+        "button": "Pasarlo",
+        "kind": "primary",
+    },
+    "neighbor_phone_remove": {
+        "title": "¿Quitar este teléfono?",
+        "text": "El bot ya no va a reconocer a la persona cuando escriba desde este número.",
+        "button": "Quitar teléfono",
+        "kind": "danger",
+    },
 }
+# Added to «Agregar» and «Guardar» when the role chosen is Propietario/a (panel.js).
+NEIGHBOR_OWNER_NOTE = "Desde ese teléfono va a poder consultar la deuda de la unidad por WhatsApp."
+# «Quitar» of one person: what happens to them, said plainly. The last sentence uses the word
+# the person asked for in 5h.3 («sincronización»), on purpose.
+NEIGHBOR_REMOVE = {
+    "base": "El bot va a dejar de reconocer a {name} como {role} de {unit}",
+    "only_unit": " y se borran sus teléfonos",
+    "consorplus": (
+        "No vuelve a aparecer con la sincronización. Para traerlo de nuevo: Quitados a mano › "
+        "Restaurar."
+    ),
+    # An operator does not have «Quitados a mano» (admins only).
+    "consorplus_operator": (
+        "No vuelve a aparecer con la sincronización. Para traerlo de nuevo, pedile a un admin: "
+        "Quitados a mano › Restaurar."
+    ),
+}
+
+
+def neighbor_remove_text(
+    name: str, role: str, unit: str, *, only_unit: bool, consorplus: bool, admin: bool = True
+) -> str:
+    text = NEIGHBOR_REMOVE["base"].format(name=name, role=role, unit=unit)
+    text += (NEIGHBOR_REMOVE["only_unit"] if only_unit else "") + "."
+    if not consorplus:
+        return text
+    return f"{text} {NEIGHBOR_REMOVE['consorplus' if admin else 'consorplus_operator']}"
+
+
+def neighbor_remove_attrs(
+    name: str, role: str, unit: str, *, only_unit: bool, consorplus: bool, admin: bool
+) -> dict[str, str]:
+    """«Quitar» of one person of Vecinos: the dialog says what happens to them."""
+    text = neighbor_remove_text(
+        name, role, unit, only_unit=only_unit, consorplus=consorplus, admin=admin
+    )
+    return {**confirm_attrs("neighbor_remove"), "data-confirm-text": text}
 
 
 def confirm_attrs(key: str, detail: str = "") -> dict[str, str]:
@@ -573,6 +651,7 @@ def globals_for_templates() -> dict[str, Any]:
         "page_guide": page_guide,
         "empty_for": empty_for,
         "confirm_attrs": confirm_attrs,
+        "neighbor_remove_attrs": neighbor_remove_attrs,
         "empty_texts": EMPTY,
         "pending_cards": PENDING_CARDS,
         "alert_texts": ALERTS,

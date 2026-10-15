@@ -2,8 +2,9 @@
     Drawn like Edificios (5g): the search with its icon, the filters as buttons in the same card
     and how many units at the foot. The building field is a native list (<input list>): she
     types part of the name and the browser shows the matches (panel.js sends the form when she
-    picks one). Admins: «Actualizar desde ConsorPlus» and «Quitados a mano» (the server checks
-    the role again). -#}
+    picks one). «Agregar persona», «Editar» and «Quitar» for everyone (their forms open inside the
+    page: _neighbor_form.html). Admins: «Actualizar desde ConsorPlus» and «Quitados a mano» (the
+    server checks the role again). -#}
 {% extends "sqladmin/layout.html" %}
 {% block content %}
 <div class="col-12">
@@ -38,6 +39,8 @@
             {% endfor %}
           </div>
         </div>
+        <div class="neighbors-buttons">
+        <a class="btn btn-primary" href="{{ url_for('admin:view-neighbor-add') }}?{{ {'building_id': result.building_id, 'back': back} | urlencode }}" data-open-editor="top"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Agregar persona</a>
         {% if is_admin %}
         <form method="POST" action="{{ url_for('admin:view-neighbors-refresh') }}" class="neighbors-refresh" data-fetch data-busy-text="Actualizando…">
           <input type="hidden" name="building_id" value="{{ result.building_id }}">
@@ -45,9 +48,13 @@
           <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Actualizar desde ConsorPlus</button>
         </form>
         {% endif %}
+        </div>
       </div>
       {% endif %}
     </div>
+    {% if result.mode == 'building' %}
+    <div class="neighbor-editor-top" data-editor="top" hidden><div data-editor-body></div></div>
+    {% endif %}
     <div id="neighbors-results">{% include "_neighbors_results.html" %}</div>
   </div>
 </div>

@@ -129,7 +129,7 @@ def test_the_whatsapp_of_an_active_provider_warns(db_session: Session, unit) -> 
 
 
 @pytest.mark.parametrize(
-    ("raw", "message"), [("555-0777", "característica"), ("12", "no es válido")]
+    ("raw", "message"), [("555-0777", "Falta la característica"), ("12", "no es válido")]
 )
 def test_a_number_without_area_code_or_invalid_is_not_saved(
     db_session: Session, unit, raw: str, message: str
@@ -221,3 +221,40 @@ def test_refresh_returns_counters_and_does_not_hide_a_failed_night(
     assert problem and text.startswith("Falló")
     with pytest.raises(svc.NeighborError, match="No existe"):
         svc.refresh_building(db_session, USER, "999", source=source, engine=db_engine)
+
+
+# --- Reads for the forms -----------------------------------------------------------------------
+
+
+def test_check_phone_says_how_it_is_saved_and_whose_it_is(db_session: Session, unit) -> None:
+    owner = f.person(db_session, "Dueño Inventado", phone=NEW_PHONE)
+    f.link(db_session, unit, owner)
+
+    fine = svc.check_phone(db_session, "0351 15 555-0888")
+    assert (fine.e164, fine.shown, fine.error, fine.taken) == (
+        "+5493515550888", "351 555-0888", None, None,
+    )  # fmt: skip
+    assert (
+        svc.check_phone(db_session, "555-0888").error
+        == "Falta la característica (por ejemplo 351)."
+    )
+    taken = svc.check_phone(db_session, "351 555-0777").taken
+    assert taken is not None and taken.person_id == owner.id
+    assert (
+        svc.check_phone(db_session, NEW_PHONE, owner.id).error == "Esa persona ya tiene ese número."
+    )
+    assert db_session.scalars(select(Phone)).all() == [db_session.get(Phone, taken.phone_id)]
+
+
+def test_similar_people_by_name(db_session: Session, unit) -> None:
+    juan = f.person(db_session, "PEREZ, JUAN CARLOS")
+    f.link(db_session, unit, juan)
+    f.person(db_session, "GOMEZ MARIA")
+
+    found = svc.similar_people(db_session, "Juan Carlos Pérez")
+    assert [(p.person_id, p.places) for p in found] == [
+        (juan.id, ["RODAS FICTICIO · 04-C (propietario/a)"]),
+    ]  # fmt: skip
+    assert svc.similar_people(db_session, "Juan Perez Carlos")[0].person_id == juan.id
+    assert svc.similar_people(db_session, "Jua") == []  # too short
+    assert svc.similar_people(db_session, "Zoe Nadie") == []

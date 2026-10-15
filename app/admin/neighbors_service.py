@@ -13,8 +13,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from rapidfuzz import fuzz
 from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.admin import formatting
 from app.admin.audit import log_admin_action
@@ -36,10 +37,13 @@ from app.db.models import (
 from app.db.session import engine as default_engine
 from app.person_roles import role_text
 from app.sync.nightly import AlreadyRunningError, advisory_lock
-from app.sync.normalize import NormalizedPhone, clean_name, normalize_phone
+from app.sync.normalize import NormalizedPhone, clean_name, name_key, normalize_phone
 from app.sync.roster import RosterSource, consorplus_key, sync_roster
 
 MAX_NAME = 200  # people.full_name
+# «¿Es la misma persona…?»: from this many letters, and this close (rapidfuzz, 0-100).
+SIMILAR_MIN_CHARS = 4
+SIMILAR_SCORE = 85
 
 
 class NeighborError(Exception):
@@ -107,10 +111,7 @@ def _parse_phone(raw: str) -> NormalizedPhone:
     if phone is None:
         raise NeighborError("Ese número no es válido. Escribilo con la característica, ej. 351…")
     if phone.needs_review:
-        raise NeighborError(
-            "A ese número le falta la característica (por ejemplo 351): escribila para no "
-            "tener que adivinarla."
-        )
+        raise NeighborError("Falta la característica (por ejemplo 351).")
     return phone
 
 
@@ -151,6 +152,78 @@ def provider_warning(session: Session, e164: str) -> str | None:
         f"Ojo: ese número también es el WhatsApp del proveedor «{name}». Sus mensajes se van a "
         "tomar como de un proveedor."
     )
+
+
+# --- Reads for the forms (nothing is written) ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PhoneCheck:
+    """How a typed number would be saved, before saving it."""
+
+    e164: str | None = None
+    shown: str = ""  # as the panel shows it: "351 555-0101"
+    error: str | None = None
+    taken: PhoneTaken | None = None
+    warning: str | None = None  # an active provider's WhatsApp (it does not block)
+
+
+def check_phone(session: Session, raw: str, person_id: int | None = None) -> PhoneCheck:
+    try:
+        phone = _parse_phone(raw)
+        taken = _taken(session, phone.e164, person_id)
+    except NeighborError as exc:
+        return PhoneCheck(error=str(exc))
+    return PhoneCheck(
+        e164=phone.e164,
+        shown=formatting.phone(phone.e164),
+        taken=taken,
+        warning=provider_warning(session, phone.e164),
+    )
+
+
+@dataclass(frozen=True)
+class SimilarPerson:
+    person_id: int
+    name: str
+    places: list[str]  # units_text
+
+
+def _folded(name: str) -> str:
+    return " ".join(name_key(name).split()) if name else ""
+
+
+def similar_people(session: Session, name: str, *, limit: int = 3) -> list[SimilarPerson]:
+    """People of the roster with the same or a very close name (same normalized name, or
+    rapidfuzz like app.bot.unit_search): to link them instead of creating someone else."""
+    wanted = _folded(clean_name(name or ""))
+    if len(wanted.replace(" ", "")) < SIMILAR_MIN_CHARS:
+        return []
+    scored = []
+    for person_id, full_name, cp_name in session.execute(
+        select(Person.id, Person.full_name, Person.consorplus_name)
+    ):
+        score = max(
+            fuzz.token_set_ratio(wanted, _folded(n)) if n else 0 for n in (full_name, cp_name)
+        )
+        if score >= SIMILAR_SCORE:
+            scored.append((-score, full_name, person_id))
+    ids = [person_id for _, _, person_id in sorted(scored)[:limit]]
+    if not ids:
+        return []
+    people = session.scalars(
+        select(Person)
+        .where(Person.id.in_(ids))
+        .options(
+            selectinload(Person.units).selectinload(UnitPerson.unit).selectinload(Unit.building)
+        )
+    ).all()
+    by_id = {p.id: p for p in people}
+    return [
+        SimilarPerson(by_id[i].id, by_id[i].full_name, units_text(by_id[i]))
+        for i in ids
+        if i in by_id
+    ]
 
 
 # --- Suppressions ----------------------------------------------------------------------------

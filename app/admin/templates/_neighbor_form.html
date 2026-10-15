@@ -1,0 +1,106 @@
+{#- «Agregar persona» and «Editar» of «Vecinos» (app.admin.neighbors: form is a NeighborForm).
+    panel.js opens it inside the list, looks for similar people while she types the name, checks
+    each phone when she leaves its field and adds the owner's sentence to the confirmation when
+    the role is Propietario/a. Without JavaScript it is a page and the server checks it all the
+    same. Every change goes through app.admin.neighbors_service. -#}
+{% set key = form.mode ~ '-' ~ (form.unit.id if form.unit else 'top') ~ '-' ~ (form.person_id or 'new') %}
+{% set check_url = url_for('admin:view-neighbors-phone-check') %}
+{% set confirm = confirm_attrs('neighbor_add' if form.mode == 'add' else 'neighbor_save') %}
+{% set base_text = confirm['data-confirm-text'] %}
+{% set owner = form.role == 'owner' %}
+<div class="neighbor-form" data-neighbor-form>
+  <h2 class="neighbor-form-title">
+    {% if form.mode == 'add' %}Agregar persona{% if form.unit %} en {{ form.unit.label }}{% endif %}{% else %}Editar a {{ form.full_name }}{% endif %}
+    <span class="neighbor-form-where">{{ form.building }}{% if form.mode == 'edit' %} · {{ form.unit.label }}{% endif %}</span>
+  </h2>
+  <form method="POST" id="neighbor-{{ key }}" class="neighbor-form-grid" data-fetch data-busy-text="Guardando…"
+        action="{{ url_for('admin:view-neighbor-add-save') if form.mode == 'add' else url_for('admin:view-neighbor-save', person_id=form.person_id) }}"
+        data-confirm-title="{{ confirm['data-confirm-title'] }}" data-confirm-button="{{ confirm['data-confirm-button'] }}"
+        data-confirm-kind="{{ confirm['data-confirm-kind'] }}" data-confirm-text="{{ base_text ~ (' ' ~ owner_note if owner else '') }}"
+        data-confirm-base="{{ base_text }}" data-owner-note="{{ owner_note }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    {% if form.mode == 'add' %}
+    <input type="hidden" name="person_id" value="" data-person-id>
+    {% if form.unit %}
+    <input type="hidden" name="unit_id" value="{{ form.unit.id }}">
+    {% else %}
+    <input type="hidden" name="building_id" value="{{ form.building_id }}">
+    <div class="neighbor-field">
+      <label class="form-label required-label" for="unit-{{ key }}">Unidad</label>
+      <input class="form-control" id="unit-{{ key }}" name="unit" list="units-{{ key }}" required autocomplete="off" placeholder="Elegí o escribí la unidad">
+      <datalist id="units-{{ key }}">{% for unit in form.units %}<option value="{{ unit.label }}"></option>{% endfor %}</datalist>
+    </div>
+    {% endif %}
+    {% else %}
+    <input type="hidden" name="unit_id" value="{{ form.unit.id }}">
+    <input type="hidden" name="role" value="{{ form.role }}">
+    {% endif %}
+
+    <div class="neighbor-field neighbor-field-wide">
+      <label class="form-label required-label" for="name-{{ key }}">Nombre y apellido</label>
+      <input class="form-control" id="name-{{ key }}" name="full_name" value="{{ form.full_name }}" required maxlength="200" autocomplete="off"
+             {% if form.mode == 'add' %}data-similar-url="{{ url_for('admin:view-neighbors-similar') }}"{% endif %}>
+      {% if form.mode == 'add' %}<div class="neighbor-similar" data-similar aria-live="polite"></div>{% endif %}
+      {% if form.consorplus_name %}
+      <p class="neighbor-hint">En ConsorPlus figura como {{ form.consorplus_name }}. Los cambios que hagas acá no se pasan a ConsorPlus.</p>
+      {% endif %}
+    </div>
+
+    <div class="neighbor-field">
+      <label class="form-label" for="role-{{ key }}">Rol</label>
+      <select class="form-select" id="role-{{ key }}" name="{{ 'role' if form.mode == 'add' else 'new_role' }}" data-role-select>
+        {% for value, text in form.roles %}<option value="{{ value }}" {% if value == form.role %}selected{% endif %}>{{ text }}</option>{% endfor %}
+      </select>
+    </div>
+
+    {% if form.mode == 'edit' %}
+    <div class="neighbor-field">
+      <label class="form-label" for="unitsel-{{ key }}">Unidad</label>
+      <select class="form-select" id="unitsel-{{ key }}" name="new_unit_id">
+        {% for unit in form.units %}<option value="{{ unit.id }}" {% if unit.id == form.unit.id %}selected{% endif %}>{{ unit.label }}</option>{% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <fieldset class="neighbor-field neighbor-field-wide neighbor-phones-field" data-phones>
+      <legend class="form-label">Teléfonos</legend>
+      <div class="neighbor-phone-field" data-phone-field>
+        <input class="form-control" type="tel" name="phone" aria-label="Teléfono" placeholder="Ej. 351 555-0101" inputmode="tel" autocomplete="off"
+               data-phone-check="{{ check_url }}" data-mode="add">
+        <div class="neighbor-hint" data-phone-hint aria-live="polite"></div>
+      </div>
+      <button class="btn btn-sm btn-link neighbor-more-phone" type="button" data-add-phone hidden><i class="fa-solid fa-plus" aria-hidden="true"></i>Otro teléfono</button>
+    </fieldset>
+    {% endif %}
+
+    <div class="neighbor-form-buttons neighbor-field-wide">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check" aria-hidden="true"></i>{{ 'Agregar' if form.mode == 'add' else 'Guardar' }}</button>
+      <a class="btn btn-secondary" href="{{ url_for('admin:view-neighbors') }}{% if back %}?{{ back }}{% endif %}" data-close-editor>Cancelar</a>
+    </div>
+  </form>
+
+  {% if form.mode == 'edit' %}
+  <div class="neighbor-form-phones">
+    <h3 class="neighbor-form-subtitle">Teléfonos</h3>
+    {% for phone in form.phones %}
+    <div class="neighbor-phone-row">
+      <span class="neighbor-phone"><span class="text-nowrap">{{ phone.number }}</span>{% if phone.status %}<span class="state state-{{ phone.status | state('phone') }}">{{ phone.status_label }}</span>{% endif %}</span>
+      <form method="POST" action="{{ url_for('admin:view-neighbor-phone-remove', phone_id=phone.id) }}" data-fetch {{ confirm_attrs('neighbor_phone_remove', phone.number ~ '.') | xmlattr }}>
+        {% include "_neighbor_editor_keys.html" %}
+        <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar<span class="visually-hidden"> el {{ phone.number }}</span></button>
+      </form>
+    </div>
+    {% else %}
+    <p class="neighbor-none mb-2">Sin teléfono</p>
+    {% endfor %}
+    <form method="POST" action="{{ url_for('admin:view-neighbor-phone-add') }}" data-fetch class="neighbor-phone-add">
+      {% include "_neighbor_editor_keys.html" %}
+      <div class="neighbor-phone-field" data-phone-field>
+        <input class="form-control" type="tel" name="phone" aria-label="Teléfono nuevo" placeholder="Ej. 351 555-0101" inputmode="tel" autocomplete="off" required
+               data-phone-check="{{ check_url }}" data-mode="edit" data-person="{{ form.person_id }}" data-unit="{{ form.unit.id }}" data-role="{{ form.role }}" data-back="{{ back }}">
+        <div class="neighbor-hint" data-phone-hint aria-live="polite"></div>
+      </div>
+      <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-plus" aria-hidden="true"></i>Agregar teléfono</button>
+    </form>
+  </div>
+  {% endif %}
+</div>

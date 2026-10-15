@@ -810,6 +810,64 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .neighbor-phone + .neighbor-phone { margin-top: var(--sp-1); }
 .neighbor-phone .state { white-space: nowrap; text-decoration: none; }
 .neighbor-none { color: var(--c-placeholder); }
+/* 5h.3: «Agregar persona», «Editar» and «Quitar»; the form opens in the unit's last row. */
+.neighbors-buttons { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
+.building-filters .neighbors-buttons .neighbors-refresh { margin: 0; }
+.neighbor-unit-name { display: block; }
+.neighbor-add { display: inline-flex; align-items: center; gap: var(--sp-1); margin-top: var(--sp-1);
+  font-size: var(--fs-small); font-weight: var(--fw-regular); color: var(--c-primary); white-space: nowrap; }
+.neighbors-table .neighbor-actions { white-space: nowrap; text-align: right; }
+.neighbors-table .neighbor-actions > * + * { margin-left: var(--sp-1); }
+/* 768-1279 px: «Editar» above «Quitar», each whole (the search has one column more). */
+@media (min-width: 768px) and (max-width: 1279.98px) {
+  .neighbors-table .neighbor-actions { white-space: normal; }
+  .neighbors-table .neighbor-actions > * + * { margin-left: 0; }
+  .neighbors-table .neighbor-actions > a { display: flex; width: max-content; margin-left: auto; }
+  .neighbor-add { white-space: normal; align-items: flex-start; }
+  .neighbors-table > :not(caption) > * > * { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  .neighbors-table > :not(caption) > tr > :first-child,
+  .neighbors-table > tbody > tr > .neighbor-building,
+  .neighbors-table > tbody > tr:first-child > .neighbor-unit-label:first-child { padding-left: var(--sp-4); }
+  .neighbors-table.card-table > tbody > tr > td:first-child:not(.neighbor-building) { padding-left: var(--sp-2); } }
+.neighbor-editor[hidden], .neighbor-editor-top[hidden] { display: none !important; }
+.neighbor-editor > td { background: var(--c-surface-2); }
+.neighbor-editor-top { padding: var(--sp-4); border-bottom: 1px solid var(--c-border); background: var(--c-surface-2); }
+.neighbor-form { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.neighbor-form-title { margin: 0; font-size: var(--fs-subtitle); font-weight: var(--fw-bold); }
+.neighbor-form-where { display: block; font-size: var(--fs-small); font-weight: var(--fw-regular); color: var(--c-text-2); }
+.neighbor-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--sp-3); align-items: start; }
+.neighbor-field { min-width: 0; margin: 0; }
+.neighbor-field-wide { grid-column: 1 / -1; }
+.neighbor-phones-field { border: 0; padding: 0; }
+.neighbor-phone-field { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-2); max-width: 24rem; }
+.neighbor-hint { margin: var(--sp-1) 0 0; font-size: var(--fs-small); color: var(--c-text-2); }
+.neighbor-hint:empty { display: none; }
+.neighbor-hint-error { display: block; color: var(--c-danger); }
+.neighbor-hint-warning { display: block; color: var(--c-waiting); }
+.neighbor-hint-buttons { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-1); }
+.neighbor-hint-buttons form { margin: 0; }
+.neighbor-similar:empty { display: none; }
+.neighbor-similar { margin-top: var(--sp-2); }
+.neighbor-similar-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.neighbor-similar-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--c-info-border); border-radius: var(--radius-sm); background: var(--c-info-bg); }
+.neighbor-form-buttons { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.neighbor-form-phones { border-top: 1px solid var(--c-border); padding-top: var(--sp-3); }
+.neighbor-form-subtitle { margin: 0 0 var(--sp-2); font-size: var(--fs-body); font-weight: var(--fw-bold); }
+.neighbor-phone-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.neighbor-phone-row form { margin: 0; }
+.neighbor-phone-add { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-2); }
+.neighbor-phone-add .neighbor-phone-field { flex: 1 1 14rem; margin: 0; }
+@media (max-width: 767.98px) {
+  .neighbors-buttons { flex: 1 1 100%; margin: 0; }
+  .neighbors-buttons > .btn, .neighbors-buttons > form { flex: 1 1 100%; }
+  .rows-table.card-table.neighbors-table tr td.neighbor-actions { justify-content: flex-start; padding-top: var(--sp-2); }
+  .neighbors-table .neighbor-actions > * + * { margin-left: 0; }
+  .neighbors-table .neighbor-editor { padding: var(--sp-3); }
+  .rows-table.card-table.neighbors-table tr.neighbor-editor td { display: block; padding: 0; }
+  .neighbor-phone-field { max-width: none; }
+  .neighbor-form-buttons .btn, .neighbor-phone-add .btn { flex: 1 1 auto; }
+}
 .neighbors-removed > summary { cursor: pointer; list-style: none; }
 .neighbors-removed > summary::-webkit-details-marker { display: none; }
 .neighbors-removed > summary .card-title::after { content: " ▾"; color: var(--c-text-2); }

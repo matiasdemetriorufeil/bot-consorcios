@@ -30,9 +30,9 @@ from sqladmin.flash import Flash
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 
-from app.admin import formatting, labels, neighbors_service
+from app.admin import formatting, help, labels, neighbors_service
 from app.admin.auth import admin_user, display_names, is_admin, require_admin
 from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.phones import phone_status
@@ -50,7 +50,7 @@ from app.db.models import (
     Unit,
     UnitPerson,
 )
-from app.person_roles import role_title
+from app.person_roles import PERSON_ROLE, role_text, role_title
 
 PAGE_SIZE = 50  # units (a unit's people are never split between pages)
 FILTERS = {"no_phone": "Sin teléfono", "manual": "Cargados a mano"}
@@ -141,6 +141,7 @@ def resolve_building(choices: list[BuildingChoice], text: str) -> Resolved:
 
 @dataclass(frozen=True)
 class PhoneLine:
+    id: int
     number: str  # as the panel shows it: "351 555-0101"
     status: str  # "" or one of FLAGGED
     status_label: str
@@ -154,6 +155,10 @@ class PersonLine:
     role: str
     source: str
     phones: list[PhoneLine]
+    role_value: str = ""
+    role_text: str = ""  # «propietario/a», for «Quitar»'s dialog
+    only_unit: bool = False  # «Quitar» also deletes their phones
+    from_consorplus: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,6 +195,7 @@ def _phone_line(phone: Phone) -> PhoneLine:
     status = phone_status(phone)
     flagged = status if status in FLAGGED else ""
     return PhoneLine(
+        id=phone.id,
         number=formatting.phone(phone.e164),
         status=flagged,
         status_label=labels.PHONE_STATUS[flagged] if flagged else "",
@@ -205,6 +211,10 @@ def _person_line(link: UnitPerson) -> PersonLine:
         role=role_title(link.role),
         source=labels.label(labels.PHONE_SOURCE, link.source),
         phones=[_phone_line(p) for p in phones],
+        role_value=str(link.role),
+        role_text=role_text(link.role),
+        only_unit=len(link.person.units) <= 1,
+        from_consorplus=link.source == DataSource.CONSORPLUS,
     )
 
 
@@ -227,7 +237,10 @@ def _links(session: Session, condition: Any) -> list[UnitPerson]:
             select(UnitPerson)
             .join(Unit, Unit.id == UnitPerson.unit_id)
             .where(Unit.active.is_(True), condition)
-            .options(selectinload(UnitPerson.person).selectinload(Person.phones))
+            .options(
+                selectinload(UnitPerson.person).selectinload(Person.phones),
+                selectinload(UnitPerson.person).selectinload(Person.units),
+            )
         )
     )
 
@@ -409,6 +422,109 @@ def refresh_message(counters: dict[str, int]) -> str:
 REFRESH_FAILED = "No se pudo leer el edificio en ConsorPlus. Probá más tarde."
 
 
+# --- The form of «Agregar persona» and «Editar» -----------------------------------------------
+
+
+@dataclass(frozen=True)
+class UnitOption:
+    id: int
+    label: str
+
+
+@dataclass(frozen=True)
+class NeighborForm:
+    mode: str  # "add" | "edit"
+    building_id: int
+    building: str
+    unit: UnitOption | None  # None: «Agregar persona» on top, which asks for the unit
+    units: list[UnitOption]  # the building's active units (to choose or to move to)
+    roles: list[tuple[str, str]]  # (value, «Propietario/a»)
+    role: str = ""
+    person_id: int | None = None
+    full_name: str = ""
+    consorplus_name: str | None = None
+    phones: list[PhoneLine] = field(default_factory=list)
+
+
+ROLES = [(str(role), role_title(role)) for role in PERSON_ROLE]
+
+
+def unit_options(session: Session, building_id: int) -> list[UnitOption]:
+    units = session.execute(
+        select(Unit.id, Unit.label, Unit.consorplus_unit_value).where(
+            Unit.building_id == building_id, Unit.active.is_(True)
+        )
+    ).all()
+    return [
+        UnitOption(uid, label) for uid, label, _ in sorted(units, key=lambda u: natural_key(u[2]))
+    ]
+
+
+def resolve_unit(options: list[UnitOption], text: str) -> int:
+    """The unit she chose in «Agregar persona» on top (its label as the list offers it)."""
+    wanted = _fold(text)
+    found = [o for o in options if _fold(o.label) == wanted]
+    if len(found) == 1:
+        return found[0].id
+    if found:
+        raise neighbors_service.NeighborError(
+            "Hay más de una unidad con ese nombre. Agregala desde su fila de la lista."
+        )
+    raise neighbors_service.NeighborError("Elegí la unidad de la lista.")
+
+
+def add_form(session: Session, *, unit_id: int = 0, building_id: int = 0) -> NeighborForm:
+    unit = session.get(Unit, unit_id) if unit_id else None
+    if unit is not None and unit.active:
+        building_id = unit.building_id
+    building = session.get(Building, building_id) if building_id else None
+    if building is None:
+        raise neighbors_service.NeighborError("Elegí un edificio.")
+    return NeighborForm(
+        mode="add",
+        building_id=building.id,
+        building=formatting.building(building.name),
+        unit=UnitOption(unit.id, unit.label) if unit is not None and unit.active else None,
+        units=unit_options(session, building.id),
+        roles=ROLES,
+        role=str(PersonRole.OWNER),
+    )
+
+
+def edit_form(session: Session, person_id: int, unit_id: int, role: str) -> NeighborForm:
+    try:
+        key = (unit_id, person_id, PersonRole(role))
+    except ValueError:
+        key = None
+    link = session.get(UnitPerson, key) if key else None
+    if link is None:
+        raise neighbors_service.NeighborError("Esa persona ya no está en esa unidad con ese rol.")
+    person, unit = link.person, link.unit
+    return NeighborForm(
+        mode="edit",
+        building_id=unit.building_id,
+        building=formatting.building(unit.building.name),
+        unit=UnitOption(unit.id, unit.label),
+        units=unit_options(session, unit.building_id),
+        roles=ROLES,
+        role=str(link.role),
+        person_id=person.id,
+        full_name=person.full_name,
+        consorplus_name=person.consorplus_name,
+        phones=[_phone_line(p) for p in sorted(person.phones, key=lambda p: p.id)],
+    )
+
+
+def taken_message(taken: neighbors_service.PhoneTaken) -> str:
+    """«Este número es de <nombre> (<edificio> <unidad>)»."""
+    where = "; ".join(taken.units)
+    return f"Este número es de {taken.full_name}" + (f" ({where})." if where else ".")
+
+
+def saved_message(text: str, warnings: list[str]) -> str:
+    return " ".join([text, *warnings])
+
+
 def back_query(raw: str) -> str:
     """The list's query string, keeping only its own keys (a sent URL is never followed)."""
     pairs = [(k, v) for k, v in parse_qsl(raw.lstrip("?")) if k in LIST_PARAMS]
@@ -553,3 +669,283 @@ class NeighborsView(BaseView):
             remove=[f'[data-suppression="{suppression_id}"]'],
             texts={"[data-removed-count]": str(len(removed))},
         )
+
+    # --- Agregar, editar y quitar (operators and admins; app.admin.neighbors_service) ----------
+
+    async def _fragment(self, request: Request, name: str, context: dict[str, Any]) -> Response:
+        template = self.templates.env.get_template(name)
+        html = await template.render_async({"request": request, **context})
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    async def _form_page(self, request: Request, load: Any, title: str, back: str) -> Response:
+        """The form: alone (panel.js opens it inside the list: ?fragment=1) or as a page."""
+        alone = bool(request.query_params.get("fragment"))
+        with self.session_maker() as session:
+            try:
+                form = await _in_thread(load, session)
+            except neighbors_service.NeighborError as exc:
+                if alone:
+                    return await self._fragment(
+                        request, "_neighbor_form_error.html", {"message": str(exc)}
+                    )
+                Flash.warning(request, str(exc))
+                return RedirectResponse(self._url(request, back), status_code=302)
+        context = {"form": form, "back": back, "owner_note": help.NEIGHBOR_OWNER_NOTE}
+        if alone:
+            return await self._fragment(request, "_neighbor_form.html", context)
+        return await self.templates.TemplateResponse(
+            request, "neighbor_form.html", {"title": title, **context}
+        )
+
+    @expose("/neighbors/add", methods=["GET"], identity="neighbor-add")
+    async def add_page(self, request: Request) -> Response:
+        params = request.query_params
+        back = back_query(str(params.get("back", "")))
+        unit_id, building_id = _int(params.get("unit_id")), _int(params.get("building_id"))
+        return await self._form_page(
+            request,
+            lambda s: add_form(s, unit_id=unit_id, building_id=building_id),
+            "Agregar persona",
+            back,
+        )
+
+    @expose("/neighbors/{person_id:int}/edit", methods=["GET"], identity="neighbor-edit")
+    async def edit_page(self, request: Request) -> Response:
+        params = request.query_params
+        back = back_query(str(params.get("back", "")))
+        person_id = request.path_params["person_id"]
+        unit_id, role = _int(params.get("unit_id")), str(params.get("role", ""))
+        return await self._form_page(
+            request, lambda s: edit_form(s, person_id, unit_id, role), "Editar persona", back
+        )
+
+    @expose("/neighbors/similar", methods=["GET"], identity="neighbors-similar")
+    async def similar(self, request: Request) -> Response:
+        """«¿Es la misma persona…?» while she types the name (panel.js)."""
+        name = str(request.query_params.get("name", ""))
+        with self.session_maker() as session:
+            people = await _in_thread(neighbors_service.similar_people, session, name)
+        searched = len(_fold(name).replace(" ", "")) >= neighbors_service.SIMILAR_MIN_CHARS
+        context = {"people": people, "searched": searched}
+        return await self._fragment(request, "_neighbor_similar.html", context)
+
+    @expose("/neighbors/phone-check", methods=["GET"], identity="neighbors-phone-check")
+    async def phone_check(self, request: Request) -> Response:
+        """How a number would be saved, when she leaves its field (panel.js)."""
+        params = request.query_params
+        person_id = _int(params.get("person_id")) or None
+        with self.session_maker() as session:
+            check = await _in_thread(
+                neighbors_service.check_phone, session, str(params.get("raw", "")), person_id
+            )
+        context = {
+            "check": check,
+            "taken_text": taken_message(check.taken) if check.taken else "",
+            "mode": "edit" if params.get("mode") == "edit" else "add",
+            "person_id": person_id,
+            "unit_id": _int(params.get("unit_id")),
+            "role": str(params.get("role", "")),
+            "back": back_query(str(params.get("back", ""))),
+        }
+        return await self._fragment(request, "_neighbor_phone_hint.html", context)
+
+    async def _done(
+        self,
+        request: Request,
+        back: str,
+        ok: bool,
+        message: str,
+        editor: tuple[int, int, str] | None = None,
+    ) -> Response:
+        """After a change: the list redrawn (rows, counter, «Quitados a mano (N)») and the small
+        notice; editor (person, unit, role) keeps that edit form open (its phones changed)."""
+        if not wants_fetch(request):
+            (Flash.success if ok else Flash.warning)(request, message)
+            return RedirectResponse(self._url(request, back), status_code=302)
+        if not ok:
+            return fetch_reply(False, message)
+        html, removed = await self._results_html(request, dict(parse_qsl(back)))
+        replace = {"#neighbors-results": html}
+        if editor is not None:
+            person_id, unit_id, role = editor
+            with self.session_maker() as session:
+                try:
+                    form = await _in_thread(lambda: edit_form(session, person_id, unit_id, role))
+                except neighbors_service.NeighborError:
+                    form = None
+                if form is not None:
+                    template = self.templates.env.get_template("_neighbor_editor_row.html")
+                    replace[f'[data-editor="{unit_id}"]'] = await template.render_async(
+                        {
+                            "request": request,
+                            "form": form,
+                            "back": back,
+                            "owner_note": help.NEIGHBOR_OWNER_NOTE,
+                            "unit_id": unit_id,
+                        }
+                    )
+        return fetch_reply(
+            True, message, replace=replace, texts={"[data-removed-count]": str(removed)}
+        )
+
+    async def _run(self, request: Request, action: Any) -> tuple[bool, Any]:
+        """One change of neighbors_service, in a thread: (True, what it returned) or (False,
+        the text of its NeighborError)."""
+        with self.session_maker() as session:
+            try:
+                return True, await _in_thread(lambda: action(session, admin_user(request)))
+            except neighbors_service.NeighborError as exc:
+                return False, str(exc)
+
+    @expose("/neighbors/add/save", methods=["POST"], identity="neighbor-add-save")
+    async def add_save(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        role = str(form.get("role", ""))
+        person_id = _int(form.get("person_id")) or None
+        phones = [str(p) for p in form.getlist("phone") if str(p).strip()]
+        moves = [m for m in (_int(v) for v in form.getlist("move_phone_id")) if m]
+
+        def add(session: Session, user: str) -> list[str]:
+            unit_id = _int(form.get("unit_id"))
+            if not unit_id:
+                building_id = _int(form.get("building_id"))
+                options = unit_options(session, building_id) if building_id else []
+                unit_id = resolve_unit(options, str(form.get("unit", "")))
+            try:
+                person_role = PersonRole(role)
+            except ValueError:
+                raise neighbors_service.NeighborError("Elegí el rol.") from None
+            saved = neighbors_service.add_person(
+                session,
+                user,
+                unit_id,
+                person_role,
+                full_name=str(form.get("full_name", "")),
+                person_id=person_id,
+                phones=phones,
+            )
+            if isinstance(saved, neighbors_service.PhoneTaken):
+                raise neighbors_service.NeighborError(taken_message(saved))
+            warnings = list(saved.warnings)
+            for phone_id in moves:  # «Pasarlo a esta persona», confirmed in the form
+                moved = neighbors_service.move_phone(session, user, phone_id, saved.person_id)
+                warnings += [moved.warning] if moved.warning else []
+            return warnings
+
+        ok, result = await self._run(request, add)
+        message = saved_message("Persona agregada.", result) if ok else result
+        return await self._done(request, back, ok, message)
+
+    @expose("/neighbors/{person_id:int}/save", methods=["POST"], identity="neighbor-save")
+    async def edit_save(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        person_id = request.path_params["person_id"]
+        unit_id, role = _int(form.get("unit_id")), str(form.get("role", ""))
+        new_role = str(form.get("new_role", "")) or role
+        new_unit = _int(form.get("new_unit_id")) or unit_id
+        full_name = str(form.get("full_name", ""))
+
+        def save(session: Session, user: str) -> bool:
+            current = edit_form(session, person_id, unit_id, role)
+            changed = False
+            if full_name.strip() and full_name.strip() != current.full_name:
+                neighbors_service.update_person(session, user, person_id, full_name)
+                changed = True
+            if new_role != role:
+                neighbors_service.change_role(session, user, unit_id, person_id, role, new_role)
+                changed = True
+            if new_unit != unit_id:
+                neighbors_service.move_unit(session, user, unit_id, person_id, new_role, new_unit)
+                changed = True
+            return changed
+
+        ok, result = await self._run(request, save)
+        if ok:
+            message = "Cambios guardados." if result else "No había cambios para guardar."
+        else:
+            message = result
+        return await self._done(request, back, ok, message)
+
+    @expose("/neighbors/remove", methods=["POST"], identity="neighbor-remove")
+    async def remove(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        unit_id, person_id = _int(form.get("unit_id")), _int(form.get("person_id"))
+        role = str(form.get("role", ""))
+
+        def remove(session: Session, user: str) -> bool:
+            try:
+                person_role = PersonRole(role)
+            except ValueError:
+                raise neighbors_service.NeighborError("Esa persona ya no está ahí.") from None
+            return neighbors_service.remove_from_unit(
+                session, user, unit_id, person_id, person_role
+            )
+
+        ok, result = await self._run(request, remove)
+        if ok:
+            message = "Quitada de la unidad." + (" Se borraron sus teléfonos." if result else "")
+        else:
+            message = result
+        return await self._done(request, back, ok, message)
+
+    def _editor_of(self, form: Any) -> tuple[int, int, str] | None:
+        """The edit form an action on its phones came from (to keep it open)."""
+        person_id, unit_id = _int(form.get("person_id")), _int(form.get("unit_id"))
+        role = str(form.get("role", ""))
+        return (person_id, unit_id, role) if person_id and unit_id and role else None
+
+    @expose("/neighbors/phones/add", methods=["POST"], identity="neighbor-phone-add")
+    async def phone_add(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        person_id, raw = _int(form.get("person_id")), str(form.get("phone", ""))
+
+        def add(session: Session, user: str) -> str | None:
+            saved = neighbors_service.add_phone(session, user, person_id, raw)
+            if isinstance(saved, neighbors_service.PhoneTaken):
+                raise neighbors_service.NeighborError(taken_message(saved))
+            return saved.warning
+
+        ok, result = await self._run(request, add)
+        warnings = [result] if ok and result else []
+        message = saved_message("Teléfono agregado.", warnings) if ok else result
+        return await self._done(request, back, ok, message, self._editor_of(form))
+
+    @expose(
+        "/neighbors/phones/{phone_id:int}/remove",
+        methods=["POST"],
+        identity="neighbor-phone-remove",
+    )
+    async def phone_remove(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        phone_id = request.path_params["phone_id"]
+        ok, result = await self._run(
+            request, lambda s, user: neighbors_service.remove_phone(s, user, phone_id)
+        )
+        if ok and not result:
+            ok, result = False, "Ese teléfono ya no estaba."
+        message = "Teléfono quitado." if ok else result
+        return await self._done(request, back, ok, message, self._editor_of(form))
+
+    @expose(
+        "/neighbors/phones/{phone_id:int}/move",
+        methods=["POST"],
+        identity="neighbor-phone-move",
+    )
+    async def phone_move(self, request: Request) -> Response:
+        form = await request.form()
+        back = back_query(str(form.get("back", "")))
+        phone_id, person_id = request.path_params["phone_id"], _int(form.get("person_id"))
+        ok, result = await self._run(
+            request, lambda s, user: neighbors_service.move_phone(s, user, phone_id, person_id)
+        )
+        if ok:
+            warnings = [result.warning] if result.warning else []
+            message = saved_message("Número pasado a esta persona.", warnings)
+        else:
+            message = result
+        return await self._done(request, back, ok, message, self._editor_of(form))

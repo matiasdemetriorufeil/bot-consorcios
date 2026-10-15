@@ -1,5 +1,48 @@
 # Inventario del panel `/admin`
 
+## Actualización 5h.3: «Vecinos», agregar, editar y quitar personas (2026-10-15)
+
+La operadora y el admin pueden corregir el padrón desde la lista, sin salir de la página.
+«Actualizar desde ConsorPlus» y «Restaurar» siguen siendo solo del admin.
+
+- **Dónde:** cada unidad tiene «+ Agregar persona», debajo de su nombre (en el celular, arriba de
+  su tarjeta). Cada persona tiene «Editar» y «Quitar». Arriba, con un edificio elegido, hay un
+  «Agregar persona» general que pide la unidad (campo con lista).
+- **Formularios en la lista:** se abren debajo de la unidad (el general, arriba de la tabla),
+  uno a la vez, con «Cancelar» para cerrarlos. Al guardar, la lista se redibuja con las filas,
+  el contador y «Quitados a mano (N)» al día, y sale un aviso chico abajo. Mientras guarda, el
+  botón queda deshabilitado y dice «Guardando…». Sin JavaScript, el mismo formulario abre como
+  página aparte.
+- **Agregar persona:** Nombre y apellido, Rol y Teléfonos (uno o más, con «+ Otro teléfono»).
+  - Mientras escribe el nombre, desde 4 letras, busca gente parecida en todo el padrón: el mismo
+    nombre aunque cambie el orden o los acentos, o uno muy parecido. Si encuentra, pregunta
+    «¿Es la misma persona que está en <edificio> · <unidad>?». Con «Sí, es la misma persona» se
+    vincula esa persona en lugar de crear otra, y «Es otra persona» lo deshace.
+- **Cada teléfono, al salir del campo:**
+  - «Se va a guardar como 351 555-0101.»;
+  - sin característica: «Falta la característica (por ejemplo 351).», y no se guarda;
+  - si ya es de otra persona: «Este número es de <nombre> (<edificio> · <unidad>).», con
+    «Pasarlo a esta persona» (pide confirmación) o «Cancelar»;
+  - si es el WhatsApp de un proveedor activo: el aviso de Proveedores. Igual se guarda.
+- **Editar:** nombre para mostrar, rol y unidad (las del mismo edificio), con «Guardar».
+  - Los teléfonos se quitan y se agregan en el momento, y el formulario queda abierto.
+  - Si la persona viene de ConsorPlus, una línea gris: «En ConsorPlus figura como <nombre>. Los
+    cambios que hagas acá no se pasan a ConsorPlus.» Corregir el nombre no la duplica en la
+    lectura de la noche.
+- **Confirmaciones** (el diálogo de siempre):
+  - **Agregar y Guardar:** si el rol es Propietario/a, suman «Desde ese teléfono va a poder
+    consultar la deuda de la unidad por WhatsApp.».
+  - **Quitar** (rojo): «El bot va a dejar de reconocer a <nombre> como <rol> de <unidad>.».
+    - Si es su única unidad, la frase sigue: «… y se borran sus teléfonos.».
+    - Si viene de ConsorPlus, suma: «No vuelve a aparecer con la sincronización. Para traerlo
+      de nuevo: Quitados a mano › Restaurar.». A la operadora le dice «pedile a un admin»,
+      porque esa lista es solo del admin.
+- **Historia:** cada cambio queda auditado como hasta ahora: quién lo hizo, ids, roles y origen,
+  sin nombres. El panel todavía no tiene una pantalla para ver ese historial.
+- **Medición:** `survey.py` suma «Agregar persona» y «Editar» como páginas (`07d`, `07e`). Los
+  formularios abiertos dentro de la lista se capturaron aparte con clics reales (`50`, `51`).
+- **Capturas:** `docs/panel-capturas/5h3/` (fuera de Git).
+
 ## Actualización 5h.2: «Vecinos», el padrón de cada edificio (2026-10-14)
 
 Pantalla nueva para **ver y buscar**. Agregar, editar y quitar personas llega en el paso

@@ -1,0 +1,26 @@
+{#- How a typed number would be saved (panel.js, when she leaves the field): the number, what is
+    wrong, whose it already is (with «Pasarlo a esta persona» / «Cancelar») or a provider's. -#}
+{% if check.error %}
+<span class="neighbor-hint-error">{{ check.error }}</span>
+{% elif check.taken %}
+<span class="neighbor-hint-error">{{ taken_text }}</span>
+<span class="neighbor-hint-buttons">
+  {% if mode == 'edit' %}
+  <form method="POST" action="{{ url_for('admin:view-neighbor-phone-move', phone_id=check.taken.phone_id) }}" data-fetch {{ confirm_attrs('neighbor_phone_move') | xmlattr }}>
+    <input type="hidden" name="person_id" value="{{ person_id }}">
+    <input type="hidden" name="unit_id" value="{{ unit_id }}">
+    <input type="hidden" name="role" value="{{ role }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    <button class="btn btn-sm btn-primary" type="submit">Pasarlo a esta persona</button>
+  </form>
+  {% else %}
+  {% set move = confirm_attrs('neighbor_phone_move') %}
+  <button class="btn btn-sm btn-primary" type="button" data-move-phone="{{ check.taken.phone_id }}"
+          data-ask-title="{{ move['data-confirm-title'] }}" data-ask-text="{{ move['data-confirm-text'] }}" data-ask-button="{{ move['data-confirm-button'] }}">Pasarlo a esta persona</button>
+  {% endif %}
+  <button class="btn btn-sm btn-secondary" type="button" data-cancel-phone>Cancelar</button>
+</span>
+{% else %}
+<span>Se va a guardar como <strong>{{ check.shown }}</strong>.</span>
+{% if check.warning %}<span class="neighbor-hint-warning">{{ check.warning }}</span>{% endif %}
+{% endif %}

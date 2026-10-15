@@ -1,0 +1,5 @@
+{#- The unit's cell of «Vecinos» (_neighbors_results.html): its name and «+ Agregar persona». -#}
+<th scope="rowgroup" class="neighbor-unit-label"{% if rows > 1 %} rowspan="{{ rows }}"{% endif %}>
+  <span class="neighbor-unit-name">{{ group.label }}</span>
+  <a class="neighbor-add" href="{{ add_href }}" data-open-editor="{{ group.unit_id }}"><i class="fa-solid fa-plus" aria-hidden="true"></i>Agregar persona<span class="visually-hidden"> en {{ group.label }}</span></a>
+</th>

@@ -55,8 +55,8 @@ def _link(s: Session, unit: Unit, person: Person, role: PersonRole, source=DataS
     s.flush()
 
 
-@pytest.fixture
-def roster(db_session: Session) -> dict[str, int]:
+@pytest.fixture(name="roster")
+def roster_fixture(db_session: Session) -> dict[str, int]:
     """TORRE VECINOS: 4 units listed by ConsorPlus as 1, 2, 3, 10 (labels that do not sort
     alone); SOL VECINOS: one more «PB A»."""
     s = db_session
@@ -94,7 +94,7 @@ def _get(panel: Panel, **params) -> str:
 
 
 def _units(page: str) -> list[str]:
-    return re.findall(r'<th scope="rowgroup" class="neighbor-unit-label"[^>]*>([^<]+)</th>', page)
+    return re.findall(r'<span class="neighbor-unit-name">([^<]+)</span>', page)
 
 
 def _results(page: str) -> str:
@@ -234,7 +234,7 @@ def test_the_operator_neither_sees_nor_calls_the_admin_part(
 ) -> None:
     suppression = _suppress_ana_phone(db_session)
     page = _get(operator, building_id=roster["torre"])
-    assert "Actualizar desde ConsorPlus" not in page and "Quitados a mano" not in page
+    assert "neighbors-refresh" not in page and "data-removed-count" not in page
 
     for url, data in (
         ("/admin/neighbors/refresh", {"building_id": roster["torre"]}),
@@ -264,7 +264,7 @@ def test_the_admin_sees_what_was_removed_and_restores_it(
     assert "Actualizar desde ConsorPlus" in page
     assert re.search(r"Quitados a mano \(<span data-removed-count>1</span>\)", page)
     assert f"Teléfono {phone(ANA_PHONE)} · Ana Inventada" in page
-    assert "Quitados a mano" not in _get(logged_in, q="ana")  # only with a building
+    assert "data-removed-count" not in _get(logged_in, q="ana")  # only with a building
 
     reply = logged_in.client.post(
         f"/admin/neighbors/suppressions/{suppression}/restore",
