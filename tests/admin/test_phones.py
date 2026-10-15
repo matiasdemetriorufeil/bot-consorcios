@@ -127,7 +127,8 @@ def test_unlink_confirmation_explains_what_happens(
     page = _page(logged_in, tab="all")
     text = CONFIRM["unlink"]["text"]
     assert "va a tener que volver a identificarse por WhatsApp" in text
-    assert "a la mañana siguiente vuelve a aparecer" in text
+    # 5h.4: from ConsorPlus it does not come back (roster_suppressions), unless restored.
+    assert "no vuelve a aparecer" in text and "Quitados a mano" in text
     # The dialog says which number and whose (panel.js opens it with these).
     assert 'data-confirm-title="¿Desvincular este teléfono?"' in page
     assert "351 555-0401 · Ana Inventada. Se borra este número." in page

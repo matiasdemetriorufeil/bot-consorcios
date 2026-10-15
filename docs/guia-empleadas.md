@@ -187,6 +187,33 @@ confirma y cuando se cierra como solucionado.
 Si el proveedor no contesta, dice que no puede o es de noche, mirá
 [Reclamos: el proveedor y los avisos](#reclamos-el-proveedor-y-los-avisos).
 
+## Cargar el teléfono de un vecino
+
+Cuando alguien te pasa su número (por teléfono, en la oficina o por WhatsApp), cargalo vos y el
+bot lo reconoce desde el mensaje siguiente.
+
+**Desde Vecinos:**
+
+1. Entrá a **Vecinos**, elegí el edificio y buscá la unidad.
+2. Tocá **Agregar persona** debajo de la unidad. Escribí el nombre y apellido: si ya está en el
+   padrón, el panel te pregunta «¿Es la misma persona…?». Si es, tocá **Sí, es la misma
+   persona** para no repetirla.
+3. Elegí el rol: **Propietario/a**, **Inquilino/a** o **Familiar u otro**. Solo el propietario
+   puede consultar la deuda por WhatsApp; los demás pueden hacer reclamos, reservar el SUM y
+   preguntar por el edificio.
+4. Escribí el teléfono con la característica (por ejemplo 351). Al salir del campo, el panel te
+   muestra cómo lo va a guardar.
+5. Tocá **Agregar** y confirmá.
+
+**Desde una conversación:** si quien escribe no está en el padrón, en su ficha (a la derecha)
+tocá **Agregar a Vecinos**. El teléfono ya va a estar puesto: elegí el edificio, la unidad y
+seguí igual que arriba. Si ya está, el botón dice **Ver en Vecinos**.
+
+Si ese número tenía una verificación pendiente, al cargarlo queda aprobada sola y deja de
+aparecer en Pendientes.
+
+![Agregar a una persona en Vecinos](guia-empleadas/13-vecinos-agregar.png)
+
 ## Teléfonos
 
 Algunos números vienen de ConsorPlus incompletos y el sistema tuvo que adivinar una parte. Hasta
@@ -252,6 +279,21 @@ cargado, el bot no puede confirmarlo solo y te lo deja en **Verificaciones**.
   marcá **Reservar igual**.
 - **El panel no se actualiza o se ve raro.** Recargá la página. Si sigue igual, cerrá sesión
   con **Salir** y volvé a entrar.
+
+## El número ya es de otra persona
+
+Al cargar un teléfono, el panel te avisa «Este número es de…» con el nombre y la unidad de
+quien lo tiene.
+
+- Si el número cambió de dueño (por ejemplo, el inquilino se mudó y ahora lo usa el nuevo),
+  tocá **Pasarlo a esta persona** y confirmá. La otra persona deja de tenerlo.
+- Si no estás segura, tocá **Cancelar** y preguntá antes. Nada se guarda hasta que confirmes.
+
+## Quité a alguien por error
+
+Lo que quitás en Vecinos no vuelve solo con los datos de la noche. Para traerlo de nuevo hace
+falta **Restaurar**, que es del admin: avisale qué persona y de qué unidad era. Si lo cargaste
+vos a mano (no venía de ConsorPlus), también podés volver a agregarlo con **Agregar persona**.
 
 ## Reclamos: el proveedor y los avisos
 

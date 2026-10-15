@@ -750,6 +750,9 @@
     root.querySelectorAll("[data-add-phone]").forEach(function (button) { button.hidden = false; });
   }
   showMorePhones(document);
+  // Vecinos opened for one person (from Teléfonos or a conversation): their rows in view.
+  var marked = document.querySelector("[data-marked]");
+  if (marked && marked.scrollIntoView) marked.scrollIntoView({ block: "center" });
   function ownerText(form) {
     if (!form || !form.dataset.confirmBase) return;
     var role = form.querySelector("[data-role-select]");

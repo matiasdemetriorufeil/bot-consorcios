@@ -113,6 +113,7 @@ class UnitLine:
     building: str
     label: str
     role: str  # labels.PERSON_ROLE: "propietario/a", "inquilino/a", "familiar u otro"
+    building_id: int = 0
 
     @property
     def text(self) -> str:
@@ -150,19 +151,27 @@ def identify_many(session: Session, phones: list[str]) -> dict[str, Known]:
     by_person = {k.person_id: k for k in known.values()}
     if by_person:
         links = session.execute(
-            select(UnitPerson.person_id, UnitPerson.role, Unit.id, Unit.label, Building.name)
+            select(
+                UnitPerson.person_id,
+                UnitPerson.role,
+                Unit.id,
+                Unit.label,
+                Building.name,
+                Building.id,
+            )
             .join(Unit, Unit.id == UnitPerson.unit_id)
             .join(Building, Building.id == Unit.building_id)
             .where(UnitPerson.person_id.in_(by_person), Unit.active.is_(True))
             .order_by(Building.name, Unit.label, UnitPerson.role)
         ).all()
-        for person_id, role, unit_id, label, building in links:
+        for person_id, role, unit_id, label, building, building_id in links:
             by_person[person_id].units.append(
                 UnitLine(
                     unit_id=unit_id,
                     building=formatting.building(building),
                     label=label,
                     role=ROLE_LABELS.get(PersonRole(role), str(role)),
+                    building_id=building_id,
                 )
             )
     return known
@@ -411,6 +420,8 @@ class ContactCard:
     reservations: list[CardReservation]
     claims: list[CardClaim] = field(default_factory=list)  # its latest claims
     provider: str | None = None  # the company, when it is a provider's WhatsApp
+    person_id: int | None = None  # «Ver en Vecinos» (with building_id)
+    building_id: int | None = None
 
 
 def _local(value: datetime | None, timezone: str, fmt: str = "%d/%m/%Y %H:%M") -> str:
@@ -506,6 +517,8 @@ def contact_card(session: Session, contact: WaContact, timezone: str, today: dat
         reservations=reservations,
         claims=claims,
         provider=company,
+        person_id=who.person_id if who else None,
+        building_id=units[0].building_id if units else None,
     )
 
 

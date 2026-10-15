@@ -25,7 +25,7 @@
     {% set add_href = add_url ~ '?' ~ ({'unit_id': group.unit_id, 'back': back} | urlencode) %}
     <tbody class="neighbor-unit">
       {% for person in group.people %}
-      <tr>
+      <tr{% if person.person_id == result.marked %} class="neighbor-marked" data-marked{% endif %}>
         {% if loop.first %}
         {% if search %}<td class="neighbor-building" rowspan="{{ group.people | length }}">{{ group.building }}</td>{% endif %}
         {% with rows = group.people | length %}{% include "_neighbor_unit_cell.html" %}{% endwith %}
@@ -36,6 +36,7 @@
           {% for phone in person.phones %}
           <span class="neighbor-phone">
             <span class="text-nowrap">{{ phone.number }}</span>
+            {% if phone.origin %}<span class="neighbor-phone-origin">{{ phone.origin }}</span>{% endif %}
             {% if phone.status %}<a class="state state-{{ phone.status | state('phone') }}" href="{{ url_for('admin:view-phones') }}?{{ {'tab': 'all', 'q': phone.search} | urlencode }}">{{ phone.status_label }}</a>{% endif %}
           </span>
           {% else %}

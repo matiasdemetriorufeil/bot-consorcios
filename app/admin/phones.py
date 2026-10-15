@@ -74,6 +74,11 @@ def person_units(phone: Phone) -> str:
     )
 
 
+def _first_building(person: Person) -> int | None:
+    links = sorted(person.units, key=lambda link: (link.unit.building.name, link.unit.label))
+    return links[0].unit.building_id if links else None
+
+
 def search_condition(term: str) -> Any:
     """By person's name, the number as in ConsorPlus, or its digits ("351 555-0301",
     "0351 5550301", "+54 9 351…": compared without the leading 0 of the local format)."""
@@ -95,6 +100,8 @@ class PhoneRow:
     status: str
     status_label: str
     date: str
+    person_id: int = 0
+    building_id: int | None = None  # of the person's first unit: the link to Vecinos
 
 
 @dataclass(frozen=True)
@@ -160,6 +167,8 @@ def list_phones(
             status=phone_status(p),
             status_label=STATUS_LABELS[phone_status(p)],
             date=formatting.when(p.created_at, timezone=timezone),
+            person_id=p.person_id,
+            building_id=_first_building(p.person),
         )
         for p in phones
     ]

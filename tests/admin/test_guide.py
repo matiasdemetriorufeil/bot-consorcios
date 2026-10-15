@@ -21,10 +21,13 @@ from tests.admin.conftest import Panel
 CONTENTS = [
     ("Todos los días", [
         "Empezá el día en Pendientes", "Cómo es un día", "Conversaciones",
-        "Responder cuando pasó más de un día", "Reclamos", "Teléfonos", "Verificaciones",
-        "Reservas del SUM",
+        "Responder cuando pasó más de un día", "Reclamos", "Cargar el teléfono de un vecino",
+        "Teléfonos", "Verificaciones", "Reservas del SUM",
     ]),
-    ("Si pasa algo raro", ["Cuando algo no anda", "Reclamos: el proveedor y los avisos"]),
+    ("Si pasa algo raro", [
+        "Cuando algo no anda", "El número ya es de otra persona", "Quité a alguien por error",
+        "Reclamos: el proveedor y los avisos",
+    ]),
 ]  # fmt: skip
 TASKS = [section for _, sections in CONTENTS for section in sections]
 
@@ -134,6 +137,7 @@ def test_each_ver_en_la_guia_goes_to_a_section(operator: Panel) -> None:
         ("/admin/claims", "reclamos"),
         ("/admin/claims/new", "reclamos"),
         ("/admin/phones", "telefonos"),
+        ("/admin/neighbors", "cargar-el-telefono-de-un-vecino"),
         ("/admin/verifications", "verificaciones"),
         ("/admin/amenities", "reservas-del-sum"),
     ],

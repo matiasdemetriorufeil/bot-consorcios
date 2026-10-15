@@ -258,3 +258,13 @@ def test_similar_people_by_name(db_session: Session, unit) -> None:
     assert svc.similar_people(db_session, "Juan Perez Carlos")[0].person_id == juan.id
     assert svc.similar_people(db_session, "Jua") == []  # too short
     assert svc.similar_people(db_session, "Zoe Nadie") == []
+
+
+def test_a_shared_surname_alone_is_not_the_same_person(db_session: Session, unit) -> None:
+    ana = f.person(db_session, "ANA EJEMPLO")
+    rosa = f.person(db_session, "GOMEZ MARIA ROSA")
+    f.link(db_session, unit, ana)
+    f.link(db_session, unit, rosa)
+
+    assert svc.similar_people(db_session, "Nora Ejemplo") == []  # a relative, not her
+    assert [p.person_id for p in svc.similar_people(db_session, "María Gómez")] == [rosa.id]

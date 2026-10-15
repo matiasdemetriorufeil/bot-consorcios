@@ -1246,3 +1246,45 @@
     must_return: {start_claim: not_verified}
     handoff: false
     contains: [["edificio", "unidad"]]
+
+# --- Vecinos: people loaded or removed by hand in the panel (5h.4) ----------------------------
+
+- id: familiar_pide_deuda
+  category: inquilino
+  phone: familiar
+  turns: ["Hola, ¿cuánto debemos de expensas en el depto?"]
+  expect:
+    contains: ["propietari"]
+    not_contains: ["165.060", "82.530", "1111222233334444001"]
+    must_not_return: {get_debt: ok}
+    debt_messages: 0
+
+- id: familiar_reclamo
+  category: reclamos
+  phone: familiar
+  turns: ["El portón de la cochera no abre desde ayer"]
+  expect:
+    must_call: [start_claim]
+    handoff: false
+    contains: ["porton de cochera"]
+
+- id: manual_propietario_deuda
+  category: deuda
+  phone: manual
+  turns: ["¿Cuánto debo de expensas?"]
+  expect:
+    must_call: [get_debt]
+    debt_messages: 1
+    debt_message_contains: ["rodas i 04-c", "saldo total: $70.400,00"]
+    handoff: false
+    contains: ["70.400"]
+
+- id: numero_quitado
+  category: verificacion
+  phone: quitado
+  turns: ["Hola, ¿cuánto se debe de expensas en el Rodas II 04-B?"]
+  expect:
+    must_not_return: {get_debt: ok}
+    debt_messages: 0
+    not_contains: ["48.500", "1111222233334444002", "quique"]
+

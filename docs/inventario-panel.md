@@ -1,5 +1,35 @@
 # Inventario del panel `/admin`
 
+## Actualización 5h.4: lo que rodea a «Vecinos» (2026-10-15)
+
+- **Verificaciones:**
+  - Si en Vecinos se carga o se pasa a alguien un número que tenía una verificación pendiente,
+    esa verificación queda aprobada con esa persona («la aprobó» la usuaria que lo cargó), deja
+    de contar en Pendientes y el aviso dice «También quedó aprobada la verificación pendiente de
+    ese número.».
+  - Aprobar desde Verificaciones funciona igual que antes.
+  - En Vecinos, cada teléfono que no vino de ConsorPlus muestra su origen al lado, en gris:
+    «Cargado a mano» (lo cargó o lo aprobó una persona) o «Por WhatsApp» (lo verificó el bot).
+- **Teléfonos:**
+  - El nombre de la persona es un link a Vecinos, con su edificio elegido, la página donde está
+    y su fila marcada.
+  - «Desvincular» ya no avisa que el número vuelve a la mañana siguiente: «Si vino de
+    ConsorPlus, no vuelve a aparecer con los datos de cada noche, salvo que un admin lo
+    restaure desde Vecinos (Quitados a mano).».
+- **Conversaciones** (ficha del contacto):
+  - Si el número está en el padrón, aparece «Ver en Vecinos».
+  - Si no está, aparece «Agregar a Vecinos». Abre el alta con el teléfono ya puesto: primero se
+    elige el edificio, después la unidad y lo demás. Al guardar vuelve a Vecinos con la persona
+    marcada.
+- **Todo o nada:** guardar en «Editar» con varios cambios a la vez (nombre, rol y unidad), y
+  agregar con «Pasarlo a esta persona», se hacen en una sola transacción. Si un paso falla, no
+  queda nada a medias ni en la auditoría.
+- **Guía:**
+  - En «Todos los días», «Cargar el teléfono de un vecino», con captura de la demo
+    (`docs/guia-empleadas/13-vecinos-agregar.png`).
+  - En «Si pasa algo raro», «El número ya es de otra persona» y «Quité a alguien por error».
+  - «Ver en la guía» de Vecinos lleva a la primera de esas secciones.
+
 ## Actualización 5h.3: «Vecinos», agregar, editar y quitar personas (2026-10-15)
 
 La operadora y el admin pueden corregir el padrón desde la lista, sin salir de la página.

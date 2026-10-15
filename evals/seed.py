@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.admin import neighbors_service
 from app.claims.service import Reporter, create_claim
 from app.db.models import (
     Amenity,
@@ -42,6 +43,10 @@ PHONES = {
     "fede": "+5493515550104",  # owner Torre del Sol 05-B (up to date)
     "tito": "+5493515550105",  # TENANT of Rodas II 04-C
     "elena": "+5493515550106",  # owner Los Algarrobos 02-A (building with no texts)
+    # Loaded in Vecinos (app.admin.neighbors_service), like an operator would:
+    "familiar": "+5493515550107",  # «familiar u otro» of Rodas II 04-C, loaded by hand
+    "manual": "+5493515550108",  # owner of Rodas I 04-C loaded by hand (Hugo has no phone)
+    "quitado": "+5493515550109",  # loaded in Rodas II 04-B and then removed: unknown again
     "desconocido": "+5493515550199",  # not in the database
     "desconocido2": "+5493515550198",
 }
@@ -231,6 +236,41 @@ def seed(session: Session) -> None:
     _amenities(session, rodas2, sol, r2_4c, r2_4b)
     session.commit()
     _claims(session, rodas2, r2_4b, bruno)
+    _vecinos(session, r2_4c, r2_4b, r1_4c)
+
+
+def _vecinos(session: Session, r2_4c: Unit, r2_4b: Unit, r1_4c: Unit) -> None:
+    """People loaded (and one removed) in the panel's Vecinos, through its own functions."""
+    user = "evals"
+    neighbors_service.add_person(
+        session,
+        user,
+        r2_4c.id,
+        PersonRole.RESIDENT,
+        full_name="FLOR FAMILIAR",
+        phones=[PHONES["familiar"]],
+    )
+    neighbors_service.add_person(
+        session,
+        user,
+        r1_4c.id,
+        PersonRole.OWNER,
+        full_name="MANU MANUAL",
+        phones=[PHONES["manual"]],
+    )
+    removed = neighbors_service.add_person(
+        session,
+        user,
+        r2_4b.id,
+        PersonRole.TENANT,
+        full_name="QUIQUE QUITADO",
+        phones=[PHONES["quitado"]],
+    )
+    if not isinstance(removed, neighbors_service.PersonSaved):
+        raise RuntimeError("evals seed: the number to remove was already taken")
+    neighbors_service.remove_from_unit(
+        session, user, r2_4b.id, removed.person_id, PersonRole.TENANT
+    )  # fmt: skip
 
 
 # Claims: Rodas II takes them by the bot (the others do not). Bruno already has #1001 (no hay

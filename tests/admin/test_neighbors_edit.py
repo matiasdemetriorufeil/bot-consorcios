@@ -311,7 +311,10 @@ def test_without_javascript_it_goes_back_to_the_list(operator: Panel, roster) ->
         follow_redirects=False,
     )  # fmt: skip
     assert response.status_code == 302
-    assert response.headers["location"].endswith(f"/admin/neighbors?{_back(roster)}")
+    nora = _person(operator.session, "Nora Nueva")  # 5h.4: back with her marked
+    assert response.headers["location"].endswith(
+        f"/admin/neighbors?building_id={roster['torre']}&mark={nora.id}"
+    )
 
 
 def test_without_login_nothing_changes(panel: Panel, roster, db_session: Session) -> None:

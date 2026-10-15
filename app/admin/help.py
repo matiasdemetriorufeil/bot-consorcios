@@ -166,6 +166,8 @@ PAGE_GUIDE: dict[str, str] = {
     "view-claims": "reclamos",
     "view-claim": "reclamos",
     "view-claim-new": "reclamos",
+    "view-neighbors": "cargar-el-telefono-de-un-vecino",
+    "view-neighbor-add": "cargar-el-telefono-de-un-vecino",
     "view-phones": "telefonos",
     "view-verifications": "verificaciones",
     "view-verification-approve": "verificaciones",
@@ -360,8 +362,9 @@ CONFIRM: dict[str, dict[str, str]] = {
         "title": "¿Desvincular este teléfono?",
         "text": (
             "Se borra este número. El bot ya no va a reconocer a la persona cuando escriba y "
-            "va a tener que volver a identificarse por WhatsApp. Si el número sigue cargado en "
-            "ConsorPlus, a la mañana siguiente vuelve a aparecer: corregilo también allá."
+            "va a tener que volver a identificarse por WhatsApp. Si vino de ConsorPlus, no vuelve "
+            "a aparecer con los datos de cada noche, salvo que un admin lo restaure desde Vecinos "
+            "(Quitados a mano)."
         ),
         "button": "Desvincular",
         "kind": "danger",

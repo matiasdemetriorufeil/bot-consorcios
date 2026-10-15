@@ -810,6 +810,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .neighbor-phone + .neighbor-phone { margin-top: var(--sp-1); }
 .neighbor-phone .state { white-space: nowrap; text-decoration: none; }
 .neighbor-none { color: var(--c-placeholder); }
+.neighbor-phone-origin { font-size: var(--fs-small); color: var(--c-text-2); white-space: nowrap; }
+.neighbors-table tr.neighbor-marked > td, .neighbors-table tr.neighbor-marked > th { background: var(--c-primary-soft); }
 /* 5h.3: «Agregar persona», «Editar» and «Quitar»; the form opens in the unit's last row. */
 .neighbors-buttons { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }
 .building-filters .neighbors-buttons .neighbors-refresh { margin: 0; }

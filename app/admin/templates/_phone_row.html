@@ -5,7 +5,7 @@
   <td class="row-check" data-label="Elegir"><input class="form-check-input" type="checkbox" name="pk" value="{{ row.id }}" form="approve-selected" aria-label="Elegir {{ row.number }}"></td>
   {% endif %}
   <td data-label="Teléfono" class="text-nowrap">{{ row.number }}</td>
-  <td data-label="Persona">{{ row.person }}</td>
+  <td data-label="Persona">{% if row.building_id %}<a href="{{ url_for('admin:view-neighbors') }}?{{ {'building_id': row.building_id, 'mark': row.person_id} | urlencode }}">{{ row.person }}</a>{% else %}{{ row.person }}{% endif %}</td>
   {#- «propietario/a»: it may break after the slash (a narrow column at 1024 px). -#}
   <td data-label="Unidades">{{ row.units | e | replace('/', '/<wbr>' | safe) if row.units else '—' }}</td>
   <td data-label="Origen">{{ row.source }}</td>

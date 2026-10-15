@@ -1,8 +1,12 @@
 """The roster edited by hand ("Vecinos"): what the panel's page calls. No HTTP here.
 
 Each function is one transaction (it commits) and leaves its trace in bot_events
-(log_admin_action: ids, roles and sources, never names). Errors the operator must read are
-NeighborError, in Spanish.
+(log_admin_action: ids, roles and sources, never names). With commit=False it only flushes, so
+the panel can do several steps in one transaction (all or nothing: it commits once, or rolls
+everything back if a step fails). Errors the operator must read are NeighborError, in Spanish.
+
+A number given to someone here also approves its pending verification (the bot's «request an
+operator»): it would be the same decision, taken from Vecinos.
 
 What came from ConsorPlus and is removed or changed here leaves a roster_suppressions row, so
 the roster sync (app.sync.roster) does not bring it back at night. A link or phone loaded by hand
@@ -11,6 +15,7 @@ the roster sync (app.sync.roster) does not bring it back at night. A link or pho
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from rapidfuzz import fuzz
@@ -22,6 +27,7 @@ from app.admin.audit import log_admin_action
 from app.config import get_settings
 from app.consorplus import ConsorPlusClient
 from app.db.models import (
+    BotEvent,
     Building,
     DataSource,
     Person,
@@ -33,6 +39,8 @@ from app.db.models import (
     SyncKind,
     Unit,
     UnitPerson,
+    VerificationRequest,
+    VerificationRequestStatus,
 )
 from app.db.session import engine as default_engine
 from app.person_roles import role_text
@@ -43,7 +51,7 @@ from app.sync.roster import RosterSource, consorplus_key, sync_roster
 MAX_NAME = 200  # people.full_name
 # «¿Es la misma persona…?»: from this many letters, and this close (rapidfuzz, 0-100).
 SIMILAR_MIN_CHARS = 4
-SIMILAR_SCORE = 85
+SIMILAR_SCORE = 88
 
 
 class NeighborError(Exception):
@@ -65,12 +73,55 @@ class PhoneTaken:
 class PersonSaved:
     person_id: int
     warnings: list[str] = field(default_factory=list)
+    approved: int = 0  # pending verifications of their numbers, approved
 
 
 @dataclass(frozen=True)
 class PhoneSaved:
     phone_id: int
     warning: str | None = None
+    approved: int = 0
+
+
+def _finish(session: Session, commit: bool) -> None:
+    """The end of a change: its own transaction, or one step of the panel's (flush only)."""
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+
+
+def _approve_pending(session: Session, user: str, e164: str, person_id: int) -> int:
+    """The pending verifications of this number are approved with this person, as if the
+    operator had approved them in Verificaciones (same event). How many."""
+    pending = session.scalars(
+        select(VerificationRequest)
+        .where(
+            VerificationRequest.phone_e164 == e164,
+            VerificationRequest.status == VerificationRequestStatus.PENDING,
+        )
+        .with_for_update()
+    ).all()
+    for request in pending:
+        request.status = VerificationRequestStatus.APPROVED
+        request.person_id = person_id
+        request.resolved_at = datetime.now(UTC)
+        request.resolved_by = user
+        session.add(
+            BotEvent(
+                phone_e164=e164,
+                event_type="operator_verification_resolved",
+                payload={
+                    "result": "approved",
+                    "request_id": request.id,
+                    "unit_id": request.unit_id,
+                    "person_id": person_id,
+                    "resolved_by": user,
+                    "via": "vecinos",
+                },
+            )
+        )
+    return len(pending)
 
 
 # --- Checks ----------------------------------------------------------------------------------
@@ -193,19 +244,27 @@ def _folded(name: str) -> str:
     return " ".join(name_key(name).split()) if name else ""
 
 
+def _closeness(wanted: str, words: set[str], name: str) -> float:
+    """The whole name alike, in any order and with a typo («Juan Carlos Peres»), or every
+    word she typed, two at least, in the name («María Gómez» in «GÓMEZ MARÍA ROSA»). A shared
+    surname alone is not enough: relatives live in the same unit."""
+    if len(words) >= 2 and words <= set(name.split()):
+        return 100.0
+    return fuzz.token_sort_ratio(wanted, name)
+
+
 def similar_people(session: Session, name: str, *, limit: int = 3) -> list[SimilarPerson]:
     """People of the roster with the same or a very close name (same normalized name, or
     rapidfuzz like app.bot.unit_search): to link them instead of creating someone else."""
     wanted = _folded(clean_name(name or ""))
     if len(wanted.replace(" ", "")) < SIMILAR_MIN_CHARS:
         return []
+    words = set(wanted.split())
     scored = []
     for person_id, full_name, cp_name in session.execute(
         select(Person.id, Person.full_name, Person.consorplus_name)
     ):
-        score = max(
-            fuzz.token_set_ratio(wanted, _folded(n)) if n else 0 for n in (full_name, cp_name)
-        )
+        score = max(_closeness(wanted, words, _folded(n)) for n in (full_name, cp_name) if n)
         if score >= SIMILAR_SCORE:
             scored.append((-score, full_name, person_id))
     ids = [person_id for _, _, person_id in sorted(scored)[:limit]]
@@ -316,6 +375,7 @@ def add_person(
     full_name: str | None = None,
     person_id: int | None = None,
     phones: Iterable[str] = (),
+    commit: bool = True,
 ) -> PersonSaved | PhoneTaken:
     """Someone new (full_name) or already in the roster (person_id) in a unit, by hand.
     Their phones are trusted (verified). If a number is another person's, nothing is saved."""
@@ -348,6 +408,8 @@ def add_person(
     )
     for phone in numbers.values():
         session.add(_manual_phone(person.id, phone))
+    session.flush()
+    approved = sum(_approve_pending(session, user, e164, person.id) for e164 in numbers)
     warnings = [w for e164 in numbers if (w := provider_warning(session, e164))]
     log_admin_action(
         session,
@@ -359,16 +421,18 @@ def add_person(
         new_person=person_id is None,
         phones=len(numbers),
     )
-    session.commit()
-    return PersonSaved(person.id, warnings)
+    _finish(session, commit)
+    return PersonSaved(person.id, warnings, approved)
 
 
-def update_person(session: Session, user: str, person_id: int, full_name: str) -> None:
+def update_person(
+    session: Session, user: str, person_id: int, full_name: str, *, commit: bool = True
+) -> None:
     """The name shown everywhere. ConsorPlus' name (consorplus_name) stays: the sync uses it."""
     person = _person(session, person_id)
     person.full_name = _full_name(full_name)
     log_admin_action(session, user, "neighbor_renamed", person_id=person.id)
-    session.commit()
+    _finish(session, commit)
 
 
 def _replace_link(
@@ -396,6 +460,8 @@ def change_role(
     person_id: int,
     role: PersonRole,
     new_role: PersonRole,
+    *,
+    commit: bool = True,
 ) -> None:
     link = _link(session, unit_id, person_id, PersonRole(role))
     new_role = PersonRole(new_role)
@@ -413,7 +479,7 @@ def change_role(
         new_role=str(new_role),
         source=old_source,
     )
-    session.commit()
+    _finish(session, commit)
 
 
 def move_unit(
@@ -423,6 +489,8 @@ def move_unit(
     person_id: int,
     role: PersonRole,
     new_unit_id: int,
+    *,
+    commit: bool = True,
 ) -> None:
     link = _link(session, unit_id, person_id, PersonRole(role))
     if new_unit_id == unit_id:
@@ -440,11 +508,17 @@ def move_unit(
         role=str(role),
         source=old_source,
     )
-    session.commit()
+    _finish(session, commit)
 
 
 def remove_from_unit(
-    session: Session, user: str, unit_id: int, person_id: int, role: PersonRole
+    session: Session,
+    user: str,
+    unit_id: int,
+    person_id: int,
+    role: PersonRole,
+    *,
+    commit: bool = True,
 ) -> bool:
     """The person leaves the unit. Without any unit left, their phones and the person are
     deleted too (claims and verifications keep their own copy of the name). True if so."""
@@ -477,7 +551,7 @@ def remove_from_unit(
         person_deleted=not left,
         phones_deleted=phones,
     )
-    session.commit()
+    _finish(session, commit)
     return not left
 
 
@@ -496,7 +570,9 @@ def _manual_phone(person_id: int, phone: NormalizedPhone) -> Phone:
     )
 
 
-def add_phone(session: Session, user: str, person_id: int, raw: str) -> PhoneSaved | PhoneTaken:
+def add_phone(
+    session: Session, user: str, person_id: int, raw: str, *, commit: bool = True
+) -> PhoneSaved | PhoneTaken:
     person = _person(session, person_id)
     normalized = _parse_phone(raw)
     if taken := _taken(session, normalized.e164, person.id):
@@ -504,6 +580,7 @@ def add_phone(session: Session, user: str, person_id: int, raw: str) -> PhoneSav
     phone = _manual_phone(person.id, normalized)
     session.add(phone)
     session.flush()
+    approved = _approve_pending(session, user, phone.e164, person.id)
     warning = provider_warning(session, phone.e164)
     log_admin_action(
         session,
@@ -513,11 +590,11 @@ def add_phone(session: Session, user: str, person_id: int, raw: str) -> PhoneSav
         phone_id=phone.id,
         person_id=person.id,
     )
-    session.commit()
-    return PhoneSaved(phone.id, warning)
+    _finish(session, commit)
+    return PhoneSaved(phone.id, warning, approved)
 
 
-def remove_phone(session: Session, user: str, phone_id: int) -> bool:
+def remove_phone(session: Session, user: str, phone_id: int, *, commit: bool = True) -> bool:
     """The phone is deleted (the person stays). From ConsorPlus: it does not come back."""
     phone = session.get(Phone, phone_id, with_for_update=True)
     if phone is None:
@@ -537,11 +614,13 @@ def remove_phone(session: Session, user: str, phone_id: int) -> bool:
         suppressed=suppressed,
     )
     session.delete(phone)
-    session.commit()
+    _finish(session, commit)
     return True
 
 
-def move_phone(session: Session, user: str, phone_id: int, person_id: int) -> PhoneSaved:
+def move_phone(
+    session: Session, user: str, phone_id: int, person_id: int, *, commit: bool = True
+) -> PhoneSaved:
     """The number is now this person's (after PhoneTaken), trusted and loaded by hand."""
     phone = session.get(Phone, phone_id, with_for_update=True)
     if phone is None:
@@ -557,6 +636,8 @@ def move_phone(session: Session, user: str, phone_id: int, person_id: int) -> Ph
     phone.verified = True
     phone.needs_review = False
     phone.conflict = False
+    session.flush()
+    approved = _approve_pending(session, user, phone.e164, target.id)
     warning = provider_warning(session, phone.e164)
     log_admin_action(
         session,
@@ -568,8 +649,8 @@ def move_phone(session: Session, user: str, phone_id: int, person_id: int) -> Ph
         from_person_id=old_person_id,
         source=old_source,
     )
-    session.commit()
-    return PhoneSaved(phone.id, warning)
+    _finish(session, commit)
+    return PhoneSaved(phone.id, warning, approved)
 
 
 # --- Read one building again -----------------------------------------------------------------

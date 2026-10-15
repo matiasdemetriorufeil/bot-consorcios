@@ -41,6 +41,9 @@
   {% else %}
   <div class="small text-secondary">Sin unidades activas.</div>
   {% endfor %}
+  {% if card.building_id %}
+  <a class="btn btn-sm btn-secondary mt-2" href="{{ url_for('admin:view-neighbors') }}?{{ {'building_id': card.building_id, 'mark': card.person_id} | urlencode }}"><i class="fa-solid fa-people-roof" aria-hidden="true"></i>Ver en Vecinos</a>
+  {% endif %}
   <div class="contact-section">Reservas de SUM</div>
   {% for r in card.reservations %}
   <div class="small">{{ r.day.strftime('%d/%m/%Y') }} · {{ r.slot }} · {{ r.building }} {{ r.unit }}</div>
@@ -51,6 +54,7 @@
   <div class="alert alert-secondary mt-2 mb-0 small">
     Número no identificado: no figura en ConsorPlus ni lo verificó el bot.
   </div>
+  <a class="btn btn-sm btn-primary mt-2" href="{{ url_for('admin:view-neighbor-add') }}?{{ {'phone': card.phone} | urlencode }}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Agregar a Vecinos</a>
   {% endif %}
   <div class="contact-section">Reclamos</div>
   {% for c in card.claims %}
