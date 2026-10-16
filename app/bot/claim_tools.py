@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from app.bot import registration_tools
 from app.bot.choices import Offer
 from app.bot.identity import identify_by_phone, to_e164
 from app.bot.unit_search import display_building_name
@@ -106,6 +107,9 @@ def start_claim(ctx: "ToolContext", category_hint: str = "") -> dict[str, Any]:
             apply_flow_reply(ctx, flow.FlowReply(text=reply.text, choices=reply.choices))
             return {"status": "ok", "next_step": STEP_SENT}
         case "not_verified":
+            pending = None if reply.urgent else registration_tools.pending_step(ctx)
+            if pending is not None:  # registered by WhatsApp, waiting for the studio
+                return {**pending, "next_step": pending["next_step"] + _greeted(ctx)}
             if reply.urgent:
                 step = (
                     "Es una urgencia y el número no está verificado: derivá ya con "
@@ -115,10 +119,10 @@ def start_claim(ctx: "ToolContext", category_hint: str = "") -> dict[str, Any]:
                 step = (
                     "Si lo que describe es una urgencia (agua que avanza, gente encerrada, "
                     "riesgo para personas), derivá ya con handoff_to_human (priority urgent) y "
-                    "su tell_person. Si no: para registrar el reclamo hay que verificar el "
-                    "número; pedile edificio y unidad (find_unit) y ofrecé mandarle el código "
-                    "al email (como siempre). Cuando confirm_email_code dé verified, el reclamo "
-                    "sigue solo." + safety
+                    "su tell_person. Si no: para registrar el reclamo el número tiene que estar "
+                    "registrado: seguí el registro de un número desconocido (propietario/a: el "
+                    "código por email; inquilino/a o familiar: request_registration). Cuando "
+                    "confirm_email_code dé verified, el reclamo sigue solo." + safety
                 )
             return {
                 "status": "not_verified",
@@ -150,6 +154,8 @@ def start_claim(ctx: "ToolContext", category_hint: str = "") -> dict[str, Any]:
 
 def my_claims(ctx: "ToolContext") -> dict[str, Any]:
     text = my_claims_text(ctx.session, ctx.phone, ctx.now)
+    if text is None and (pending := registration_tools.pending_step(ctx)) is not None:
+        return pending
     if text is None:
         return {
             "status": "not_verified",

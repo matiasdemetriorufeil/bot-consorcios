@@ -34,6 +34,7 @@ from app.amenities.booking import (
     slot_end,
     slot_start,
 )
+from app.bot import registration_tools
 from app.bot.choices import Choice, Offer
 from app.bot.identity import Identity, identify_by_phone
 from app.bot.unit_search import display_building_name, search_building
@@ -268,7 +269,9 @@ def sum_availability(
 # --- Booking --------------------------------------------------------------------------------
 
 
-def _not_verified() -> dict[str, Any]:
+def _not_verified(ctx: "ToolContext") -> dict[str, Any]:
+    if (pending := registration_tools.pending_step(ctx)) is not None:
+        return pending  # registered by WhatsApp, waiting for the studio
     return {
         "status": "denied",
         "reason": "not_verified",
@@ -284,7 +287,7 @@ def book_sum(
     """Book a slot for one of the person's units, after the summary was confirmed."""
     who = identify_by_phone(ctx.session, ctx.phone)
     if not who.known or not who.units:
-        return _not_verified()
+        return _not_verified(ctx)
     resolved = _building_and_sum(ctx, building, who, own_only=True)
     if isinstance(resolved, dict):
         return resolved
@@ -444,7 +447,7 @@ def _can_cancel(ctx: "ToolContext", reservation: Reservation) -> bool:
 def my_sum_reservations(ctx: "ToolContext") -> dict[str, Any]:
     who = identify_by_phone(ctx.session, ctx.phone)
     if not who.known or not who.units:
-        return _not_verified()
+        return _not_verified(ctx)
     reservations = _own_reservations(ctx, who)
     ctx.offered_reservation_ids.update(r.id for r in reservations)
     items = [
@@ -472,7 +475,7 @@ def my_sum_reservations(ctx: "ToolContext") -> dict[str, Any]:
 def cancel_sum_reservation(ctx: "ToolContext", reservation_id: int) -> dict[str, Any]:
     who = identify_by_phone(ctx.session, ctx.phone)
     if not who.known or not who.units:
-        return _not_verified()
+        return _not_verified(ctx)
     if reservation_id not in ctx.offered_reservation_ids:
         return {
             "status": "error",

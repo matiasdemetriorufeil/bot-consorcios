@@ -32,6 +32,7 @@ from typing import Any
 import phonenumbers
 from sqlalchemy.orm import Session
 
+from app.bot import registration_tools
 from app.bot.choices import Choice
 from app.bot.unit_search import display_building_name
 from app.claims import payloads, texts
@@ -454,6 +455,31 @@ class Notifier:
         if upload_for is not None:
             return upload_for(to, content, mime, path.name)
         return self.client.upload_media(content, mime, path.name)
+
+    # --- A neighbor's registration (Verificaciones) ------------------------------------------
+
+    def notify_registration(
+        self, session: Session, e164: str, *, approved: bool, role: str, unit: str
+    ) -> Sent | None:
+        """Tell the neighbor what the studio decided on their registration by WhatsApp. Window
+        open: free text. Closed: approved goes as the template registro_aprobado (if Meta has
+        not approved it yet, it fails and Sent says so); a rejection is not sent (None)."""
+        if self.window_open(session, e164):
+            text = (
+                registration_tools.REGISTERED.format(role=role, unit=unit)
+                if approved
+                else registration_tools.NOT_REGISTERED
+            )
+            return self._text(session, e164, text)
+        if not approved:
+            return None
+        return self._template(
+            session,
+            e164,
+            self.settings.registration_template,
+            registration_tools.REGISTERED_TEMPLATE_PREVIEW,
+            [flat(role), flat(unit)],
+        )
 
     # --- The neighbors --------------------------------------------------------------------------
 

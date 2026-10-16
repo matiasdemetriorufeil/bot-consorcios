@@ -173,7 +173,7 @@ def test_the_dialog_is_on_every_page(operator: Panel) -> None:
         assert 'id="confirm-dialog"' in operator.client.get(url).text
 
 
-def test_reject_says_nothing_reaches_the_person(operator: Panel, db_session: Session) -> None:
+def test_reject_says_what_reaches_the_person(operator: Panel, db_session: Session) -> None:
     from app.bot import identity
 
     building = f.building(db_session, "077 TORRE AYUDA")
@@ -183,7 +183,7 @@ def test_reject_says_nothing_reaches_the_person(operator: Panel, db_session: Ses
     db_session.commit()
     text = _confirm(operator.client.get("/admin/verifications").text, "reject")
     assert text.startswith("Dueña · TORRE AYUDA 03-B.")
-    assert "A la persona no le llega ningún aviso" in text
+    assert "le ofrece hablar con el estudio" in text and "si no, no le llega nada" in text
 
 
 def test_resolve_says_what_happens(operator: Panel) -> None:

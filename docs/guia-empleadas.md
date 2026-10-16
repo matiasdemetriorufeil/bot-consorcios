@@ -231,16 +231,25 @@ que alguien los confirme, el bot no los usa.
 
 ## Verificaciones
 
-Cuando alguien escribe por WhatsApp diciendo que es propietario de una unidad que no tiene email
-cargado, el bot no puede confirmarlo solo y te lo deja en **Verificaciones**.
+Cuando alguien se registra por WhatsApp y el bot no puede confirmarlo solo, te lo deja en
+**Verificaciones**: un inquilino o un familiar (siempre), o un propietario de una unidad que no
+tiene email cargado.
 
-1. Entrá a **Verificaciones**. Cada renglón dice el edificio, la unidad, el nombre que dio la
-   persona y su teléfono.
-2. Si sabés que es el propietario, tocá **Aprobar** y elegí su nombre de la lista. Desde ese
-   momento el bot le da la información de esa unidad.
-3. Si tenés dudas, tocá **Ver conversación** para leer lo que escribió.
-4. Si no corresponde, tocá **Rechazar**. A la persona no le llega ningún aviso: si querés que
-   sepa, escribile desde Conversaciones.
+1. Entrá a **Verificaciones**. Cada renglón dice el edificio, la unidad, el nombre y el rol que
+   dio la persona, y su teléfono.
+2. Si tenés dudas, tocá **Ver conversación** para leer lo que escribió.
+3. Si corresponde, tocá **Aprobar** y elegí cómo queda:
+   - **Es un propietario que ya está cargado**: elegí su nombre de la lista.
+   - **Cargarlo como persona nueva**: revisá el nombre y elegí el rol (Propietario/a,
+     Inquilino/a o Familiar u otro). Queda también en **Vecinos**.
+4. Al confirmar, el panel avisa si se le pudo mandar el aviso por WhatsApp. Si escribió hace
+   más de un día y el aviso no salió, avisale vos (por ejemplo, por teléfono).
+5. Si no corresponde, tocá **Rechazar**. Si escribió en las últimas 24 horas le llega un
+   mensaje amable que le ofrece hablar con el estudio; si no, no le llega nada.
+
+Mientras su registro está pendiente, el bot le contesta sobre el edificio y atiende urgencias,
+pero no le da la deuda, no le reserva el SUM ni le toma reclamos: le dice que espera la
+aprobación del estudio.
 
 ![Aprobar una verificación](guia-empleadas/05-aprobar-verificacion.png)
 

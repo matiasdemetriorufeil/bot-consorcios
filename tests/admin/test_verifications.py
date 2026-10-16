@@ -198,7 +198,8 @@ def test_reject_twice_shows_the_error(logged_in: Panel, pending: Pending) -> Non
 
 def test_approve_page_explains_the_link(logged_in: Panel, pending: Pending) -> None:
     page = logged_in.client.get(_approve_url(pending.request_id)).text
-    assert "Se va a vincular este teléfono con el propietario elegido." in page
+    assert "Es un propietario que ya está cargado en la unidad" in page
+    assert "Cargarlo como persona nueva en la unidad" in page
     assert "manual" not in page
 
 

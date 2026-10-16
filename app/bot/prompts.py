@@ -29,6 +29,7 @@ presentación, "¿En qué te ayudo?" y estas opciones, en este orden: "Mi deuda"
 reclamo", "Mis reclamos", "Info del edificio", "Reservar el SUM", "Hablar con alguien".
 - Al ofrecer pasarlo con una persona: "Sí, pasame" / "No, gracias".
 - Al ofrecer mandar el código de verificación al email: "Sí, mandalo" / "No".
+- Al preguntar qué es en la unidad: "Propietario/a" / "Inquilino/a" / "Familiar u otro".
 - Si find_unit trae candidatas (o hay que elegir el edificio): una opción por candidata con \
 el nombre que devolvió, corto (hasta 10; si son más, preguntá con texto).
 - Títulos de hasta 20 caracteres (24 si son más de 3 opciones), distintos entre sí.
@@ -40,7 +41,7 @@ edificio, si no se sabe). NO llames herramientas ni derives: esperá su pregunta
 sugieras temas ni ejemplos (reglamento, mascotas, mudanzas, horarios...): sin consultar no \
 sabés qué tiene cargado ese edificio.
 - "Mi deuda": si es propietario verificado, get_debt. Si el número no está verificado, \
-arrancá la verificación (pedile edificio y unidad para find_unit). Nunca derives por eso.
+arrancá el registro (ver "Registro de un número desconocido"). Nunca derives por eso.
 - No uses offer_choices en urgencias, cuando derivás ni para dar información.
 
 Reglas que no se rompen:
@@ -60,13 +61,30 @@ información del edificio.
 - "¿Cómo pago?", "¿cuál es mi código de pago?", "pasame el código para pagar" (sin pedir \
 cuánto debe): usá get_payment_info, NO get_debt. Si pide la deuda (o la deuda y cómo \
 pagar), usá get_debt: su mensaje ya trae el código y cómo pagar.
-- Si el número no está verificado: buscá la unidad con find_unit y PREGUNTÁ si quiere \
-que le mandemos un código al email registrado del propietario (offer_choices). Solo si \
-acepta, usá start_email_verification.
+- Si el número no está verificado: ver "Registro de un número desconocido".
 - start_email_verification trae say: decí ese texto (podés sumarle un saludo o la pregunta \
 que sigue, sin cambiar el motivo ni la unidad). Decí que una unidad no tiene email SOLO si \
 devolvió reason "no_owner_email", y nombrá la unidad de su campo unit. En ese caso, si da \
-nombre y apellido, usá request_operator_verification.
+nombre y apellido, registralo con request_registration (role "owner").
+
+Registro de un número desconocido (no verificado):
+- Cuando necesita identificarse (deuda, reservar el SUM, un reclamo, "quiero registrarme") y \
+todavía no dijo qué es en la unidad, preguntalo con offer_choices: "Propietario/a" / \
+"Inquilino/a" / "Familiar u otro".
+- Propietario/a: buscá la unidad con find_unit y PREGUNTÁ si quiere que le mandemos un \
+código al email registrado del propietario (offer_choices). Solo si acepta, usá \
+start_email_verification. Si la unidad no tiene email de propietario, registralo con \
+request_registration (role "owner").
+- Inquilino/a o Familiar u otro: no hay código por email. Pedile nombre y apellido, \
+edificio y unidad (find_unit; si hay varias candidatas, preguntá) y usá request_registration \
+con su role ("tenant" o "resident"). La primera vez le manda el resumen con los botones \
+"Sí, enviar" / "Corregir". Cuando toque "Sí, enviar", llamá find_unit y request_registration \
+de nuevo con los mismos datos. Si toca "Corregir", preguntá qué hay que cambiar.
+- request_registration devuelve say: decilo tal cual.
+- Si el contexto dice que tiene una solicitud de registro pendiente, no la vuelvas a pedir. \
+La información del edificio y las urgencias, como siempre. Si pide la deuda, reservar el SUM \
+o un reclamo común: decí que su registro está pendiente de aprobación del estudio y ofrecé \
+pasarlo con una persona.
 - Un unit_id vale solo en el mensaje en que find_unit lo devolvió (o si es de una unidad \
 del contexto). Si la unidad se habló en un mensaje anterior, volvé a llamar find_unit antes \
 de usarlo; nunca uses un id de memoria. Si una herramienta devuelve reason \
@@ -282,9 +300,12 @@ def urgent_handoff_notice(
     return f"{notice} Mientras tanto, si podés, avisale al encargado del edificio."
 
 
-def describe_identity(who: Identity) -> str:
+def describe_identity(who: Identity, pending: str = "") -> str:
+    """pending: app.bot.registration_tools.describe_pending of the number's request."""
     if not who.known:
-        return "número no registrado (no verificado): no puede ver deuda hasta verificarse"
+        return pending or (
+            "número no registrado (no verificado): no puede ver deuda hasta verificarse"
+        )
     if not who.units:
         return f"número verificado de {who.full_name}, sin unidades activas"
     units = "; ".join(
@@ -304,6 +325,7 @@ def build_user_turn(
     hours_text: str,
     first_message: bool,
     welcome_message: str = "",
+    pending: str = "",
 ) -> str:
     """The person's message preceded by the variable context (kept out of the system prompt
     so that it stays identical and cacheable)."""
@@ -311,7 +333,7 @@ def build_user_turn(
         f"Fecha y hora en Córdoba: {_WEEKDAYS[now.weekday()]} {now:%d/%m/%Y %H:%M}",
         f"Horario de atención: {hours_text}. Ahora "
         f"{'estamos' if office_hours else 'NO estamos'} en horario de atención.",
-        f"Quién escribe: {describe_identity(who)}",
+        f"Quién escribe: {describe_identity(who, pending)}",
         f"Primer mensaje de la conversación: {'sí' if first_message else 'no'}",
     ]
     if first_message and welcome_message.strip():

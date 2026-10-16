@@ -19,6 +19,7 @@ from app.whatsapp.client import WhatsAppClient, WhatsAppError  # noqa: E402
 
 # name setting -> (variables, quick-reply buttons) app.claims.notify uses.
 EXPECTED = {
+    "registration_template": (2, []),  # registro_aprobado: role, unit (Verificaciones)
     "claim_template_provider": (6, [texts.ACK_BUTTON, texts.DECLINE_BUTTON]),
     "claim_template_reminder": (3, [texts.ACK_BUTTON, texts.REMINDER_SOLVED_BUTTON]),
     "claim_template_confirmed": (2, []),

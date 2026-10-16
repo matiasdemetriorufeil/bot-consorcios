@@ -2,7 +2,7 @@
 
 Builds the database <DB>_eval (migrations + evals/seed.py), runs every case of
 evals/cases.yaml in its own transaction (rolled back afterwards) and writes
-evals/reports/<date>_<provider>_<model>.md. Debt comes from the stored snapshots and
+evals/reports/<date>_<HHMM>_<provider>_<model>.md. Debt comes from the stored snapshots and
 verification emails are captured: neither ConsorPlus nor any email server is touched.
 
     uv run python -m evals.run                        # LLM_PROVIDER / LLM_MODEL of .env
@@ -567,8 +567,12 @@ def write_report(
     retries: int,
     out_dir: Path = REPORTS_DIR,
     today: date | None = None,
+    now: datetime | None = None,
 ) -> Path:
-    today = today or date.today()
+    """now: the time in the file's name (Córdoba), so two runs of the same day never overwrite
+    each other."""
+    now = now or datetime.now(TZ)
+    today = today or now.date()
     passed = sum(r.passed for r in results)
     total = len(results)
     usage = Usage(
@@ -636,7 +640,7 @@ def write_report(
             "",
         ]
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{today:%Y-%m-%d}_{provider.name}_{_safe(provider.model)}.md"
+    path = out_dir / f"{today:%Y-%m-%d}_{now:%H%M}_{provider.name}_{_safe(provider.model)}.md"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 

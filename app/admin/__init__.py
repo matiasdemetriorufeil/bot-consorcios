@@ -340,7 +340,11 @@ def setup_admin(
     extra: dict[type, dict[str, object]] = {
         PendingView: pending_view,
         ConversationsView: conversations,
-        VerificationsView: {"timezone": settings.timezone, "session_maker": session_maker},
+        VerificationsView: {
+            "timezone": settings.timezone,
+            "session_maker": session_maker,
+            "notifier_factory": claims["notifier_factory"],
+        },
         NeighborsView: {"timezone": settings.timezone, "session_maker": session_maker},
         PhonesView: {"timezone": settings.timezone, "session_maker": session_maker},
         MetricsView: {"timezone": settings.timezone, "session_maker": session_maker},

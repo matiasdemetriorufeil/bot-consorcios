@@ -1,14 +1,22 @@
-"""Panel page "Verificaciones": the pending requests left by request_operator_verification
-(units without owner email), for operators and admins.
+"""Panel page "Verificaciones": the registrations left by the bot (request_registration: a
+tenant or a relative, or an owner of a unit without owner email), for operators and admins.
 
-- GET       /admin/verifications                   the pending ones, oldest first
-- GET/POST  /admin/verifications/{id}/approve      choose the owner the phone is linked to
-- POST      /admin/verifications/{id}/reject       the phone is not linked
+- GET       /admin/verifications                   the pending ones, oldest first, with the role
+                                                   the person said
+- GET/POST  /admin/verifications/{id}/approve      link the phone to an owner already in the
+                                                   unit, or create the person with the chosen
+                                                   role (app.admin.neighbors_service.add_person),
+                                                   in one transaction
+- POST      /admin/verifications/{id}/reject       the phone is not registered
 
-Audited in bot_events (verification_approved, verification_rejected). The forms carry no CSRF
-token, like the rest of the panel: the session cookie is SameSite=Strict (app.admin.auth).
+Then the neighbor is told by WhatsApp (Notifier.notify_registration): free text in the 24-hour
+window; outside it the template registro_aprobado (a rejection is not sent). The panel says
+whether it went. Audited in bot_events (verification_approved, verification_rejected,
+registration_notified: no texts). The forms carry no CSRF token, like the rest of the panel:
+the session cookie is SameSite=Strict (app.admin.auth).
 """
 
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from sqladmin import BaseView, expose
@@ -19,7 +27,7 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
 
-from app.admin import formatting, labels
+from app.admin import formatting, help, labels, neighbors_service
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user
 from app.admin.fetch import fetch_reply, wants_fetch
@@ -29,6 +37,7 @@ from app.bot.identity import (
     approve_verification_request,
     reject_verification_request,
 )
+from app.bot.unit_search import display_building_name
 from app.config import Settings
 from app.db.models import (
     Person,
@@ -40,6 +49,7 @@ from app.db.models import (
     WaContact,
     WaConversation,
 )
+from app.person_roles import PERSON_ROLE, role_text, role_title
 
 STATUS_LABELS = labels.VERIFICATION_STATUS
 
@@ -79,6 +89,7 @@ def conversation_id(session: Session, phone_e164: str) -> int | None:
 
 
 def approve(session: Session, request_id: int, person_id: int, user: str) -> None:
+    """Link the phone to an owner already in the unit (as before)."""
     request = approve_verification_request(session, request_id, person_id, resolved_by=user)
     log_admin_action(
         session,
@@ -90,6 +101,47 @@ def approve(session: Session, request_id: int, person_id: int, user: str) -> Non
         person_id=person_id,
     )
     session.commit()
+
+
+def approve_as_new(
+    session: Session, request_id: int, role: PersonRole, full_name: str, user: str
+) -> int:
+    """Create the person with that role in the request's unit and its phone (Vecinos' own
+    add_person, which approves the request too), all in one transaction. The person's id."""
+    request = session.get(VerificationRequest, request_id, with_for_update=True)
+    if request is None or request.status != VerificationRequestStatus.PENDING:
+        raise neighbors_service.NeighborError("Esta solicitud ya estaba resuelta.")
+    try:
+        saved = neighbors_service.add_person(
+            session,
+            user,
+            request.unit_id,
+            role,
+            full_name=full_name,
+            phones=[request.phone_e164],
+            commit=False,
+            via="verificaciones",
+        )
+        if isinstance(saved, neighbors_service.PhoneTaken):
+            raise neighbors_service.NeighborError(
+                f"Ese número ya es de {saved.full_name}: aprobalo vinculándolo o rechazalo."
+            )
+        log_admin_action(
+            session,
+            user,
+            "verification_approved",
+            phone_e164=request.phone_e164,
+            request_id=request.id,
+            unit_id=request.unit_id,
+            person_id=saved.person_id,
+            role=str(role),
+            new_person=True,
+        )
+    except Exception:
+        session.rollback()
+        raise
+    session.commit()
+    return saved.person_id
 
 
 def reject(session: Session, request_id: int, user: str) -> None:
@@ -105,6 +157,50 @@ def reject(session: Session, request_id: int, user: str) -> None:
     session.commit()
 
 
+def where_text(request: VerificationRequest) -> str:
+    return f"{display_building_name(request.unit.building.name)} {request.unit.label}"
+
+
+def notify(
+    session: Session,
+    notifier: Any,
+    request: VerificationRequest,
+    user: str,
+    *,
+    approved: bool,
+    role: PersonRole,
+) -> str:
+    """Tell the neighbor (Notifier.notify_registration) and say in the panel how it went."""
+    if notifier is None:
+        outcome, text = "no_whatsapp", " No se le avisó: WhatsApp no está configurado."
+    else:
+        sent = notifier.notify_registration(
+            session,
+            request.phone_e164,
+            approved=approved,
+            role=role_text(role),
+            unit=where_text(request),
+        )
+        if sent is None:
+            outcome = "window_closed"
+            text = " No se le pudo avisar: pasaron más de 24 h desde su último mensaje."
+        elif sent.ok:
+            outcome, text = "sent", " Se le avisó por WhatsApp."
+        else:
+            outcome, text = "failed", f" No se le pudo avisar por WhatsApp: {sent.error}"
+    log_admin_action(
+        session,
+        user,
+        "registration_notified",
+        phone_e164=request.phone_e164,
+        request_id=request.id,
+        approved=approved,
+        outcome=outcome,
+    )
+    session.commit()
+    return text
+
+
 class VerificationsView(BaseView):
     name = "Verificaciones"
     icon = "fa-solid fa-user-check"
@@ -112,6 +208,8 @@ class VerificationsView(BaseView):
     menu_counter = "verifications"
     session_maker: ClassVar[Any] = None
     timezone: ClassVar[str] = Settings.model_fields["timezone"].default
+    # The claims' Notifier (the inbox's WhatsApp client), or None without WhatsApp.
+    notifier_factory: ClassVar[Callable[[], Any]] = staticmethod(lambda: None)
 
     def _to_list(self, request: Request) -> RedirectResponse:
         return RedirectResponse(request.url_for("admin:view-verifications"), status_code=302)
@@ -132,6 +230,7 @@ class VerificationsView(BaseView):
                     "building": formatting.building(v.unit.building.name),
                     "unit": v.unit.label,
                     "claimed_name": v.claimed_name,
+                    "role": role_title(v.role),
                     "phone": formatting.phone(v.phone_e164),
                     "date": formatting.when(v.created_at, timezone=self.timezone),
                     "status": STATUS_LABELS[VerificationRequestStatus(v.status)],
@@ -151,14 +250,22 @@ class VerificationsView(BaseView):
         """As always (a Flash and back to the list) or, asked by panel.js, without reloading:
         the row goes away and the counter changes (app.admin.fetch)."""
         request_id = request.path_params["request_id"]
+        user = admin_user(request)
         with self.session_maker() as session:
             try:
-                await _in_thread(reject, session, request_id, admin_user(request))
+                await _in_thread(reject, session, request_id, user)
             except IdentityError as exc:
                 session.rollback()
                 ok, message = False, problem_text(exc)
             else:
-                ok, message = True, "Verificación rechazada: el número no se asoció."
+                ok, message = True, "Verificación rechazada: el número no se registró."
+                rejected = session.get(VerificationRequest, request_id)
+                message += await _in_thread(
+                    lambda: notify(
+                        session, self.notifier_factory(), rejected, user,
+                        approved=False, role=rejected.role,
+                    )
+                )  # fmt: skip
             pending = session.scalar(
                 select(func.count())
                 .select_from(VerificationRequest)
@@ -182,22 +289,21 @@ class VerificationsView(BaseView):
     async def approve_page(self, request: Request) -> Response:
         pk = request.path_params["request_id"]
         error = None
+        user = admin_user(request)
         with self.session_maker() as session:
             if request.method == "POST":
                 form = await request.form()
-                try:
-                    person_id = int(str(form.get("person_id", "")))
-                except ValueError:
-                    error = "Elegí el propietario al que se asocia el teléfono."
-                else:
-                    try:
-                        await _in_thread(approve, session, pk, person_id, admin_user(request))
-                    except IdentityError as exc:
-                        session.rollback()
-                        error = problem_text(exc)
-                    else:
-                        Flash.success(request, "Verificación aprobada: el teléfono quedó asociado.")
-                        return self._to_list(request)
+                error, role = await self._approve(session, pk, form, user)
+                if error is None:
+                    approved = session.get(VerificationRequest, pk)
+                    told = await _in_thread(
+                        lambda: notify(
+                            session, self.notifier_factory(), approved, user,
+                            approved=True, role=role,
+                        )
+                    )  # fmt: skip
+                    Flash.success(request, f"Verificación aprobada: quedó registrado.{told}")
+                    return self._to_list(request)
 
             verification = session.scalar(
                 _with_unit(select(VerificationRequest).where(VerificationRequest.id == pk))
@@ -211,6 +317,11 @@ class VerificationsView(BaseView):
                 "building": formatting.building(verification.unit.building.name),
                 "created_at": formatting.full(verification.created_at, self.timezone),
                 "owners": unit_owners(session, verification.unit_id),
+                "roles": [(str(r), role_title(r)) for r in PERSON_ROLE],
+                "declared": verification.role,
+                "declared_label": role_title(verification.role),
+                "confirm": help.confirm_attrs("approve_registration"),
+                "owner_note": help.REGISTRATION_OWNER_NOTE,
                 "pending": verification.status == VerificationRequestStatus.PENDING,
                 "status_label": STATUS_LABELS[VerificationRequestStatus(verification.status)],
                 "conversation_url": request.url_for(
@@ -221,9 +332,38 @@ class VerificationsView(BaseView):
                 "error": error,
                 "list_url": request.url_for("admin:view-verifications"),
             }
+            if request.method == "POST":
+                context["form"] = form
             return await self.templates.TemplateResponse(
                 request,
                 "verification_approve.html",
                 context,
                 status_code=400 if error else 200,
             )
+
+    async def _approve(
+        self, session: Session, pk: int, form: Any, user: str
+    ) -> tuple[str | None, PersonRole]:
+        """The approval the form chose: link to an owner, or a new person with a role. (error,
+        the role it got)."""
+        if form.get("mode") == "create":
+            try:
+                role = PersonRole(str(form.get("role", "")))
+            except ValueError:
+                return "Elegí el rol.", PersonRole.OWNER
+            name = str(form.get("full_name", ""))
+            try:
+                await _in_thread(approve_as_new, session, pk, role, name, user)
+            except neighbors_service.NeighborError as exc:
+                return str(exc), role
+            return None, role
+        try:
+            person_id = int(str(form.get("person_id", "")))
+        except ValueError:
+            return "Elegí el propietario al que se asocia el teléfono.", PersonRole.OWNER
+        try:
+            await _in_thread(approve, session, pk, person_id, user)
+        except IdentityError as exc:
+            session.rollback()
+            return problem_text(exc), PersonRole.OWNER
+        return None, PersonRole.OWNER

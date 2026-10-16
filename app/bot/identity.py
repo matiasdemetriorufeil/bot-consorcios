@@ -264,6 +264,13 @@ def _owner_emails(
     return result
 
 
+def owner_email_available(session: Session, unit_id: int) -> bool:
+    """Whether start_email_verification can send a code for this unit (an owner's email that
+    is not excluded)."""
+    exclusions = parse_email_exclusions(get_settings().verification_email_exclude)
+    return bool(_owner_emails(session, unit_id, exclusions))
+
+
 def _active_unit(session: Session, unit_id: int) -> UnitCandidate | None:
     row = session.execute(
         select(Unit.id, Building.name, Unit.label)
@@ -530,26 +537,37 @@ class OperatorRequestResult:
     request_id: int | None = None
 
 
+def pending_registration(session: Session, phone: str) -> VerificationRequest | None:
+    """This number's registration waiting for the studio (one at most)."""
+    e164 = to_e164(phone)
+    if e164 is None:
+        return None
+    return session.scalar(
+        select(VerificationRequest).where(
+            VerificationRequest.phone_e164 == e164,
+            VerificationRequest.status == VerificationRequestStatus.PENDING,
+        )
+    )
+
+
 def request_operator_verification(
-    session: Session, phone: str, unit_id: int, claimed_name: str
+    session: Session,
+    phone: str,
+    unit_id: int,
+    claimed_name: str,
+    role: PersonRole = PersonRole.OWNER,
 ) -> OperatorRequestResult:
-    """Leave a pending request for an operator to link this phone to an owner of the unit
-    (for units without owner email). Commits."""
+    """Leave a registration for the studio to approve (Verificaciones): an owner of a unit
+    without owner email, or a tenant or relative. One pending per number. Commits."""
     e164 = to_e164(phone)
     if e164 is None:
         return OperatorRequestResult(RequestStatus.INVALID_PHONE)
     if _active_unit(session, unit_id) is None:
         return OperatorRequestResult(RequestStatus.UNIT_NOT_FOUND)
 
-    existing = session.scalar(
-        select(VerificationRequest.id).where(
-            VerificationRequest.phone_e164 == e164,
-            VerificationRequest.unit_id == unit_id,
-            VerificationRequest.status == VerificationRequestStatus.PENDING,
-        )
-    )
+    existing = pending_registration(session, e164)
     if existing is not None:
-        return OperatorRequestResult(RequestStatus.ALREADY_PENDING, existing)
+        return OperatorRequestResult(RequestStatus.ALREADY_PENDING, existing.id)
 
     recent = session.scalar(
         select(func.count())
@@ -570,6 +588,7 @@ def request_operator_verification(
         phone_e164=e164,
         unit_id=unit_id,
         claimed_name=clean_name(claimed_name)[:MAX_CLAIMED_NAME] or "(sin nombre)",
+        declared_role=PersonRole(role),
         created_at=_now(),
     )
     session.add(request)
@@ -581,6 +600,7 @@ def request_operator_verification(
         result="created",
         unit_id=unit_id,
         request_id=request.id,
+        role=str(PersonRole(role)),
     )
     session.commit()
     return OperatorRequestResult(RequestStatus.CREATED, request.id)

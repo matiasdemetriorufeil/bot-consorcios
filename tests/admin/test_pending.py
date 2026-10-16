@@ -162,10 +162,15 @@ def busy(db_session: Session) -> None:
     f.person(s, "Otra Inventada", phone="+5493515550212", needs_review=True)
     f.person(s, "Verificada Inventada", phone="+5493515550213")
     unit = f.unit(s, f.building(s, "009 TORRE FICTICIA"), "02-B")
-    for days, status in ((5, "pending"), (2, "pending"), (9, "approved")):
+    # One pending request per number: two numbers waiting.
+    for days, status, phone in (
+        (5, "pending", "+5493515550221"),
+        (2, "pending", "+5493515550222"),
+        (9, "approved", "+5493515550221"),
+    ):
         s.add(
             VerificationRequest(
-                phone_e164="+5493515550221",
+                phone_e164=phone,
                 unit_id=unit.id,
                 claimed_name="Dueña Inventada",
                 status=VerificationRequestStatus(status),

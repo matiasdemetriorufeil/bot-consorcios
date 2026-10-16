@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     claim_template_reminder: str = "reclamo_recordatorio_proveedor"
     claim_template_confirmed: str = "reclamo_confirmado_vecino"
     claim_template_solved: str = "reclamo_solucionado_vecino"
+    # A neighbor's registration approved outside the 24-hour window (app.claims.notify).
+    registration_template: str = "registro_aprobado"
     # Signs the payload of the claims' buttons (a made-up one never closes a claim). Empty:
     # ADMIN_SECRET_KEY is used.
     claims_payload_secret: SecretStr | None = None

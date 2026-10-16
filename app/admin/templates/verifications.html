@@ -10,7 +10,7 @@
     <div class="table-responsive">
       <table class="table table-vcenter card-table rows-table" id="verifications">
         <thead>
-          <tr><th>Edificio</th><th>Unidad</th><th>Nombre declarado</th><th>Teléfono</th><th>Fecha</th><th>Estado</th><th><span class="visually-hidden">Acciones</span></th></tr>
+          <tr><th>Edificio</th><th>Unidad</th><th>Nombre declarado</th><th>Rol declarado</th><th>Teléfono</th><th>Fecha</th><th>Estado</th><th><span class="visually-hidden">Acciones</span></th></tr>
         </thead>
         <tbody>
           {% for row in rows %}
@@ -18,6 +18,7 @@
             <td data-label="Edificio">{{ row.building }}</td>
             <td data-label="Unidad">{{ row.unit }}</td>
             <td data-label="Nombre declarado">{{ row.claimed_name }}</td>
+            <td data-label="Rol declarado">{{ row.role }}</td>
             <td data-label="Teléfono" class="text-nowrap">{{ row.phone }}</td>
             <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
             <td data-label="Estado"><span class="state state-waiting">{{ row.status }}</span></td>

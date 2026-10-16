@@ -756,7 +756,9 @@
   function ownerText(form) {
     if (!form || !form.dataset.confirmBase) return;
     var role = form.querySelector("[data-role-select]");
-    var owner = role && role.value === "owner";
+    // Verificaciones: «Es un propietario que ya está cargado» is an owner too.
+    var mode = form.querySelector("input[name=mode]:checked");
+    var owner = mode && mode.value === "link" ? true : Boolean(role && role.value === "owner");
     form.dataset.confirmText = form.dataset.confirmBase + (owner ? " " + form.dataset.ownerNote : "");
   }
   function phoneField(el) { return el.closest("[data-phone-field]"); }
@@ -899,7 +901,7 @@
     var el = event.target;
     if (!el.matches) return;
     if (el.matches("input[data-phone-check]")) checkPhone(el);
-    if (el.matches("[data-role-select]")) ownerText(el.form);
+    if (el.matches("[data-role-select], input[name=mode]")) ownerText(el.form);
   });
 
   // --- The blocks of «Administración» (admins: the menu and «Más») ---------------------------

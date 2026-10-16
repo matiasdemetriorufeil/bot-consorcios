@@ -521,9 +521,11 @@ def test_operator_rejection_and_limits(db_session: Session, world: World) -> Non
     assert rejected.status == VerificationRequestStatus.REJECTED
     assert phone_row(db_session, UNKNOWN_PHONE) is None
 
-    for unit in ("u4c", "u5b"):
+    for unit in ("u4c", "u5b"):  # one pending at a time: each one rejected before the next
         result = request_operator_verification(db_session, UNKNOWN_PHONE, world.ids[unit], "X")
         assert result.status == RequestStatus.CREATED
+        assert result.request_id is not None
+        reject_verification_request(db_session, result.request_id, "op1")
     limited = request_operator_verification(db_session, UNKNOWN_PHONE, world.ids["sol_pb"], "X")
     assert limited.status == RequestStatus.RATE_LIMITED
     assert (

@@ -365,8 +365,10 @@
     - "Hola, soy la dueña del 2A de Los Algarrobos, quiero saber mi deuda"
     - "sí"
     - "Elena Sinmail"
+    - "Sí, enviar"
   expect:
-    must_call: [request_operator_verification]
+    must_call: [request_registration]
+    must_return: {request_registration: created}
     not_contains: ["95.000", "1111222233334444009"]
 
 - id: email_excluido_operador
@@ -376,8 +378,10 @@
     - "Soy el dueño del 2B del Rodas I, quiero mi deuda"
     - "sí, mandá el código"
     - "Me llamo Gustavo Ficticio"
+    - "Sí, enviar"
   expect:
-    must_call: [request_operator_verification]
+    must_call: [request_registration]
+    must_return: {request_registration: created}
     not_contains: ["61.200", "estudiodiegorufeil", "e***@gmail.com"]
 
 # Production bug: after a unit without email, the person switched to another unit and the
@@ -1287,4 +1291,44 @@
     must_not_return: {get_debt: ok}
     debt_messages: 0
     not_contains: ["48.500", "1111222233334444002", "quique"]
+
+# --- Registro por WhatsApp con aprobación del estudio -----------------------------------------
+
+- id: registro_inquilino
+  category: verificacion
+  phone: desconocido
+  turns:
+    - "Hola, soy inquilina del 4C del Rodas II y quiero registrar mi número"
+    - "Lucía Nueva"
+    - "Sí, enviar"
+  expect:
+    must_return: {request_registration: created}
+    must_not_call: [start_email_verification]
+    contains: ["le pase tus datos al estudio"]
+    not_contains: ["165.060", "1111222233334444001"]
+
+- id: registro_propietario_sin_email
+  category: sin_email
+  phone: desconocido
+  turns:
+    - "Soy el dueño del 2A de Los Algarrobos, quiero saber cuánto debo"
+    - "Propietario/a"
+    - "Sí, mandalo"
+    - "Me llamo Elena Sinmail"
+    - "Sí, enviar"
+  expect:
+    must_return: {request_registration: created}
+    debt_messages: 0
+    not_contains: ["95.000", "1111222233334444009"]
+
+- id: pendiente_pide_deuda
+  category: verificacion
+  phone: pendiente
+  turns: ["Hola, ¿cuánto se debe de expensas en el 4B del Rodas II?"]
+  expect:
+    must_not_return: {get_debt: ok}
+    must_not_call: [request_registration, start_email_verification]
+    debt_messages: 0
+    contains: ["pendiente"]
+    not_contains: ["48.500", "1111222233334444002"]
 

@@ -44,12 +44,12 @@ PAGE_HELP: dict[str, str] = {
         "confirmar antes de que el bot los reconozca."
     ),
     "view-verifications": (
-        "Personas que dijeron ser de una unidad y necesitan que alguien del estudio lo "
-        "confirme. Aprobá solo si estás segura de que es el propietario."
+        "Personas que se registraron por WhatsApp (propietarios sin email, inquilinos y "
+        "familiares) y esperan que alguien del estudio lo confirme. Aprobá solo si estás segura."
     ),
     "view-verification-approve": (
-        "Elegí el propietario de la unidad. Desde ese momento el bot le va a dar la "
-        "información de esa unidad a este número."
+        "Vinculalo a un propietario que ya está cargado o cargalo como persona nueva con su "
+        "rol. Desde ese momento el bot lo reconoce, y se le avisa por WhatsApp."
     ),
     "view-amenities": "Los edificios con SUM. Abrí la planilla para ver los turnos de la semana.",
     "view-amenity-week": (
@@ -241,8 +241,8 @@ EMPTY: dict[str, str] = {
         "y lo podés restaurar."
     ),
     "verifications": (
-        "No hay verificaciones pendientes. Aparecen cuando alguien se identifica por WhatsApp "
-        "y en su unidad no hay un email del propietario para confirmarlo solo."
+        "No hay verificaciones pendientes. Aparecen cuando alguien se registra por WhatsApp: "
+        "un inquilino o un familiar, o un propietario de una unidad sin email."
     ),
     "amenities:operator": (
         "Todavía ningún edificio tiene SUM cargado. Si hace falta uno, pedile a un admin que lo "
@@ -372,11 +372,20 @@ CONFIRM: dict[str, dict[str, str]] = {
     "reject": {
         "title": "¿Rechazar esta verificación?",
         "text": (
-            "El número no se asocia a la unidad. A la persona no le llega ningún aviso: si "
-            "querés que sepa, escribile desde Conversaciones."
+            "El número no queda registrado. Si escribió por WhatsApp en las últimas 24 horas, le "
+            "llega un aviso amable que le ofrece hablar con el estudio; si no, no le llega nada."
         ),
         "button": "Rechazar",
         "kind": "danger",
+    },
+    "approve_registration": {
+        "title": "¿Aprobar el registro?",
+        "text": (
+            "El número queda registrado y el bot lo reconoce desde su próximo mensaje. Se le "
+            "avisa por WhatsApp."
+        ),
+        "button": "Aprobar",
+        "kind": "primary",
     },
     "cancel_reservation": {
         "title": "¿Cancelar esta reserva?",
@@ -527,6 +536,8 @@ CONFIRM: dict[str, dict[str, str]] = {
         "kind": "danger",
     },
 }
+# Added to «Aprobar» (Verificaciones) when it ends as an owner (panel.js).
+REGISTRATION_OWNER_NOTE = "Va a poder consultar la deuda de la unidad por WhatsApp."
 # Added to «Agregar» and «Guardar» when the role chosen is Propietario/a (panel.js).
 NEIGHBOR_OWNER_NOTE = "Desde ese teléfono va a poder consultar la deuda de la unidad por WhatsApp."
 # «Quitar» of one person: what happens to them, said plainly. The last sentence uses the word

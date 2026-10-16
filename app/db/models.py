@@ -354,14 +354,28 @@ class VerificationRequestStatus(StrEnum):
 
 
 class VerificationRequest(Base):
-    """Request for an operator to link a phone to an owner (units without owner email)."""
+    """A neighbor's registration by WhatsApp, for the studio to approve: an owner whose unit has
+    no owner email, or a tenant or relative (they never get an email code). One pending per
+    phone at most."""
 
     __tablename__ = "verification_requests"
+    __table_args__ = (
+        Index(
+            "uq_verification_requests_pending_phone",
+            "phone_e164",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     phone_e164: Mapped[str] = mapped_column(String(20), index=True)
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="CASCADE"), index=True)
-    claimed_name: Mapped[str] = mapped_column(String(200))
+    claimed_name: Mapped[str] = mapped_column(String(200))  # «nombre y apellido»
+    # The role the person says (NULL in the old requests: they were all owners).
+    declared_role: Mapped[PersonRole | None] = mapped_column(
+        _str_enum(PersonRole, "declared_role_valid")
+    )
     status: Mapped[VerificationRequestStatus] = mapped_column(
         _str_enum(VerificationRequestStatus, "status_valid"),
         default=VerificationRequestStatus.PENDING,
@@ -370,10 +384,14 @@ class VerificationRequest(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     resolved_at: Mapped[datetime | None]
     resolved_by: Mapped[str | None] = mapped_column(String(100))
-    # The owner the phone was linked to (only when approved).
+    # The person the phone was linked to (only when approved).
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
 
     unit: Mapped[Unit] = relationship()
+
+    @property
+    def role(self) -> PersonRole:
+        return PersonRole(self.declared_role or PersonRole.OWNER)
 
 
 class BotSettings(Base):

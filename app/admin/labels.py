@@ -161,6 +161,7 @@ TOOLS = {
     "start_email_verification": "Verificar por email",
     "confirm_email_code": "Confirmar código",
     "request_operator_verification": "Pedir verificación",
+    "request_registration": "Pedir registro",
     "sum_availability": "Disponibilidad del SUM",
     "book_sum": "Reservar SUM",
     "cancel_sum_reservation": "Cancelar reserva",

@@ -25,13 +25,12 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.bot import amenity_tools, claim_tools, identity
+from app.bot import amenity_tools, claim_tools, identity, registration_tools
 from app.bot.building_info import TOKEN_BUDGET, estimate_tokens, select_texts
 from app.bot.choices import Choice, Offer, problems
 from app.bot.debt_message import FIRST_GREETING, render_debt_message, render_payment_message
 from app.bot.identity import (
     ConfirmStatus,
-    RequestStatus,
     StartStatus,
     can_view_unit_finance,
     identify_by_phone,
@@ -231,20 +230,30 @@ TOOLS: list[ToolSpec] = [
         ),
     ),
     ToolSpec(
-        name="request_operator_verification",
+        name="request_registration",
         description=(
-            "Cuando la unidad no tiene email de propietario: deja pedido que una persona del "
-            "estudio verifique el número. Pedile antes su nombre completo."
+            "Registro de un número desconocido para que lo apruebe el estudio: inquilino/a, "
+            "familiar u otro, o propietario/a de una unidad SIN email de propietario. Pedile "
+            "antes nombre y apellido, y la unidad con find_unit en este mismo mensaje. La "
+            "primera vez le manda a la persona el resumen con los botones 'Sí, enviar' / "
+            "'Corregir'; cuando toca 'Sí, enviar', volvé a llamarla igual (con find_unit "
+            "antes) y ahí se carga. Devuelve say: decilo tal cual."
         ),
         parameters=_object(
             {
                 "unit_id": _UNIT_ID,
-                "claimed_name": {
+                "role": {
+                    "type": "string",
+                    "enum": ["owner", "tenant", "resident"],
+                    "description": "owner = propietario/a, tenant = inquilino/a, resident = "
+                    "familiar u otro (vive en la unidad sin ser propietario ni inquilino).",
+                },
+                "full_name": {
                     "type": "string",
                     "description": "Nombre y apellido que dice tener la persona.",
                 },
             },
-            ["unit_id", "claimed_name"],
+            ["unit_id", "role", "full_name"],
         ),
     ),
     ToolSpec(
@@ -657,7 +666,8 @@ def start_email_verification(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
                 "persona del estudio que verifique tu número."
             )
             result["next_step"] = (
-                "Si da su nombre, usá request_operator_verification con este unit_id."
+                "Si da su nombre y apellido, usá request_registration con este unit_id y "
+                "role 'owner'."
             )
         case "rate_limited":
             wait = wait_text(started.retry_at, datetime.now(UTC)) if started.retry_at else None
@@ -706,20 +716,6 @@ def confirm_email_code(ctx: ToolContext, code: str) -> dict[str, Any]:
             }
         case _:
             return {"status": confirmed.status.value}
-
-
-def request_operator_verification(
-    ctx: ToolContext, unit_id: int, claimed_name: str
-) -> dict[str, Any]:
-    requested = identity.request_operator_verification(
-        ctx.session, ctx.phone, unit_id, claimed_name
-    )
-    if requested.status in (RequestStatus.CREATED, RequestStatus.ALREADY_PENDING):
-        return {
-            "status": requested.status.value,
-            "next_step": "Una persona del estudio va a verificar el número y le avisa.",
-        }
-    return {"status": requested.status.value}
 
 
 def format_money(amount: Decimal) -> str:
@@ -816,6 +812,8 @@ NOT_OWNER_ROLES = frozenset({PersonRole.TENANT, PersonRole.RESIDENT})
 
 def _debt_denied(ctx: ToolContext, unit_id: int) -> dict[str, Any]:
     who = identify_by_phone(ctx.session, ctx.phone)
+    if not who.known and (pending := registration_tools.pending_step(ctx)) is not None:
+        return pending
     if not who.known:
         return {
             "status": "denied",
@@ -1016,7 +1014,7 @@ _HANDLERS: dict[str, Callable[..., dict[str, Any]]] = {
     "find_unit": find_unit,
     "start_email_verification": start_email_verification,
     "confirm_email_code": confirm_email_code,
-    "request_operator_verification": request_operator_verification,
+    "request_registration": registration_tools.request_registration,
     "get_debt": get_debt,
     "get_payment_info": get_payment_info,
     "get_building_info": get_building_info,

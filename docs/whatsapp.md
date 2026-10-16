@@ -270,6 +270,27 @@ Las conversaciones se atienden en **/admin → Conversaciones** (ver el README).
 Todo lo que se hace ahí (tomar, devolver, resolver, responder, plantilla, nota) queda en
 `bot_events` como `admin_action` con el usuario, sin el texto de los mensajes.
 
+## Plantilla del registro de vecinos (`registro_aprobado`)
+
+Cuando el estudio aprueba en **Verificaciones** el registro de un vecino que escribió hace más
+de 24 h, el aviso sale con esta plantilla (con la ventana abierta va como texto común). Si Meta
+todavía no la aprobó, el envío falla, no le llega nada al vecino y el panel lo avisa. Un rechazo
+fuera de la ventana no se manda.
+
+Pedirla en WhatsApp Manager → Plantillas:
+
+- **Nombre:** `registro_aprobado` (o el de `REGISTRATION_TEMPLATE` en el `.env`).
+- **Categoría:** Utilidad. **Idioma:** el de `WHATSAPP_TEMPLATE_LANG` (`es_AR`).
+- **Cuerpo** (2 variables: el rol y la unidad), sin botones:
+
+  > Hola, ya quedaste registrado/a como {{1}} de {{2}} en el Estudio Diego Rufeil. Escribinos
+  > por acá cuando necesites.
+
+- **Ejemplos para Meta:** `{{1}}` = «inquilino/a», `{{2}}` = «RODAS II 04-C».
+
+`uv run python scripts/check_templates.py` dice si está en la cuenta, aprobada y con 2
+variables.
+
 ## Pasar a producción
 
 - Número real: **no** puede estar usándose a la vez en la app común de WhatsApp. Se registra en

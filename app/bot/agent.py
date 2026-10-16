@@ -46,7 +46,7 @@ from app.bot.bot_config import load_bot_config
 from app.bot.choices import Choice, with_options
 from app.bot.claim_tools import my_claims_text
 from app.bot.debt_message import FIRST_GREETING, amounts_not_in, join_blocks
-from app.bot.identity import identify_by_phone, to_e164
+from app.bot.identity import identify_by_phone, pending_registration, to_e164
 from app.bot.prompts import (
     SYSTEM_PROMPT,
     build_user_turn,
@@ -55,6 +55,7 @@ from app.bot.prompts import (
     is_office_hours,
     urgent_handoff_notice,
 )
+from app.bot.registration_tools import describe_pending
 from app.bot.tools import TOOLS, Handoff, ToolContext, run_tool
 from app.claims import flow as claim_flow
 from app.claims import payloads
@@ -219,9 +220,12 @@ class Agent:
                 "",
             ),  # fmt: skip
         )
+        who = identify_by_phone(session, phone)
+        request = None if who.known else pending_registration(session, phone)
         user_turn = build_user_turn(
             text_for_model,
-            who=identify_by_phone(session, phone),
+            who=who,
+            pending=describe_pending(request) if request is not None else "",
             now=now,
             office_hours=is_office_hours(now, *hours),
             hours_text=describe_office_hours(*hours),

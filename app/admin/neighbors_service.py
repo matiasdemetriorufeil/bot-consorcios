@@ -91,7 +91,9 @@ def _finish(session: Session, commit: bool) -> None:
         session.flush()
 
 
-def _approve_pending(session: Session, user: str, e164: str, person_id: int) -> int:
+def _approve_pending(
+    session: Session, user: str, e164: str, person_id: int, via: str = "vecinos"
+) -> int:
     """The pending verifications of this number are approved with this person, as if the
     operator had approved them in Verificaciones (same event). How many."""
     pending = session.scalars(
@@ -117,7 +119,7 @@ def _approve_pending(session: Session, user: str, e164: str, person_id: int) -> 
                     "unit_id": request.unit_id,
                     "person_id": person_id,
                     "resolved_by": user,
-                    "via": "vecinos",
+                    "via": via,
                 },
             )
         )
@@ -376,6 +378,7 @@ def add_person(
     person_id: int | None = None,
     phones: Iterable[str] = (),
     commit: bool = True,
+    via: str = "vecinos",
 ) -> PersonSaved | PhoneTaken:
     """Someone new (full_name) or already in the roster (person_id) in a unit, by hand.
     Their phones are trusted (verified). If a number is another person's, nothing is saved."""
@@ -409,7 +412,7 @@ def add_person(
     for phone in numbers.values():
         session.add(_manual_phone(person.id, phone))
     session.flush()
-    approved = sum(_approve_pending(session, user, e164, person.id) for e164 in numbers)
+    approved = sum(_approve_pending(session, user, e164, person.id, via) for e164 in numbers)
     warnings = [w for e164 in numbers if (w := provider_warning(session, e164))]
     log_admin_action(
         session,

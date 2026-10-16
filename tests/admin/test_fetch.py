@@ -128,13 +128,17 @@ def verification(db_session: Session) -> int:
 
 def test_reject_removes_the_row(logged_in: Panel, verification: int) -> None:
     data = _post(logged_in, f"/admin/verifications/{verification}/reject").json()
-    assert data["ok"] and data["message"] == "Verificación rechazada: el número no se asoció."
+    assert data["ok"] and data["message"] == (
+        "Verificación rechazada: el número no se registró. No se le pudo avisar: pasaron más "
+        "de 24 h desde su último mensaje."
+    )  # it never wrote: nothing is sent
     assert data["remove"] == [f'[data-verification="{verification}"]']
     assert data["texts"] == {"[data-pending-count]": "0"}
     row = logged_in.session.get(VerificationRequest, verification)
     logged_in.session.refresh(row)
     assert row.status == VerificationRequestStatus.REJECTED
-    assert [e["action"] for e in logged_in.admin_events()] == ["verification_rejected"]
+    actions = [e["action"] for e in logged_in.admin_events()]
+    assert actions == ["verification_rejected", "registration_notified"]
     again = _post(logged_in, f"/admin/verifications/{verification}/reject").json()
     assert again["ok"] is False and again["remove"] == []
 

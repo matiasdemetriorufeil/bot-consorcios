@@ -1,6 +1,6 @@
 """The evaluation harness itself (no LLM calls): cases file, checks, seed, retries, report."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -248,10 +248,17 @@ def test_report(tmp_path: Path) -> None:
         r.failures = check(r.case, r)
     provider, _ = scripted_provider("gemini", [])
     path = write_report(
-        results, provider, Prices(input=1, output=5), 12.0, 0, tmp_path, date(2026, 10, 1)
+        results,
+        provider,
+        Prices(input=1, output=5),
+        12.0,
+        0,
+        tmp_path,
+        date(2026, 10, 1),
+        now=datetime(2026, 10, 1, 14, 5),
     )
     report = path.read_text(encoding="utf-8")
-    assert path.name == "2026-10-01_gemini_gemini-3.8-flash.md"
+    assert path.name == "2026-10-01_1405_gemini_gemini-3.8-flash.md"
     assert "Aprobados: 1/2 (50.0%)" in report
     assert "### roto (injection)" in report
     assert "48.500" in report

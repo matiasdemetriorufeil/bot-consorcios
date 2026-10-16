@@ -616,11 +616,16 @@ def test_start_verification_without_email(world: World) -> None:
     assert "La unidad RODAS II 05-A no tiene un email" in result["say"]
     [*_, logged] = world.events("tool_call")
     assert logged.payload["reason"] == "no_owner_email"
-    requested = run_tool(
-        ctx,
-        "request_operator_verification",
-        {"unit_id": world.other_unit_id, "claimed_name": "Juan Inventado"},
-    )
+    args = {"unit_id": world.other_unit_id, "role": "owner", "full_name": "Juan Inventado"}
+    asked = run_tool(ctx, "request_registration", args)
+    assert asked["status"] == "confirmation_requested"  # the summary with its buttons first
+    assert ctx.offer is not None
+    summary = ctx.offer.text
+
+    confirm = world.ctx(UNKNOWN_PHONE)  # the next message: «Sí, enviar» to that summary
+    confirm.user_text, confirm.last_bot_text = "Sí, enviar", summary
+    run_tool(confirm, "find_unit", {"building_text": "Rodas II", "unit_text": "5 A"})
+    requested = run_tool(confirm, "request_registration", args)
     assert requested["status"] == "created"
 
 
@@ -632,7 +637,10 @@ def test_unit_id_not_returned_by_find_unit_is_rejected(world: World) -> None:
     for tool, args in [
         ("start_email_verification", {"unit_id": world.unit_id}),
         ("get_debt", {"unit_id": world.unit_id}),
-        ("request_operator_verification", {"unit_id": world.unit_id, "claimed_name": "X Y"}),
+        (
+            "request_registration",
+            {"unit_id": world.unit_id, "role": "tenant", "full_name": "Xavier Yanes"},
+        ),
     ]:
         result = run_tool(ctx, tool, args)
         assert result["reason"] == "unit_not_confirmed", tool

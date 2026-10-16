@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.admin import neighbors_service
+from app.bot import identity
 from app.claims.service import Reporter, create_claim
 from app.db.models import (
     Amenity,
@@ -47,6 +48,7 @@ PHONES = {
     "familiar": "+5493515550107",  # «familiar u otro» of Rodas II 04-C, loaded by hand
     "manual": "+5493515550108",  # owner of Rodas I 04-C loaded by hand (Hugo has no phone)
     "quitado": "+5493515550109",  # loaded in Rodas II 04-B and then removed: unknown again
+    "pendiente": "+5493515550110",  # registered by WhatsApp as tenant of Rodas II 04-B, pending
     "desconocido": "+5493515550199",  # not in the database
     "desconocido2": "+5493515550198",
 }
@@ -271,6 +273,9 @@ def _vecinos(session: Session, r2_4c: Unit, r2_4b: Unit, r1_4c: Unit) -> None:
     neighbors_service.remove_from_unit(
         session, user, r2_4b.id, removed.person_id, PersonRole.TENANT
     )  # fmt: skip
+    identity.request_operator_verification(
+        session, PHONES["pendiente"], r2_4b.id, "PAULA PENDIENTE", PersonRole.TENANT
+    )
 
 
 # Claims: Rodas II takes them by the bot (the others do not). Bruno already has #1001 (no hay
