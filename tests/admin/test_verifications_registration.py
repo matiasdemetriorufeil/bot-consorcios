@@ -30,11 +30,18 @@ from tests.bot import factories as f
 PHONE = "+5493515550888"
 
 
-def _setup(session: Session, role: PersonRole, *, inbound_hours_ago: float | None = 1) -> dict:
+def _setup(
+    session: Session,
+    role: PersonRole,
+    *,
+    inbound_hours_ago: float | None = 1,
+    with_owner: bool = True,
+) -> dict:
     building = f.building(session, "045 TORRE REGISTRO")
     unit = f.unit(session, building, "03-B")
     owner = f.person(session, "Dueno Cargado")
-    f.link(session, unit, owner)
+    if with_owner:
+        f.link(session, unit, owner)
     created = identity.request_operator_verification(session, PHONE, unit.id, "Nora Nueva", role)
     if inbound_hours_ago is not None:
         conversation(
@@ -197,3 +204,137 @@ def test_without_login_nothing_is_approved(panel: Panel, db_session: Session) ->
     )
     assert response.status_code in (302, 303) and "/admin/login" in response.headers["location"]
     assert _request(db_session, ids["request"]).status == VerificationRequestStatus.PENDING
+
+
+# --- «¿Cómo queda registrado?»: only the chosen option's fields show, are sent and count ------
+
+
+def _page(panel: Panel, request_id: int) -> str:
+    return html.unescape(panel.client.get(f"/admin/verifications/{request_id}/approve").text)
+
+
+def _block(page: str, mode: str) -> tuple[str, str]:
+    """(the opening tag's attributes, the fields) of one option's block."""
+    rest = page.split(f'data-mode-fields="{mode}"', 1)[1]
+    attrs, body = rest.split(">", 1)
+    return attrs, re.split(r'<label class="form-check">|</fieldset>', body, maxsplit=1)[0]
+
+
+def _shown(page: str, mode: str) -> bool:
+    attrs, body = _block(page, mode)
+    controls = re.findall(r"<(?:input|select)\b[^>]*>", body)
+    assert controls and "required" not in body  # a hidden required one would block the form
+    disabled = ["disabled" in tag for tag in controls]
+    assert disabled == [disabled[0]] * len(disabled)
+    assert ("hidden" in attrs) == disabled[0]  # hidden and disabled go together
+    return "hidden" not in attrs
+
+
+def test_a_tenant_starts_as_a_new_person_with_no_owner_chosen(operator: Panel, db_session) -> None:
+    ids = _setup(db_session, PersonRole.TENANT)
+    page = _page(operator, ids["request"])
+
+    assert 'value="create" checked' in page and 'value="link" checked' not in page
+    assert "Es un propietario ya cargado, que escribe desde otro número" in page
+    assert "Es una persona nueva en la unidad" in page
+    assert not _shown(page, "link") and _shown(page, "create")
+    _, owner_fields = _block(page, "link")
+    assert "Elegí el propietario" in owner_fields and "Dueno Cargado" in owner_fields
+    assert '<option value="" selected>Elegí…</option>' in owner_fields
+    assert f'<option value="{ids["owner"]}" selected' not in owner_fields
+    _, new_fields = _block(page, "create")
+    assert 'value="Nora Nueva"' in new_fields and '<option value="tenant" selected>' in new_fields
+
+
+def test_an_owner_starts_linking_with_no_owner_chosen(operator: Panel, db_session) -> None:
+    ids = _setup(db_session, PersonRole.OWNER)
+    page = _page(operator, ids["request"])
+
+    assert 'value="link" checked' in page and 'value="create" checked' not in page
+    assert _shown(page, "link") and not _shown(page, "create")
+    _, owner_fields = _block(page, "link")
+    assert '<option value="" selected>Elegí…</option>' in owner_fields
+    assert f'<option value="{ids["owner"]}" >Dueno Cargado</option>' in owner_fields
+    _, new_fields = _block(page, "create")
+    assert 'value="Nora Nueva"' in new_fields and '<option value="owner" selected>' in new_fields
+
+
+def test_a_unit_without_owners_has_no_link_option(operator: Panel, db_session) -> None:
+    ids = _setup(db_session, PersonRole.OWNER, with_owner=False)
+    page = _page(operator, ids["request"])
+
+    assert 'value="link"' not in page and 'data-mode-fields="link"' not in page
+    assert "Elegí el propietario" not in page
+    assert 'value="create" checked' in page and _shown(page, "create")
+
+    response = operator.client.post(
+        f"/admin/verifications/{ids['request']}/approve",
+        data={"mode": "link", "person_id": str(ids["owner"])},
+    )
+    assert response.status_code == 400
+    assert "Esta unidad no tiene propietarios cargados" in html.unescape(response.text)
+    assert _request(db_session, ids["request"]).status == VerificationRequestStatus.PENDING
+    assert db_session.scalar(select(Phone).where(Phone.e164 == PHONE)) is None
+    assert operator.whatsapp.sent == [] and operator.admin_events() == []
+
+
+@pytest.mark.parametrize("person_id", ["", None])
+def test_linking_without_choosing_the_owner_approves_nothing(
+    operator: Panel, db_session: Session, person_id: str | None
+) -> None:
+    ids = _setup(db_session, PersonRole.OWNER)
+    data = {"mode": "link"} | ({} if person_id is None else {"person_id": person_id})
+
+    response = operator.client.post(f"/admin/verifications/{ids['request']}/approve", data=data)
+
+    assert response.status_code == 400
+    page = html.unescape(response.text)
+    assert "Elegí el propietario." in page
+    assert 'value="link" checked' in page and _shown(page, "link")  # back as she left it
+    assert _request(db_session, ids["request"]).status == VerificationRequestStatus.PENDING
+    assert db_session.scalar(select(Phone).where(Phone.e164 == PHONE)) is None
+    assert operator.whatsapp.sent == [] and operator.admin_events() == []
+
+
+@pytest.mark.parametrize("mode", [None, "", "other"])
+def test_without_a_valid_option_nothing_is_approved(
+    operator: Panel, db_session: Session, mode: str | None
+) -> None:
+    ids = _setup(db_session, PersonRole.OWNER)
+    data = {"person_id": str(ids["owner"])} | ({} if mode is None else {"mode": mode})
+
+    response = operator.client.post(f"/admin/verifications/{ids['request']}/approve", data=data)
+
+    assert response.status_code == 400
+    assert "Elegí cómo queda registrado." in html.unescape(response.text)
+    assert _request(db_session, ids["request"]).status == VerificationRequestStatus.PENDING
+    assert operator.admin_events() == []
+
+
+def test_a_new_person_ignores_the_owner_field(operator: Panel, db_session: Session) -> None:
+    ids = _setup(db_session, PersonRole.TENANT)
+
+    page = _approve(
+        operator, ids["request"],
+        mode="create", role="tenant", full_name="Nora Nueva", person_id=ids["owner"],
+    )  # fmt: skip
+
+    assert "Verificación aprobada" in page
+    request = _request(db_session, ids["request"])
+    assert request.person_id != ids["owner"]
+    assert db_session.get(Person, request.person_id).full_name == "Nora Nueva"
+    assert identify_by_phone(db_session, PHONE).person_id == request.person_id
+
+
+def test_linking_ignores_the_new_person_fields(operator: Panel, db_session: Session) -> None:
+    ids = _setup(db_session, PersonRole.TENANT)
+
+    page = _approve(
+        operator, ids["request"],
+        mode="link", person_id=ids["owner"], full_name="Otra Persona", role="tenant",
+    )  # fmt: skip
+
+    assert "Verificación aprobada" in page
+    assert _request(db_session, ids["request"]).person_id == ids["owner"]
+    assert db_session.scalar(select(Person).where(Person.full_name == "Otra Persona")) is None
+    assert identify_by_phone(db_session, PHONE).person_id == ids["owner"]

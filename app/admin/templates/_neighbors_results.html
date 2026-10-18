@@ -36,7 +36,6 @@
           {% for phone in person.phones %}
           <span class="neighbor-phone">
             <span class="text-nowrap">{{ phone.number }}</span>
-            {% if phone.origin %}<span class="neighbor-phone-origin">{{ phone.origin }}</span>{% endif %}
             {% if phone.status %}<a class="state state-{{ phone.status | state('phone') }}" href="{{ url_for('admin:view-phones') }}?{{ {'tab': 'all', 'q': phone.search} | urlencode }}">{{ phone.status_label }}</a>{% endif %}
           </span>
           {% else %}

@@ -345,8 +345,10 @@ class VerificationsView(BaseView):
         self, session: Session, pk: int, form: Any, user: str
     ) -> tuple[str | None, PersonRole]:
         """The approval the form chose: link to an owner, or a new person with a role. (error,
-        the role it got)."""
-        if form.get("mode") == "create":
+        the role it got). Only the chosen option's fields count; checked here, not in the
+        browser."""
+        mode = form.get("mode")
+        if mode == "create":
             try:
                 role = PersonRole(str(form.get("role", "")))
             except ValueError:
@@ -357,10 +359,22 @@ class VerificationsView(BaseView):
             except neighbors_service.NeighborError as exc:
                 return str(exc), role
             return None, role
+        if mode != "link":
+            return "Elegí cómo queda registrado.", PersonRole.OWNER
+        verification = session.get(VerificationRequest, pk)
+        if (
+            verification is not None
+            and verification.status == VerificationRequestStatus.PENDING
+            and not unit_owners(session, verification.unit_id)
+        ):
+            return (
+                "Esta unidad no tiene propietarios cargados: cargalo como persona nueva.",
+                PersonRole.OWNER,
+            )
         try:
             person_id = int(str(form.get("person_id", "")))
         except ValueError:
-            return "Elegí el propietario al que se asocia el teléfono.", PersonRole.OWNER
+            return "Elegí el propietario.", PersonRole.OWNER
         try:
             await _in_thread(approve, session, pk, person_id, user)
         except IdentityError as exc:

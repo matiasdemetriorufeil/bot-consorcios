@@ -761,6 +761,19 @@
     var owner = mode && mode.value === "link" ? true : Boolean(role && role.value === "owner");
     form.dataset.confirmText = form.dataset.confirmBase + (owner ? " " + form.dataset.ownerNote : "");
   }
+  // Verificaciones: only the chosen option's fields show and are sent (no `required`: the
+  // server checks them).
+  function approveMode(form) {
+    if (!form) return;
+    var mode = form.querySelector("input[name=mode]:checked");
+    form.querySelectorAll("[data-mode-fields]").forEach(function (block) {
+      var on = Boolean(mode) && block.dataset.modeFields === mode.value;
+      block.hidden = !on;
+      block.querySelectorAll("input, select, textarea").forEach(function (el) { el.disabled = !on; });
+    });
+  }
+  // The browser may bring back another option (going back to the page).
+  approveMode(document.getElementById("approve-registration"));
   function phoneField(el) { return el.closest("[data-phone-field]"); }
   function clearPhone(field) {
     var input = field.querySelector("input[data-phone-check]");
@@ -901,6 +914,7 @@
     var el = event.target;
     if (!el.matches) return;
     if (el.matches("input[data-phone-check]")) checkPhone(el);
+    if (el.matches("input[name=mode]")) approveMode(el.form);
     if (el.matches("[data-role-select], input[name=mode]")) ownerText(el.form);
   });
 

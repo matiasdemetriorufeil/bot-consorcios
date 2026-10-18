@@ -8,8 +8,8 @@
     de contar en Pendientes y el aviso dice «También quedó aprobada la verificación pendiente de
     ese número.».
   - Aprobar desde Verificaciones funciona igual que antes.
-  - En Vecinos, cada teléfono que no vino de ConsorPlus muestra su origen al lado, en gris:
-    «Cargado a mano» (lo cargó o lo aprobó una persona) o «Por WhatsApp» (lo verificó el bot).
+  - En Vecinos, los teléfonos no muestran su origen al lado (solo la columna Origen de la
+    persona).
 - **Teléfonos:**
   - El nombre de la persona es un link a Vecinos, con su edificio elegido, la página donde está
     y su fila marcada.

@@ -106,11 +106,9 @@ def test_approving_a_verification_still_works_and_shows_in_vecinos(
     approve_verification_request(db_session, request.id, ana.id, OPERATOR)
 
     results = _get(operator, "/admin/neighbors", building_id=roster["torre"])
-    assert re.search(
-        r'351 555-0901</span>\s*<span class="neighbor-phone-origin">Cargado a mano</span>', results
-    )
-    # A number from ConsorPlus says nothing more.
-    assert not re.search(r'351 555-0101</span>\s*<span class="neighbor-phone-origin">', results)
+    # Nothing next to the number: where it came from is only the person's «Origen» column.
+    assert re.search(r'<span class="text-nowrap">351 555-0901</span>\s*</span>', results)
+    assert "neighbor-phone-origin" not in results
 
 
 # --- 2. Teléfonos ----------------------------------------------------------------------------

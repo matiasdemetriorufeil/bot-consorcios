@@ -3,9 +3,16 @@
     an owner can see the debt (panel.js, as in Vecinos). Then the neighbor is told. -#}
 {% extends "sqladmin/layout.html" %}
 {% block content %}
+{#- Only the chosen block's fields show and are sent (the other one: hidden and disabled, panel.js);
+    the server checks them anyway (VerificationsView._approve). No `required`: a hidden one would
+    stop the form without saying why. -#}
 {% set posted = form if form is defined else none %}
-{% set mode = posted.get('mode') if posted else ('link' if owners and declared == 'owner' else 'create') %}
-{% set chosen_role = posted.get('role') if posted else declared | string %}
+{% set default_mode = 'link' if owners and declared == 'owner' else 'create' %}
+{% set posted_mode = posted.get('mode') if posted else none %}
+{% set mode = posted_mode if posted_mode == 'create' or (posted_mode == 'link' and owners) else default_mode %}
+{% set chosen_role = (posted.get('role') if posted else none) or declared | string %}
+{% set chosen_owner = posted.get('person_id', '') if posted else '' %}
+{% set new_name = posted.get('full_name') if posted and 'full_name' in posted else verification.claimed_name %}
 {% set owner_now = mode == 'link' or chosen_role == 'owner' %}
 <div class="col-12 col-lg-8">
   <div class="card">
@@ -42,31 +49,29 @@
           {% if owners %}
           <label class="form-check">
             <input class="form-check-input" type="radio" name="mode" value="link" {% if mode == 'link' %}checked{% endif %}>
-            <span class="form-check-label">Es un propietario que ya está cargado en la unidad</span>
+            <span class="form-check-label">Es un propietario ya cargado, que escribe desde otro número</span>
           </label>
-          <div class="approve-sub">
-            {% for owner in owners %}
-            <label class="form-check">
-              <input class="form-check-input" type="radio" name="person_id" value="{{ owner.id }}"
-                {% if owners | length == 1 or (posted and posted.get('person_id') == owner.id | string) %}checked{% endif %}>
-              <span class="form-check-label">{{ owner.full_name }}</span>
-            </label>
-            {% endfor %}
+          <div class="approve-sub" data-mode-fields="link" {% if mode != 'link' %}hidden{% endif %}>
+            <label class="form-label" for="approve-owner">Elegí el propietario</label>
+            <select class="form-select" id="approve-owner" name="person_id" {% if mode != 'link' %}disabled{% endif %}>
+              <option value="" {% if not chosen_owner %}selected{% endif %}>Elegí…</option>
+              {% for owner in owners %}<option value="{{ owner.id }}" {% if chosen_owner == owner.id | string %}selected{% endif %}>{{ owner.full_name }}</option>{% endfor %}
+            </select>
           </div>
           {% endif %}
           <label class="form-check">
             <input class="form-check-input" type="radio" name="mode" value="create" {% if mode == 'create' %}checked{% endif %}>
-            <span class="form-check-label">Cargarlo como persona nueva en la unidad</span>
+            <span class="form-check-label">Es una persona nueva en la unidad</span>
           </label>
-          <div class="approve-sub approve-new">
+          <div class="approve-sub approve-new" data-mode-fields="create" {% if mode != 'create' %}hidden{% endif %}>
             <div>
               <label class="form-label" for="approve-name">Nombre y apellido</label>
               <input class="form-control" id="approve-name" name="full_name" maxlength="200"
-                     value="{{ posted.get('full_name') if posted else verification.claimed_name }}">
+                     value="{{ new_name }}" {% if mode != 'create' %}disabled{% endif %}>
             </div>
             <div>
               <label class="form-label" for="approve-role">Rol</label>
-              <select class="form-select" id="approve-role" name="role" data-role-select>
+              <select class="form-select" id="approve-role" name="role" data-role-select {% if mode != 'create' %}disabled{% endif %}>
                 {% for value, text in roles %}<option value="{{ value }}" {% if value == chosen_role %}selected{% endif %}>{{ text }}</option>{% endfor %}
               </select>
             </div>

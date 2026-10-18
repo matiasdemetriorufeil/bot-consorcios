@@ -814,7 +814,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .approve-choice { border: 0; padding: 0; margin: 0; }
 .approve-sub { margin: var(--sp-1) 0 var(--sp-3) var(--sp-5); }
 .approve-new { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: var(--sp-3); }
-.neighbor-phone-origin { font-size: var(--fs-small); color: var(--c-text-2); white-space: nowrap; }
+.approve-sub[hidden] { display: none; }
 .neighbors-table tr.neighbor-marked > td, .neighbors-table tr.neighbor-marked > th { background: var(--c-primary-soft); }
 /* 5h.3: «Agregar persona», «Editar» and «Quitar»; the form opens in the unit's last row. */
 .neighbors-buttons { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-left: auto; }

@@ -106,7 +106,7 @@ def test_approve_page_lists_the_owners(logged_in: Panel, pending: Pending) -> No
 def test_approve_links_the_phone_as_manual(logged_in: Panel, pending: Pending) -> None:
     response = logged_in.client.post(
         _approve_url(pending.request_id),
-        data={"person_id": str(pending.other_owner_id)},
+        data={"mode": "link", "person_id": str(pending.other_owner_id)},
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -137,7 +137,8 @@ def test_approve_links_the_phone_as_manual(logged_in: Panel, pending: Pending) -
 
 def test_approve_with_a_non_owner_changes_nothing(logged_in: Panel, pending: Pending) -> None:
     response = logged_in.client.post(
-        _approve_url(pending.request_id), data={"person_id": str(pending.stranger_id)}
+        _approve_url(pending.request_id),
+        data={"mode": "link", "person_id": str(pending.stranger_id)},
     )
     assert response.status_code == 400
     assert "no es propietaria" in response.text
@@ -148,8 +149,10 @@ def test_approve_with_a_non_owner_changes_nothing(logged_in: Panel, pending: Pen
 
 def test_approve_twice_fails(logged_in: Panel, pending: Pending) -> None:
     url = _approve_url(pending.request_id)
-    logged_in.client.post(url, data={"person_id": str(pending.owner_id)})
-    response = logged_in.client.post(url, data={"person_id": str(pending.other_owner_id)})
+    logged_in.client.post(url, data={"mode": "link", "person_id": str(pending.owner_id)})
+    response = logged_in.client.post(
+        url, data={"mode": "link", "person_id": str(pending.other_owner_id)}
+    )
     assert response.status_code == 400
     assert "Esta solicitud ya estaba resuelta." in response.text
     assert _request(logged_in, pending.request_id).person_id == pending.owner_id
@@ -172,7 +175,7 @@ def test_reject(logged_in: Panel, pending: Pending) -> None:
 def test_approve_page_needs_login(panel: Panel, pending: Pending) -> None:
     response = panel.client.post(
         _approve_url(pending.request_id),
-        data={"person_id": str(pending.owner_id)},
+        data={"mode": "link", "person_id": str(pending.owner_id)},
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -198,8 +201,8 @@ def test_reject_twice_shows_the_error(logged_in: Panel, pending: Pending) -> Non
 
 def test_approve_page_explains_the_link(logged_in: Panel, pending: Pending) -> None:
     page = logged_in.client.get(_approve_url(pending.request_id)).text
-    assert "Es un propietario que ya está cargado en la unidad" in page
-    assert "Cargarlo como persona nueva en la unidad" in page
+    assert "Es un propietario ya cargado, que escribe desde otro número" in page
+    assert "Es una persona nueva en la unidad" in page
     assert "manual" not in page
 
 
@@ -225,7 +228,7 @@ def test_a_resolved_request_shows_its_status_in_spanish(logged_in: Panel, pendin
 def test_an_operator_approves_and_rejects(operator: Panel, pending: Pending) -> None:
     assert operator.client.get(LIST).status_code == 200
     operator.client.post(
-        _approve_url(pending.request_id), data={"person_id": str(pending.owner_id)}
+        _approve_url(pending.request_id), data={"mode": "link", "person_id": str(pending.owner_id)}
     )
     assert _request(operator, pending.request_id).resolved_by == OPERATOR
     [event] = operator.admin_events("verification_approved")

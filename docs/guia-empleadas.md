@@ -239,8 +239,9 @@ tiene email cargado.
    dio la persona, y su teléfono.
 2. Si tenés dudas, tocá **Ver conversación** para leer lo que escribió.
 3. Si corresponde, tocá **Aprobar** y elegí cómo queda:
-   - **Es un propietario que ya está cargado**: elegí su nombre de la lista.
-   - **Cargarlo como persona nueva**: revisá el nombre y elegí el rol (Propietario/a,
+   - **Es un propietario ya cargado, que escribe desde otro número**: elegí su nombre en
+     **Elegí el propietario**. Esta opción solo aparece si la unidad tiene propietarios cargados.
+   - **Es una persona nueva en la unidad**: revisá el nombre y elegí el rol (Propietario/a,
      Inquilino/a o Familiar u otro). Queda también en **Vecinos**.
 4. Al confirmar, el panel avisa si se le pudo mandar el aviso por WhatsApp. Si escribió hace
    más de un día y el aviso no salió, avisale vos (por ejemplo, por teléfono).

@@ -146,7 +146,6 @@ class PhoneLine:
     status: str  # "" or one of FLAGGED
     status_label: str
     search: str  # for Teléfonos' search: its digits
-    origin: str = ""  # «Cargado a mano» / «Por WhatsApp» (empty: it came from ConsorPlus)
 
 
 @dataclass(frozen=True)
@@ -202,9 +201,6 @@ def _phone_line(phone: Phone) -> PhoneLine:
         status=flagged,
         status_label=labels.PHONE_STATUS[flagged] if flagged else "",
         search=re.sub(r"\D", "", formatting.phone(phone.e164)),
-        origin=""
-        if phone.source == DataSource.CONSORPLUS
-        else labels.label(labels.PHONE_SOURCE, phone.source),
     )
 
 
