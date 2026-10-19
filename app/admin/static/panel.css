@@ -512,6 +512,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .msg-out.msg-system { background: var(--c-msg-system); }
 .msg-note { align-self: center; max-width: 92%; width: 92%; background: var(--c-msg-note); border: 1px dashed var(--c-msg-note-border); }
 .msg-note.msg-handoff { background: var(--c-msg-handoff); border-color: var(--c-msg-handoff-border); }
+/* A message that came out of order and was not answered (app.whatsapp.bot), and its note. */
+.msg-note.msg-late { background: var(--c-msg-handoff); border-color: var(--c-msg-handoff-border); }
+.msg-in.msg-late { border-left: 3px solid var(--c-msg-handoff-border); }
+.msg-late-flag { font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--c-danger); }
 .msg-who { font-size: var(--fs-small); font-weight: var(--fw-bold); color: var(--c-msg-who); margin-bottom: 2px; }
 .msg-bot .msg-who { color: var(--c-msg-who-bot); }
 .msg-note .msg-who { color: var(--c-msg-who-note); }

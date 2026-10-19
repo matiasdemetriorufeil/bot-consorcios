@@ -52,6 +52,7 @@ from app.db.models import (
     WaTemplate,
 )
 from app.whatsapp import conversations
+from app.whatsapp.bot import LATE_NOTE, LATE_NOTE_TYPE
 from app.whatsapp.channel import window_open_at
 from app.whatsapp.client import WhatsAppError
 from app.whatsapp.media import INLINE_TYPES, base_mime
@@ -544,6 +545,10 @@ class MessageView:
     day: str
     # The payload of each button (claims: app.claims.notify), aligned with choices.
     payloads: list[str] = field(default_factory=list)
+    # The note left for a message that came out of order (app.whatsapp.bot), and on that
+    # message: «Llegó atrasado, sin contestar · lo mandó el 17/10 a las 22:18».
+    is_late_note: bool = False
+    late: str = ""
 
 
 def _message_view(message: WaMessage, names: dict[str, str], timezone: str) -> MessageView:
@@ -569,7 +574,14 @@ def _message_view(message: WaMessage, names: dict[str, str], timezone: str) -> M
     problem = ""
     if has_media and not stored:
         problem = _MEDIA_PROBLEMS.get(media_status, "Adjunto todavía no descargado.")  # type: ignore[arg-type]
-    if kind in ("text", "interactive", "button", "note") or (kind == "template" and message.body):
+    late_note = message.is_internal_note and kind == LATE_NOTE_TYPE
+    late = ""
+    if message.processing_note == LATE_NOTE and message.status_at is not None:
+        sent = _local(message.status_at, timezone, "el %d/%m a las %H:%M")
+        late = f"Llegó atrasado, sin contestar · lo mandó {sent}"
+    if kind in ("text", "interactive", "button", "note", LATE_NOTE_TYPE) or (
+        kind == "template" and message.body
+    ):
         kind_label = "Plantilla" if kind == "template" else ""
     else:
         kind_label = _KIND_LABELS.get(kind, kind)
@@ -582,7 +594,9 @@ def _message_view(message: WaMessage, names: dict[str, str], timezone: str) -> M
         body=message.body or "",
         choices=list(message.choices or []),
         payloads=list(message.button_payloads or []),
-        is_handoff_note=message.is_internal_note and author == WaAuthor.SYSTEM,
+        is_handoff_note=message.is_internal_note and author == WaAuthor.SYSTEM and not late_note,
+        is_late_note=late_note,
+        late=late,
         media_url_ok=stored,
         media_inline=stored and base_mime(message.media_mime) in INLINE_TYPES,
         media_problem=problem,

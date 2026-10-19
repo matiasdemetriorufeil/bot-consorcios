@@ -27,7 +27,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.bot.choices import Choice, with_options
@@ -38,6 +38,7 @@ from app.channels.handoff import handoff_labels, handoff_note
 from app.channels.history import to_history
 from app.channels.locks import WHATSAPP_LOCK_NAMESPACE
 from app.db.models import (
+    BotEvent,
     WaAuthor,
     WaConversation,
     WaConversationStatus,
@@ -55,6 +56,9 @@ logger = logging.getLogger(__name__)
 WINDOW = timedelta(hours=24)
 # Rows read for the history (trim_history keeps the last 20 turns).
 HISTORY_ROWS = 80
+# The bot never sends the same thing twice in a row to a number within this time.
+REPEAT_WINDOW = timedelta(seconds=60)
+REPEAT_EVENT = "duplicate_reply_skipped"
 
 
 @dataclass(frozen=True)
@@ -128,7 +132,13 @@ class WhatsAppChannel:
                 select(WaMessage)
                 .where(
                     WaMessage.conversation_id == message.conversation_id,
-                    WaMessage.id < source.message_id,
+                    # The contact's messages up to this one, and everything already sent,
+                    # also after it was stored (the answer to an earlier message, while this
+                    # one waited for the lock): the agent sees what the person already got.
+                    or_(
+                        WaMessage.id < source.message_id,
+                        WaMessage.direction == WaDirection.OUTBOUND,
+                    ),
                     WaMessage.is_internal_note.is_(False),
                 )
                 .order_by(WaMessage.id.desc())
@@ -184,13 +194,31 @@ class WhatsAppChannel:
                 raise WindowClosedError(
                     f"conversación {message.conversation_id}: fuera de la ventana de 24 h"
                 )
+            titles = [c.title for c in choices] or None
+            if self._repeats_last(session, message.conversation_id, kind, text, titles):
+                logger.warning(
+                    "Conversation %s: same %s as the last message sent, less than %d s ago: "
+                    "not sent again",
+                    message.conversation_id, kind, REPEAT_WINDOW.total_seconds(),
+                )  # fmt: skip
+                session.add(
+                    BotEvent(
+                        conversation_id=message.conversation_id,
+                        event_type=REPEAT_EVENT,
+                        payload={"message_id": source.message_id, "kind": kind},
+                    )
+                )
+                session.commit()
+                return
             row = WaMessage(
                 conversation_id=message.conversation_id,
                 direction=WaDirection.OUTBOUND,
                 author=WaAuthor.BOT,
                 message_type=kind,
                 body=text,
-                choices=[c.title for c in choices] or None,
+                choices=titles,
+                # The send time by our clock (REPEAT_WINDOW compares against it).
+                created_at=self._now(),
             )
             try:
                 row.wa_message_id = send(source.wa_id)
@@ -205,6 +233,33 @@ class WhatsAppChannel:
             row.status_at = self._now()
             session.add(row)
             session.commit()
+
+    def _repeats_last(
+        self,
+        session: Session,
+        conversation_id: int,
+        kind: str,
+        text: str,
+        titles: list[str] | None,
+    ) -> bool:
+        """The last message that went out to the contact (not a note, not failed) is this
+        same one and went less than REPEAT_WINDOW ago."""
+        last = session.scalar(
+            select(WaMessage)
+            .where(
+                WaMessage.conversation_id == conversation_id,
+                WaMessage.direction == WaDirection.OUTBOUND,
+                WaMessage.is_internal_note.is_(False),
+            )
+            .order_by(WaMessage.id.desc())
+            .limit(1)
+        )
+        return (
+            last is not None
+            and last.status != WaMessageStatus.FAILED
+            and (last.message_type, last.body, last.choices or None) == (kind, text, titles)
+            and self._now() - last.created_at < REPEAT_WINDOW
+        )
 
     # --- Handoff --------------------------------------------------------------------------
 

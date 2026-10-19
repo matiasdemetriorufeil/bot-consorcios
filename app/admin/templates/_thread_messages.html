@@ -7,9 +7,9 @@
 {% elif not show_first_day and not loop.first and loop.previtem.day != m.day %}
 <div class="msg-day" data-day="{{ m.day }}"><span>{{ m.day }}</span></div>
 {% endif %}
-<div class="msg msg-{{ m.side }} msg-{{ m.author }}{% if m.is_handoff_note %} msg-handoff{% endif %}" data-id="{{ m.id }}">
+<div class="msg msg-{{ m.side }} msg-{{ m.author }}{% if m.is_handoff_note %} msg-handoff{% endif %}{% if m.is_late_note or m.late %} msg-late{% endif %}" data-id="{{ m.id }}">
   {% if m.side == 'note' %}
-  <div class="msg-who">{% if m.is_handoff_note %}🤖 Derivación del bot (nota interna){% else %}📝 Nota interna · {{ m.author_name }}{% endif %}</div>
+  <div class="msg-who">{% if m.is_handoff_note %}🤖 Derivación del bot (nota interna){% elif m.is_late_note %}⏰ Llegó atrasado, sin contestar (nota interna){% else %}📝 Nota interna · {{ m.author_name }}{% endif %}</div>
   {% elif m.author_name %}
   <div class="msg-who">{% if m.author == 'bot' %}🤖 {% endif %}{{ m.author_name }}</div>
   {% endif %}
@@ -24,7 +24,8 @@
   {% elif m.media_problem %}
   <div class="msg-problem">{{ m.media_problem }}{% if m.media_filename %} ({{ m.media_filename }}){% endif %}</div>
   {% endif %}
-  {% if m.body %}<div class="msg-body">{% if m.side == 'note' and not m.is_handoff_note %}{{ m.body | claim_links }}{% else %}{{ m.body }}{% endif %}</div>{% endif %}
+  {% if m.late %}<div class="msg-late-flag">⏰ {{ m.late }}</div>{% endif %}
+  {% if m.body %}<div class="msg-body">{% if m.side == 'note' and not m.is_handoff_note and not m.is_late_note %}{{ m.body | claim_links }}{% else %}{{ m.body }}{% endif %}</div>{% endif %}
   {% if m.choices %}<div class="msg-choices">{% for c in m.choices %}<span class="msg-choice">{{ c }}</span>{% endfor %}</div>{% endif %}
   <div class="msg-meta">{{ m.time }}{% if m.side == 'out' %} <span class="msg-status" data-status="{{ m.status }}"></span>{% endif %}</div>
   {% if m.status == 'failed' %}<div class="msg-problem">No se entregó{% if m.error_text %}: {{ m.error_text }}{% endif %}</div>{% endif %}

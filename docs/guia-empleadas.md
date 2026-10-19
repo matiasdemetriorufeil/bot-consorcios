@@ -101,6 +101,11 @@ te avisa con un sonido.
 Para dejar algo anotado que la persona no ve, usá **Nota interna**. Las notas quedan en
 amarillo en la conversación y las ven todas las del estudio.
 
+A veces WhatsApp entrega un mensaje tarde, cuando la persona ya mandó otro más nuevo. El bot no
+contesta ese mensaje viejo, para no responder fuera de orden. En la conversación lo vas a ver
+marcado con **⏰ Llegó atrasado, sin contestar** y la hora en que lo mandó, junto a una nota
+naranja. Leelo: si trae algo importante, respondele vos. Si no, no hace falta hacer nada.
+
 ![Una conversación tomada, con el lugar para responder](guia-empleadas/02-conversacion-tomada.png)
 
 ## Responder cuando pasó más de un día

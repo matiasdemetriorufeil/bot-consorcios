@@ -58,8 +58,17 @@ def test_history_alternates_skips_notes_and_keeps_options(make_wa: MakeWa) -> No
             is_internal_note=True,
         )
     )
+    # The next message, stored but not answered yet: its history, as the agent gets it.
+    wa.session.add(
+        WaMessage(
+            conversation_id=conversation.id,
+            direction=WaDirection.INBOUND,
+            author=WaAuthor.CONTACT,
+            message_type="text",
+            body="Sí, pasame",
+        )
+    )
     wa.session.commit()
-    wa.post(incoming(text_message("Sí, pasame", wa.now)))  # no step left: the agent fails
 
     history = _channel(wa).history(_inbound(wa))
 
@@ -86,9 +95,17 @@ def test_history_joins_consecutive_messages_and_operator_turns(make_wa: MakeWa) 
             body="Hola, soy Marta.",
         )
     )
+    # The next message, stored but not answered yet: its history, as the agent gets it.
+    wa.session.add(
+        WaMessage(
+            conversation_id=conversation.id,
+            direction=WaDirection.INBOUND,
+            author=WaAuthor.CONTACT,
+            message_type="text",
+            body="gracias",
+        )
+    )
     wa.session.commit()
-    wa.script.steps.append(Say("ok"))
-    wa.post(incoming(text_message("gracias", wa.now)))
 
     history = _channel(wa).history(_inbound(wa))
 

@@ -6,6 +6,11 @@ after a restart).
 2. Download its attachment, if any (app.whatsapp.media): Meta's links expire in minutes.
 3. Reactions, system notices and the like are only stored. Anything else goes to the
    processor (app.channels.processor), which answers only if the conversation is with the bot.
+   A message that arrives out of order (WhatsApp says it was sent before another one of the
+   same number we already got: Meta retrying a delivery that failed) is not answered: it is
+   marked processed ("late_out_of_order") with an internal note for the studio, so the bot
+   never answers an old "Hola" in the middle of a newer exchange. A message only delayed but
+   still the newest is answered as usual.
 4. processed_at is set at the end, whatever happened. A message claimed but never processed
    (the api restarted midway) is taken again by the recovery (recover_unanswered).
 
@@ -20,6 +25,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
@@ -28,6 +34,7 @@ from app.channels.base import InboundMessage
 from app.channels.processor import BotProcessor
 from app.db.models import (
     BotEvent,
+    WaAuthor,
     WaContact,
     WaConversation,
     WaConversationStatus,
@@ -43,6 +50,10 @@ logger = logging.getLogger(__name__)
 # A claim older than this without processed_at: its worker died, it can be taken again.
 CLAIM_TIMEOUT = timedelta(minutes=5)
 UNANSWERED_EVENT = "unanswered_after_restart"
+LATE_NOTE = "late_out_of_order"  # processing_note
+LATE_EVENT = "late_message_unanswered"
+# The internal note it leaves (message_type), shown by the panel as such (app.admin.inbox).
+LATE_NOTE_TYPE = "late_note"
 
 
 @dataclass
@@ -125,6 +136,9 @@ class WhatsAppBot:
             )
             kind = message.message_type
             silent = is_silent(kind, message.body)
+            if not silent and self._out_of_order(session, message):
+                self._leave_unanswered(session, message)
+                return True
         note = None
         if silent:
             note = "silent"
@@ -133,6 +147,70 @@ class WhatsAppBot:
             self.processor.handle(inbound)
         self._mark_processed(message_id, note)
         return True
+
+    @staticmethod
+    def _out_of_order(session: Session, message: WaMessage) -> bool:
+        """A newer message of the same number (by WhatsApp's send time) already came in, and
+        the conversation is with the bot."""
+        if message.status_at is None:
+            return False
+        status = session.scalar(
+            select(WaConversation.status).where(WaConversation.id == message.conversation_id)
+        )
+        if status != WaConversationStatus.BOT:
+            return False
+        newer = session.scalar(
+            select(WaMessage.id)
+            .where(
+                WaMessage.conversation_id == message.conversation_id,
+                WaMessage.direction == WaDirection.INBOUND,
+                WaMessage.id < message.id,
+                WaMessage.status_at > message.status_at,
+            )
+            .limit(1)
+        )
+        return newer is not None
+
+    def _leave_unanswered(self, session: Session, message: WaMessage) -> None:
+        """Not answered: processed with LATE_NOTE, an internal note and a bot_events row."""
+        now = self._now()
+        tz = ZoneInfo(self.processor.settings.timezone)
+        sent = message.status_at.astimezone(tz)  # type: ignore[union-attr]
+        came = now.astimezone(tz)
+        text = f"«{message.body}»" if message.body else "(sin texto)"
+        session.add(
+            WaMessage(
+                conversation_id=message.conversation_id,
+                direction=WaDirection.OUTBOUND,
+                author=WaAuthor.SYSTEM,
+                message_type=LATE_NOTE_TYPE,
+                body=(
+                    f"El teléfono lo mandó el {sent:%d/%m} a las {sent:%H:%M}, pero llegó el "
+                    f"{came:%d/%m} a las {came:%H:%M}, cuando ya había llegado un mensaje más "
+                    "nuevo. El bot no lo contestó para no responder fuera de orden: revisalo "
+                    f"por si trae algo importante.\nMensaje: {text}"
+                ),
+                is_internal_note=True,
+            )
+        )
+        session.add(
+            BotEvent(
+                conversation_id=message.conversation_id,
+                event_type=LATE_EVENT,
+                payload={
+                    "message_id": message.id,
+                    "late_seconds": round((now - message.status_at).total_seconds()),  # type: ignore[operator]
+                },
+            )
+        )
+        message.processed_at = now
+        message.processing_note = LATE_NOTE
+        session.commit()
+        logger.warning(
+            "WhatsApp message %s of conversation %s arrived out of order (sent %s): "
+            "not answered, left for the studio",
+            message.id, message.conversation_id, message.status_at.isoformat(),  # type: ignore[union-attr]
+        )  # fmt: skip
 
     def _mark_processed(self, message_id: int, note: str | None) -> None:
         with self.session_factory() as session:

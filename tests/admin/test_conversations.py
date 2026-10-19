@@ -17,6 +17,7 @@ from app.db.models import (
     WaMessage,
     WaTemplate,
 )
+from app.whatsapp.bot import LATE_NOTE, LATE_NOTE_TYPE
 from tests.admin.conftest import (
     NOW,
     OPERATOR,
@@ -473,3 +474,34 @@ def test_the_reason_label_is_in_spanish_in_the_conversation(operator: Panel) -> 
         "Reclamo de deuda</span>"
     ) in page
     assert "reclamo-deuda" not in page
+
+
+def test_a_late_message_left_unanswered_is_marked_with_its_note(operator: Panel) -> None:
+    conv = conversation(operator.session)
+    message(operator.session, conv, "Hola", at=NOW - timedelta(minutes=10))
+    message(
+        operator.session, conv, "Hola de antes",
+        at=NOW - timedelta(minutes=9),
+        status_at=NOW - timedelta(minutes=16),
+        processed_at=NOW - timedelta(minutes=9),
+        processing_note=LATE_NOTE,
+    )  # fmt: skip
+    message(
+        operator.session, conv, "El teléfono lo mandó... revisalo por si trae algo importante.",
+        author=WaAuthor.SYSTEM,
+        message_type=LATE_NOTE_TYPE,
+        is_internal_note=True,
+        wa_message_id=None,
+        status=None,
+        at=NOW - timedelta(minutes=9),
+    )  # fmt: skip
+    operator.session.commit()
+
+    page = _page(operator, conv)
+
+    assert page.count("⏰ Llegó atrasado, sin contestar · lo mandó el 30/09 a las 10:44") == 1
+    assert "⏰ Llegó atrasado, sin contestar (nota interna)" in page
+    # The message and its note, nothing else.
+    assert len(re.findall(r'class="msg [^"]* msg-late"', page)) == 2
+    assert "Derivación del bot" not in page  # a note, not a handoff
+    assert conv.status == WaConversationStatus.BOT
