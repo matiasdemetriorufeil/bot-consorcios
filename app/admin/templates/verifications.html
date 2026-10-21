@@ -1,3 +1,7 @@
+{#- «Verificaciones»: the pending requests. Under 1280 px «Estado» waits (every row is «Pendiente»,
+    as the card's title says: .col-secondary) and the cells have less air (#verifications), so
+    the table fits at 1024 px; long buildings and names on one line with «…» from 1280 px, the
+    whole text on hover (.cell-cut). -#}
 {% extends "sqladmin/layout.html" %}
 {% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
@@ -10,18 +14,18 @@
     <div class="table-responsive">
       <table class="table table-vcenter card-table rows-table" id="verifications">
         <thead>
-          <tr><th>Edificio</th><th>Unidad</th><th>Nombre declarado</th><th>Rol declarado</th><th>Teléfono</th><th>Fecha</th><th>Estado</th><th><span class="visually-hidden">Acciones</span></th></tr>
+          <tr><th>Edificio</th><th>Unidad</th><th>Nombre declarado</th><th>Rol declarado</th><th>Teléfono</th><th>Fecha</th><th class="col-secondary">Estado</th><th><span class="visually-hidden">Acciones</span></th></tr>
         </thead>
         <tbody>
           {% for row in rows %}
           <tr data-verification="{{ row.id }}">
-            <td data-label="Edificio">{{ row.building }}</td>
+            <td data-label="Edificio"><span class="cell-cut" title="{{ row.building }}">{{ row.building }}</span></td>
             <td data-label="Unidad">{{ row.unit }}</td>
-            <td data-label="Nombre declarado">{{ row.claimed_name }}</td>
+            <td data-label="Nombre declarado"><span class="cell-cut" title="{{ row.claimed_name }}">{{ row.claimed_name }}</span></td>
             <td data-label="Rol declarado">{{ row.role }}</td>
             <td data-label="Teléfono" class="text-nowrap">{{ row.phone }}</td>
             <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
-            <td data-label="Estado"><span class="state state-waiting">{{ row.status }}</span></td>
+            <td data-label="Estado" class="col-secondary"><span class="state state-waiting">{{ row.status }}</span></td>
             <td class="row-actions">
               <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-verification-approve', request_id=row.id) }}"><i class="fa-solid fa-check me-1"></i>Aprobar</a>
               <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" data-fetch {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>

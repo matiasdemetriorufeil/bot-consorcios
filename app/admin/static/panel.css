@@ -646,6 +646,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   /* With the person's units in «A revisar» the eight columns need a narrower margin to fit. */
   #phones > :not(caption) > * > * { padding-left: var(--sp-2); padding-right: var(--sp-2); }
   #phones > :not(caption) > * > :first-child { padding-left: var(--sp-4); } }
+/* Verificaciones at 1024 px: since «Rol declarado» its seven columns need the same narrower
+   margin as Teléfonos (and «Estado» waits: .col-secondary). */
+@media (min-width: 768px) and (max-width: 1279.98px) {
+  #verifications > :not(caption) > * > * { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  #verifications > :not(caption) > * > :first-child { padding-left: var(--sp-4); } }
 @media (max-width: 767.98px) {
   .rows-table thead { display: none; }
   .rows-table, .rows-table tbody, .rows-table tr, .rows-table td { display: block; width: 100%; }

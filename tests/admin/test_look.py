@@ -753,6 +753,25 @@ def test_kinds_of_problem_have_the_same_list(logged_in: Panel) -> None:
     assert "Título en la lista · " in page and "en que el propietario ve la lista" in page
 
 
+def test_verifications_fit_at_1024(operator: Panel) -> None:
+    """«Estado» waits under 1280 px (every row is «Pendiente»), long texts cut with the whole on
+    hover, and less air per cell between 768 and 1279 px."""
+    from app.bot import identity
+
+    s = operator.session
+    building = f.building(s, "078 TORRE CON UN NOMBRE MUY LARGO INVENTADO")
+    unit = f.unit(s, building, "04-C")
+    f.link(s, unit, f.person(s, "Dueña Inventada"))
+    identity.request_operator_verification(s, "+5493515550602", unit.id, "Dueña Inventada")
+    s.commit()
+    page = operator.client.get("/admin/verifications").text
+    assert '<th class="col-secondary">Estado</th>' in page
+    assert 'class="col-secondary"><span class="state state-waiting">' in page
+    assert '<span class="cell-cut" title="TORRE CON UN NOMBRE MUY LARGO INVENTADO">' in page
+    assert '<span class="cell-cut" title="Dueña Inventada">' in page
+    assert "#verifications > :not(caption) > * > * { padding-left: var(--sp-2);" in _css()
+
+
 def test_the_rules_that_keep_tables_inside_their_card() -> None:
     css = _css()
     assert (
