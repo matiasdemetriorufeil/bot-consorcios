@@ -13,6 +13,7 @@ from app.db.models import (
     ClaimScope,
     ClaimSource,
     ClaimStatus,
+    ClosedDayKind,
     DataSource,
     PanelRole,
     PersonRole,
@@ -79,6 +80,10 @@ PERSON_ROLE = person_roles.PERSON_ROLE
 SUPPRESSION_KIND = {SuppressionKind.LINK: "Unidad", SuppressionKind.PHONE: "Teléfono"}
 PANEL_ROLE = {PanelRole.ADMIN: "Admin", PanelRole.OPERATOR: "Operadora"}
 CLAIM_SCOPE = {ClaimScope.BUILDING: "Todo el edificio", ClaimScope.UNIT: "Una unidad"}
+CLOSED_DAY_KIND = {
+    ClosedDayKind.CLOSED: "El estudio cierra",
+    ClosedDayKind.OPEN_ANYWAY: "Feriado: el estudio abre igual",
+}
 # "¿Quién lo atiende?" without a provider.
 STUDIO = "Lo atiende el estudio"
 STUDIO_SHORT = "El estudio"
@@ -331,6 +336,7 @@ ENUM_TABLES: dict[type, dict[Any, str]] = {
     SuppressionKind: SUPPRESSION_KIND,
     PanelRole: PANEL_ROLE,
     ClaimScope: CLAIM_SCOPE,
+    ClosedDayKind: CLOSED_DAY_KIND,
     ClaimStatus: CLAIM_STATUS,
     ClaimSource: CLAIM_SOURCE,
     ClaimActor: CLAIM_ACTOR,

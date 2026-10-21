@@ -34,7 +34,6 @@ from app.admin.filters import YesNoFilter
 from app.admin.views import AuditedView
 from app.bot.bot_config import parse_hour, parse_weekdays
 from app.claims.claim_config import invalidate_claim_config
-from app.claims.schedule import parse_dates
 from app.claims.setup import (
     Choice,
     SetupProblem,
@@ -603,14 +602,6 @@ def _valid_hour(form: Any, field: Any) -> None:
         raise ValidationError("Usá el formato HH:MM, por ejemplo 08:00.")
 
 
-def _valid_holidays(form: Any, field: Any) -> None:
-    _dates, wrong = parse_dates(field.data or "")
-    if wrong:
-        raise ValidationError(
-            f"Estas fechas no se entienden: {', '.join(wrong)}. Una por renglón, como 24/12/2026."
-        )
-
-
 def _positive(form: Any, field: Any) -> None:
     if field.data is None or field.data < 1:
         raise ValidationError("Tiene que ser un número entero desde 1.")
@@ -633,7 +624,6 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
         ClaimSettings.provider_weekdays,
         ClaimSettings.provider_hours_start,
         ClaimSettings.provider_hours_end,
-        ClaimSettings.holidays,
         ClaimSettings.urgent_any_time,
         ClaimSettings.reminder_hours,
         ClaimSettings.reminder_urgent_minutes,
@@ -642,13 +632,11 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
         ClaimSettings.stale_days,
     ]
     form_overrides = {"provider_weekdays": WeekdaysField}
-    form_widget_args = {"holidays": {"rows": 5, "placeholder": "24/12/2026\n25/12/2026"}}
     column_labels = {
         ClaimSettings.id: "Configuración",
         ClaimSettings.provider_weekdays: "Días para escribirles a los proveedores",
         ClaimSettings.provider_hours_start: "Horario de proveedores: desde",
         ClaimSettings.provider_hours_end: "Horario de proveedores: hasta",
-        ClaimSettings.holidays: "Feriados",
         ClaimSettings.urgent_any_time: "Urgentes a cualquier hora",
         ClaimSettings.reminder_hours: "Recordatorio al proveedor (horas de horario)",
         ClaimSettings.reminder_urgent_minutes: "Recordatorio si es urgente (minutos)",
@@ -660,7 +648,9 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
     column_formatters = {ClaimSettings.id: lambda m, a: "Configuración de reclamos"}
     form_args = {
         "provider_weekdays": {
-            "description": "Los días en que el bot les escribe a los proveedores (hora de Córdoba)."
+            "description": "Los días en que el bot les escribe a los proveedores (hora de "
+            "Córdoba). Los feriados nacionales y los días cerrados (Bot → Días cerrados) no "
+            "cuentan."
         },
         "provider_hours_start": {
             "description": "HH:MM. Fuera de este horario, un reclamo que no es urgente se le "
@@ -668,11 +658,6 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
             "validators": [_valid_hour],
         },
         "provider_hours_end": {"description": "HH:MM.", "validators": [_valid_hour]},
-        "holidays": {
-            "description": "Una fecha por renglón, como 24/12/2026. Esos días no cuentan como "
-            "horario.",
-            "validators": [_valid_holidays],
-        },
         "urgent_any_time": {
             "description": "Los reclamos urgentes (gas, ascensor...) se le mandan al proveedor "
             "aunque sea de noche o feriado."

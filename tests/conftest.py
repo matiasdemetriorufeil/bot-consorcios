@@ -13,6 +13,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.bot.bot_config import invalidate_bot_config
+from app.business_hours import invalidate_calendar
 from app.claims.claim_config import invalidate_claim_config
 from app.config import Settings, get_settings
 
@@ -64,10 +65,12 @@ def _isolated_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     # The admin panel's bot settings are cached for a minute: no test sees another's row.
     invalidate_bot_config()
     invalidate_claim_config()
+    invalidate_calendar()
     yield
     get_settings.cache_clear()
     invalidate_bot_config()
     invalidate_claim_config()
+    invalidate_calendar()
 
 
 class NetworkAccessError(RuntimeError):

@@ -413,6 +413,29 @@ class BotSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
+class ClosedDayKind(StrEnum):
+    CLOSED = "closed"  # the studio does not open (24/12 «cierre del estudio»)
+    OPEN_ANYWAY = "open_anyway"  # a national holiday the studio opens anyway
+
+
+class ClosedDay(Base):
+    """A day loaded in the panel that changes the business days (app.business_hours): closed,
+    or a national holiday the studio opens anyway. One row per date."""
+
+    __tablename__ = "closed_days"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(unique=True)
+    kind: Mapped[ClosedDayKind] = mapped_column(
+        _str_enum(ClosedDayKind, "kind_valid"), server_default=ClosedDayKind.CLOSED.value
+    )
+    reason: Mapped[str] = mapped_column(String(200), server_default="")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    def __str__(self) -> str:
+        return f"{self.day:%d/%m/%Y}"
+
+
 # --- Amenities (SUM) and their reservations ---------------------------------------------------
 
 
@@ -1125,8 +1148,7 @@ class ClaimSettings(Base):
     provider_weekdays: Mapped[str] = mapped_column(String(20), server_default="0,1,2,3,4,5")
     provider_hours_start: Mapped[str] = mapped_column(String(5), server_default="08:00")
     provider_hours_end: Mapped[str] = mapped_column(String(5), server_default="20:00")
-    # One date per line, DD/MM/AAAA.
-    holidays: Mapped[str | None] = mapped_column(Text)
+    # Holidays and closed days: app.business_hours (closed_days and the national holidays).
     urgent_any_time: Mapped[bool] = mapped_column(server_default=text("true"))
     reminder_hours: Mapped[int] = mapped_column(server_default=text("4"))
     reminder_urgent_minutes: Mapped[int] = mapped_column(server_default=text("30"))

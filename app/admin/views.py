@@ -13,6 +13,7 @@ import anyio
 from markupsafe import Markup
 from sqladmin import BaseView, ModelView, expose
 from sqladmin.formatters import BASE_FORMATTERS
+from sqlalchemy import select
 from sqlalchemy.orm import object_session
 from starlette.requests import Request
 from starlette.responses import Response
@@ -24,12 +25,15 @@ from app.admin.auth import AdminOnly, admin_user
 from app.admin.filters import RelatedFilter, ValuesFilter, YesNoFilter
 from app.admin.metrics import compute_claim_metrics, compute_metrics
 from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
+from app.business_hours import invalidate_calendar, national_holiday, next_holidays
 from app.config import Settings
 from app.db.models import (
     BotSettings,
     Building,
     BuildingInfo,
     BuildingInfoCategory,
+    ClosedDay,
+    ClosedDayKind,
     QuickReply,
     SyncJob,
     SyncRun,
@@ -443,6 +447,105 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     ) -> Response | None:
         invalidate_bot_config()  # this process sees the change right away
         return None
+
+
+class ClosedDayProblem(ValueError):
+    """A closed day that cannot be saved; SQLAdmin shows the text over the form (400)."""
+
+
+def _holiday_formatter(model: ClosedDay, attribute: Any) -> str:
+    return national_holiday(model.day) or "—"
+
+
+class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
+    """The days that change the business days of the bot and the claims (app.business_hours):
+    closed by hand, or national holidays the studio opens anyway. Only added and removed."""
+
+    menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
+    name = "Día cerrado"
+    name_plural = "Días cerrados"
+    icon = "fa-solid fa-calendar-xmark"
+    audit_name = "closed_day"
+    can_edit = False
+    column_list = [ClosedDay.day, ClosedDay.kind, ClosedDay.reason, "national_holiday"]
+    column_details_list = [*column_list, ClosedDay.created_at]
+    column_sortable_list = [ClosedDay.day]
+    column_default_sort = [(ClosedDay.day, True)]
+    form_columns = [ClosedDay.day, ClosedDay.kind, ClosedDay.reason]
+    column_labels = {
+        ClosedDay.day: "Fecha",
+        ClosedDay.kind: "Qué pasa ese día",
+        ClosedDay.reason: "Motivo",
+        "national_holiday": "Feriado nacional",
+        ClosedDay.created_at: "Cargado",
+    }
+    column_formatters = {
+        ClosedDay.day: lambda m, a: f"{m.day:%d/%m/%Y}",
+        "national_holiday": _holiday_formatter,
+    }
+    column_formatters_detail = column_formatters
+    form_args = {
+        "kind": {
+            "description": "«El estudio cierra»: ese día no es hábil (el bot no promete "
+            "respuesta y los reclamos que no son urgentes esperan). «Abre igual»: un feriado "
+            "nacional que el estudio trabaja."
+        },
+        "reason": {"description": "Por ejemplo «cierre del estudio». Solo lo ve el estudio."},
+    }
+    page_size = 50
+
+    def search_placeholder(self) -> str:
+        return "motivo"
+
+    async def scaffold_form(self, rules: Any = None) -> Any:
+        form = await super().scaffold_form(rules)
+        form.kind.kwargs["choices"] = [(k.value, labels.CLOSED_DAY_KIND[k]) for k in ClosedDayKind]
+        form.kind.kwargs["coerce"] = lambda v: v.value if isinstance(v, StrEnum) else str(v)
+        upcoming = ", ".join(f"{day:%d/%m/%Y} ({name})" for day, name in next_holidays(4))
+        form.day.kwargs["description"] = (
+            "Los feriados nacionales ya cuentan solos: cargá uno acá solo si el estudio abre "
+            f"igual. Próximos: {upcoming}."
+        )
+        return form
+
+    def audit_ids(self, model: ClosedDay) -> dict[str, Any]:
+        return {"closed_day_id": model.id, "day": model.day.isoformat(), "kind": str(model.kind)}
+
+    async def on_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> None:
+        day, kind = data.get("day"), ClosedDayKind(data.get("kind") or ClosedDayKind.CLOSED)
+        data["reason"] = reason = (data.get("reason") or "").strip()
+        holiday = national_holiday(day) if isinstance(day, date) else None
+        if kind == ClosedDayKind.OPEN_ANYWAY and holiday is None:
+            raise ClosedDayProblem(
+                "Ese día no es feriado nacional: «Abre igual» es solo para feriados."
+            )
+        if kind == ClosedDayKind.CLOSED and holiday is not None:
+            raise ClosedDayProblem(
+                f"Ese día ya es feriado nacional ({holiday}): no hace falta cargarlo."
+            )
+        if not reason:
+            if holiday is None:
+                raise ClosedDayProblem("Escribí el motivo, por ejemplo «cierre del estudio».")
+            data["reason"] = holiday
+        if await _in_thread(self._taken, day):
+            raise ClosedDayProblem("Ese día ya está cargado: borralo primero para cambiarlo.")
+
+    def _taken(self, day: Any) -> bool:
+        # Before SQLAdmin adds the new row to a session: its own one.
+        with self.session_maker() as session:
+            return session.scalar(select(ClosedDay.id).where(ClosedDay.day == day)) is not None
+
+    async def after_model_change(
+        self, data: dict, model: Any, is_created: bool, request: Request
+    ) -> Response | None:
+        await super().after_model_change(data, model, is_created, request)
+        invalidate_calendar()  # this process sees the change right away
+        return None
+
+    async def after_model_delete(self, model: Any, request: Request) -> None:
+        invalidate_calendar()
 
 
 # --- Metrics ----------------------------------------------------------------------------

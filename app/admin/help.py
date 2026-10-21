@@ -98,6 +98,14 @@ PAGE_HELP: dict[str, str] = {
     "edit:bot-settings": (
         "Los textos y horarios del bot. Los cambios se usan desde el próximo mensaje."
     ),
+    "list:closed-day": (
+        "Los días que el estudio cierra además de los feriados nacionales (que el bot ya "
+        "conoce), y los feriados en que abre igual. El bot y los reclamos lo usan en un minuto."
+    ),
+    "create:closed-day": (
+        "Un día cerrado: el bot no promete respuesta ese día y los reclamos que no son urgentes "
+        "esperan al siguiente día hábil. Los urgentes salen igual."
+    ),
     "edit:claim-settings": (
         "Cuándo el bot les escribe a los proveedores, cuándo les recuerda un reclamo y cuándo "
         "el panel avisa que uno necesita atención. Los cambios se usan en un minuto, sin "
@@ -263,6 +271,10 @@ EMPTY: dict[str, str] = {
         "al responder en Conversaciones."
     ),
     "list:sync-run": "Todavía no se leyeron datos de ConsorPlus.",
+    "list:closed-day": (
+        "No hay días cargados: el bot usa solo los feriados nacionales. Agregá uno con el botón "
+        "de arriba, por ejemplo el 24/12 si el estudio cierra."
+    ),
     "list:provider": (
         "Todavía no hay proveedores. Agregá uno con el botón de arriba para poder elegirlo en "
         "«Reclamos por edificio»."

@@ -10,6 +10,7 @@ from app.admin import labels
 from app.channels.handoff import REASONS
 from app.db.models import (
     BuildingInfoCategory,
+    ClosedDayKind,
     DataSource,
     PanelRole,
     PersonRole,
@@ -39,6 +40,7 @@ ROOT = Path(__file__).parents[2]
         PersonRole,
         PanelRole,
         SuppressionKind,
+        ClosedDayKind,
     ],
 )
 def test_every_value_of_every_enum_has_its_text(enum: type[StrEnum]) -> None:

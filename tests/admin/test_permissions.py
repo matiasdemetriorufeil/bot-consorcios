@@ -34,6 +34,7 @@ from app.db.models import (
     ClaimCategory,
     ClaimScope,
     ClaimSettings,
+    ClosedDay,
     PanelRole,
     PanelUser,
     Provider,
@@ -77,7 +78,10 @@ OPERATOR_MENU = [
 ADMIN_GROUPS = [
     ("Edificios", ["Edificios", "Información de edificios", "Reclamos por edificio"]),
     ("Reclamos", ["Proveedores", "Tipos de problema", "Configuración de reclamos"]),
-    ("Bot", ["Configuración del bot", "Respuestas rápidas", "Plantillas de WhatsApp"]),
+    (
+        "Bot",
+        ["Configuración del bot", "Días cerrados", "Respuestas rápidas", "Plantillas de WhatsApp"],
+    ),
     ("Sistema", ["Usuarios", "Métricas", "Sincronizaciones"]),
 ]
 ADMIN_SECTION = [page for _, pages in ADMIN_GROUPS for page in pages]
@@ -98,6 +102,7 @@ class Ids:
     building_without_sum: int
     provider: int
     category: int
+    closed_day: int
 
 
 @pytest.fixture(autouse=True)
@@ -126,14 +131,15 @@ def ids(db_session: Session) -> Ids:
     category = ClaimCategory(
         name="Problema inventado", list_title="Inventado", scope=ClaimScope.BUILDING
     )
-    db_session.add_all([info, template, quick, run, amenity, provider, category])
+    closed_day = ClosedDay(day=date(2026, 12, 24), reason="Cierre inventado")
+    db_session.add_all([info, template, quick, run, amenity, provider, category, closed_day])
     user = _user(db_session, "lucia", PanelRole.OPERATOR)
     db_session.commit()
     settings_id = db_session.scalar(select(BotSettings.id))
     assert settings_id is not None
     return Ids(
         building.id, info.id, template.id, quick.id, run.id, user.id, settings_id,
-        amenity.id, slot.id, unit.id, other.id, provider.id, category.id,
+        amenity.id, slot.id, unit.id, other.id, provider.id, category.id, closed_day.id,
     )  # fmt: skip
 
 
@@ -227,6 +233,7 @@ CLAIMS_TABLE_FORM = {"enabled_{category}": "on", "provider_{category}": "{provid
 INFO_FORM = {"building": "{building}", "category": "otros", "title": "T", "content": "C"}
 TEMPLATE_FORM = {"label": "L", "name": "n", "language": "es", "body": "B", "save": "Save"}
 QUICK_FORM = {"title": "T", "content": "C", "sort_order": "1", "save": "Save"}
+CLOSED_DAY_FORM = {"day": "2026-12-31", "kind": "closed", "reason": "Cierre", "save": "Save"}
 USER_FORM = {"display_name": "Nueva", "username": "nueva", "role": "admin",
              "password": "clave-inventada-larga", "password2": "clave-inventada-larga"}  # fmt: skip
 
@@ -283,6 +290,12 @@ ADMIN_ACTIONS: list[tuple[str, str, dict[str, str] | None]] = [
     ("get", "/admin/quick-reply/edit/{quick_reply}", None),
     ("post", "/admin/quick-reply/edit/{quick_reply}", QUICK_FORM),
     ("delete", "/admin/quick-reply/delete?pks={quick_reply}", None),
+    # Closed days (only added and removed)
+    ("get", "/admin/closed-day/list", None),
+    ("get", "/admin/closed-day/details/{closed_day}", None),
+    ("get", "/admin/closed-day/create", None),
+    ("post", "/admin/closed-day/create", CLOSED_DAY_FORM),
+    ("delete", "/admin/closed-day/delete?pks={closed_day}", None),
     # Users, metrics, sync runs
     ("get", "/admin/users", None),
     ("post", "/admin/users", USER_FORM),
@@ -327,6 +340,7 @@ def _snapshot(session: Session) -> dict[str, Any]:
         "info": count(BuildingInfo),
         "templates": count(WaTemplate),
         "quick": count(QuickReply),
+        "closed_days": [(c.day, c.kind, c.reason) for c in session.scalars(select(ClosedDay))],
         "users": [(u.username, u.role, u.active) for u in session.scalars(select(PanelUser))],
         "amenities": count(Amenity),
         "slots": [

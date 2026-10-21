@@ -1,7 +1,9 @@
 """The claims' periodic job (every JOB_MINUTES, app.scheduler; the panel's test chat can run it
 "as if it were" another moment):
 
-1. Scheduled claims whose time came (send_after <= now) go to their provider.
+1. Scheduled claims whose time came (send_after <= now) go to their provider (if that moment
+   is no longer inside the providers' hours, e.g. a closed day loaded later, they move to the
+   next opening).
 2. A provider that did not confirm gets ONE reminder (reclamo_recordatorio_proveedor), after
    reminder_urgent_minutes for urgent claims (at any time) or reminder_hours of the providers'
    hours for the rest (only inside them).
@@ -123,6 +125,11 @@ class _SendDue:
             or claim.send_after is None
             or claim.send_after > now
         ):
+            return
+        if not (claim.urgent and config.urgent_any_time) and not config.hours.is_open(now):
+            # Its day became closed after it was scheduled (a closed day loaded in the panel):
+            # it waits for the next opening.
+            claim.send_after = config.hours.next_opening(now)
             return
         sent = notifier.notify_provider(session, claim)
         if sent.ok:

@@ -3,7 +3,7 @@ app.claims.jobs), with a fixed clock and the Cloud API faked. Invented data only
 buildings, people and providers, phones 351 555-01xx)."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.business_hours import invalidate_calendar
 from app.claims import payloads, texts
 from app.claims.claim_config import invalidate_claim_config
 from app.claims.jobs import LOCK_KEY, JobReport, run_claim_jobs
@@ -35,6 +36,8 @@ from app.db.models import (
     ClaimSettings,
     ClaimSource,
     ClaimStatus,
+    ClosedDay,
+    ClosedDayKind,
     Provider,
     WaMessage,
 )
@@ -194,11 +197,52 @@ def test_the_panel_can_send_now_or_later(w: World) -> None:
     assert claim.status == ClaimStatus.SENT and claim.send_after is None
 
 
-def test_holidays_and_the_days_are_skipped(w: World) -> None:
-    _settings(w, holidays="03/10/2026\n05/10/2026")  # Saturday and Monday
+def _closed(w: World, day: int, kind: ClosedDayKind = ClosedDayKind.CLOSED) -> None:
+    w.session.add(ClosedDay(day=date(2026, 10, day), kind=kind, reason="Cierre inventado"))
+    w.session.commit()
+    invalidate_calendar()
+
+
+def test_a_national_holiday_and_a_closed_day_are_skipped(w: World) -> None:
+    _closed(w, 3)  # Saturday; Monday 12 is a national holiday
     claim = _claim(w, w.damp, at(2, 21))
     done = w.notifier.dispatch(w.session, claim)
-    assert claim.send_after == at(6, 8) and done.when == "el martes a las 8:00"
+    assert claim.send_after == at(5, 8) and done.when == "el lunes a las 8:00"
+
+    other = _claim(w, w.damp, at(10, 21))  # Saturday 10, after the hours
+    done = w.notifier.dispatch(w.session, other)
+    assert other.send_after == at(13, 8) and done.when == "el martes a las 8:00"
+
+
+def test_a_holiday_marked_open_anyway_is_inside_the_hours(w: World) -> None:
+    _closed(w, 12, ClosedDayKind.OPEN_ANYWAY)
+    claim = _claim(w, w.damp, at(12, 10))
+    assert w.notifier.dispatch(w.session, claim).sent.ok
+
+
+def test_an_urgent_claim_goes_on_a_holiday(w: World) -> None:
+    claim = _claim(w, w.lift, at(12, 10))  # Monday 12, national holiday
+    assert w.notifier.dispatch(w.session, claim).sent.ok
+    assert claim.status == ClaimStatus.SENT
+
+
+def test_the_reminder_does_not_count_a_holiday(w: World) -> None:
+    claim = _sent(w, w.damp, at(9, 18))  # Friday 18:00: 2 h on Friday, 2 more on Saturday
+    _closed(w, 10)  # Saturday closed too: Monday 12 holiday, so Tuesday 10:00
+    assert w.jobs(at(12, 12)).reminded == []
+    assert w.jobs(at(13, 9, 55)).reminded == []
+    assert w.jobs(at(13, 10, 5)).reminded == [claim.id]
+
+
+def test_a_scheduled_send_waits_if_its_day_was_closed_later(w: World) -> None:
+    claim = _claim(w, w.damp, at(2, 21))
+    w.notifier.dispatch(w.session, claim)
+    w.session.commit()
+    assert claim.send_after == at(3, 8)
+    _closed(w, 3)  # loaded after it was scheduled
+    assert w.jobs(at(3, 8, 5)).sent == []
+    assert w.session.get(Claim, claim.id).send_after == at(5, 8)
+    assert w.jobs(at(5, 8, 5)).sent == [claim.id]
 
 
 def test_a_failed_scheduled_send_is_not_retried_every_five_minutes(w: World) -> None:

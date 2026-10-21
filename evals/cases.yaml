@@ -577,6 +577,18 @@
     handoff: false
     contains: ["72", "165.060"]
 
+# Thursday 15/10/2026, paid on Friday 9: only 3 business days (Monday 12 was a holiday), so
+# it waits; counting Monday to Friday it would have been 4 and offered a handoff.
+- id: pago_viernes_con_feriado_espera
+  category: pago_no_acreditado
+  phone: ana
+  now: "2026-10-15T11:00"
+  turns: ["Pagué el viernes pasado, el 9, y me sigue figurando la deuda"]
+  expect:
+    must_call: [get_debt]
+    must_not_call: [handoff_to_human, offer_choices]
+    handoff: false
+
 - id: pago_semana_ofrece_derivar
   category: pago_no_acreditado
   phone: ana
@@ -994,6 +1006,30 @@
   expect:
     handoff: true
     contains: [["habil", "proximo", "lunes", "manana"]]
+
+# A national holiday (Monday 12/10/2026) inside the office's hours: no "a la brevedad", it
+# says it is a holiday and when the studio answers (Tuesday: "mañana").
+- id: pide_persona_feriado
+  category: pide_persona
+  phone: ana
+  now: "2026-10-12T10:00"
+  turns: ["Necesito hablar con alguien del estudio"]
+  expect:
+    handoff: true
+    contains: ["feriado", ["manana", "martes"]]
+    not_contains: ["a la brevedad"]
+
+# The Friday before a long weekend (Monday 23/11/2026 is a holiday): the studio answers on
+# Tuesday, never "el lunes".
+- id: pide_persona_fin_de_semana_largo
+  category: pide_persona
+  phone: ana
+  now: "2026-11-20T18:00"
+  turns: ["Quiero hablar con una persona"]
+  expect:
+    handoff: true
+    contains: ["martes"]
+    not_contains: ["el lunes"]
 
 # --- Botones y listas (offer_choices) --------------------------------------------------------
 # A tap arrives as the option's title, as WhatsApp delivers it.

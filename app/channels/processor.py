@@ -389,7 +389,7 @@ class BotProcessor:
 
     def _notice(self, session: Session) -> str:
         cfg = load_bot_config(session, self.settings)
-        return handoff_notice(self._now(), *cfg.hours, cfg.out_of_hours_text)
+        return handoff_notice(self._now(), cfg.hours, cfg.out_of_hours_text)
 
     def _log(
         self,

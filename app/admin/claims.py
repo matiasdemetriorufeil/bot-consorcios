@@ -42,9 +42,9 @@ from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.inbox import add_note as add_conversation_note
 from app.admin.phones import search_condition as phone_search
 from app.bot.identity import to_e164
+from app.business_hours import when_text
 from app.claims import texts
 from app.claims.notify import Notifier
-from app.claims.schedule import when_text
 from app.claims.service import (
     ClaimProblem,
     Reporter,

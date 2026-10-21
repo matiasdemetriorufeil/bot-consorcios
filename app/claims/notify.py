@@ -35,9 +35,9 @@ from sqlalchemy.orm import Session
 from app.bot import registration_tools
 from app.bot.choices import Choice
 from app.bot.unit_search import display_building_name
+from app.business_hours import when_text
 from app.claims import payloads, texts
 from app.claims.claim_config import ClaimConfig, load_claim_config
-from app.claims.schedule import when_text
 from app.claims.service import (
     mark_reminded,
     mark_sent,

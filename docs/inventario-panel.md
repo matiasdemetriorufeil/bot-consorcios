@@ -1,5 +1,24 @@
 # Inventario del panel `/admin`
 
+## Actualización: feriados y días cerrados (2026-10-21)
+
+- **Días cerrados** (Administración → Bot, debajo de «Configuración del bot»; solo admin,
+  `/admin/closed-day/list`): fecha, «Qué pasa ese día» (*El estudio cierra* / *Feriado: el
+  estudio abre igual*), motivo (solo lo ve el estudio) y el nombre del feriado nacional si lo
+  es. Solo alta y baja, auditadas (`closed_day_created` / `closed_day_deleted`, con la fecha y
+  el tipo, nunca el motivo). Valida en el servidor: «abre igual» solo sobre un feriado
+  nacional; «cierra» no hace falta sobre un feriado; motivo obligatorio para un cierre; un día
+  una sola vez. El formulario muestra los próximos feriados nacionales.
+- **Feriados nacionales** de Argentina: librería `holidays` (país AR), calculados por año, sin
+  red. Cuentan solos; no hace falta cargarlos.
+- **Un solo calendario** (`app/business_hours.py`) para el bot y los reclamos: el aviso de
+  derivación («Hoy es feriado y el estudio no atiende, así que te van a responder el martes a
+  partir de las 9»), el contexto del modelo (incluido el conteo de días hábiles de «ya pagué»),
+  el envío programado a proveedores, el recordatorio y el aviso al estudio, y la frase «el
+  lunes a las 8:00». Los urgentes siguen saliendo a cualquier hora, feriado incluido.
+- **Configuración de reclamos** ya no tiene el campo «Feriados»: la migración pasó sus fechas a
+  «Días cerrados» (menos las que ya eran feriado nacional).
+
 ## Actualización 5h.4: lo que rodea a «Vecinos» (2026-10-15)
 
 - **Verificaciones:**
@@ -411,7 +430,7 @@ Sin cambios de URLs, permisos ni reglas.
   |---|---|
   | Edificios | Edificios, Información de edificios, Reclamos por edificio |
   | Reclamos | Proveedores, Tipos de problema, Configuración de reclamos |
-  | Bot | Configuración del bot, Respuestas rápidas, Plantillas de WhatsApp |
+  | Bot | Configuración del bot, Días cerrados, Respuestas rápidas, Plantillas de WhatsApp |
   | Sistema | Usuarios, Métricas, Sincronizaciones, Chat de prueba (solo en desarrollo) |
 
   - Cada vista de admin dice su bloque (`menu_group`). El orden está en

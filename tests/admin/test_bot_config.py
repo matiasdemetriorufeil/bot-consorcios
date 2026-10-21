@@ -1,6 +1,6 @@
 """Bot settings: the admin panel's value wins over .env; empty falls back. Invented texts."""
 
-from datetime import datetime
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.bot import bot_config
 from app.bot.bot_config import CACHE_SECONDS, invalidate_bot_config, load_bot_config
 from app.bot.prompts import handoff_notice, urgent_handoff_notice
+from app.business_hours import OpeningHours
 from app.db.models import BotSettings
 from tests.admin.conftest import FakeClock, admin_settings
 
@@ -21,7 +22,11 @@ ENV = admin_settings(
     payment_code_how_to="cómo pagar según .env",
 )
 SATURDAY_NIGHT = datetime(2026, 10, 3, 22, 0, tzinfo=ZoneInfo("America/Argentina/Cordoba"))
-WEEKDAYS = [0, 1, 2, 3, 4]
+OFFICE = OpeningHours(frozenset(range(5)), time(9), time(17))
+
+
+def _hours(cfg: bot_config.BotConfig) -> tuple[time, time, list[int]]:
+    return cfg.hours.start, cfg.hours.end, sorted(cfg.hours.weekdays)
 
 
 def _row(session: Session, **values: str | None) -> BotSettings:
@@ -36,7 +41,7 @@ def _row(session: Session, **values: str | None) -> BotSettings:
 
 def test_empty_panel_uses_env(db_session: Session) -> None:
     cfg = load_bot_config(db_session, ENV)
-    assert cfg.hours == ("08:00", "16:00", [0, 1, 2, 3, 4, 5])
+    assert _hours(cfg) == (time(8), time(16), [0, 1, 2, 3, 4, 5])
     assert cfg.emergency_contact_text == "contacto de .env"
     assert cfg.autogestion_url == "https://env.example.com"
     assert cfg.payment_code_how_to == "cómo pagar según .env"
@@ -45,7 +50,7 @@ def test_empty_panel_uses_env(db_session: Session) -> None:
 
 def test_empty_panel_and_env_use_the_defaults(db_session: Session) -> None:
     cfg = load_bot_config(db_session, admin_settings())
-    assert cfg.hours == ("09:00", "17:00", [0, 1, 2, 3, 4])
+    assert _hours(cfg) == (time(9), time(17), [0, 1, 2, 3, 4])
     assert "Pago Mis Cuentas" in cfg.payment_code_how_to
     assert cfg.autogestion_url == ""
 
@@ -63,7 +68,7 @@ def test_panel_values_win_over_env(db_session: Session) -> None:
         payment_code_how_to="cómo pagar según el panel",
     )
     cfg = load_bot_config(db_session, ENV)
-    assert cfg.hours == ("10:00", "18:30", [1, 3])
+    assert _hours(cfg) == (time(10), time(18, 30), [1, 3])
     assert cfg.welcome_message == "¡Hola! Te escribe el estudio."
     assert cfg.out_of_hours_text == "Te respondemos el próximo día hábil."
     assert cfg.emergency_contact_text == "contacto del panel"
@@ -109,13 +114,11 @@ def test_panel_row_is_cached_for_a_minute(
 
 def test_out_of_hours_text_replaces_the_automatic_notice() -> None:
     text = "Te respondemos el próximo día hábil."
-    notice = handoff_notice(SATURDAY_NIGHT, "09:00", "17:00", WEEKDAYS, text)
+    notice = handoff_notice(SATURDAY_NIGHT, OFFICE, text)
     assert notice == f"Ya le pasé tu consulta a una persona del estudio. {text}"
-    urgent = urgent_handoff_notice(
-        SATURDAY_NIGHT, "09:00", "17:00", WEEKDAYS, "llamá al 100.", text
-    )
+    urgent = urgent_handoff_notice(SATURDAY_NIGHT, OFFICE, "llamá al 100.", text)
     assert urgent == f"{notice} Para la urgencia, mientras tanto: llamá al 100."
 
     monday_morning = datetime(2026, 10, 5, 10, 0, tzinfo=SATURDAY_NIGHT.tzinfo)
-    inside = handoff_notice(monday_morning, "09:00", "17:00", WEEKDAYS, text)
+    inside = handoff_notice(monday_morning, OFFICE, text)
     assert text not in inside and "a la brevedad" in inside

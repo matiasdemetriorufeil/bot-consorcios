@@ -1,9 +1,10 @@
 """System prompt (fixed, cacheable) and the per-message context (goes in the user message)."""
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 from app.bot.identity import Identity
 from app.bot.unit_search import display_building_name
+from app.business_hours import WEEKDAYS, OpeningHours, day_text
 from app.person_roles import role_text
 
 SYSTEM_PROMPT = """\
@@ -109,7 +110,8 @@ ese dato y ofrecé derivar.
 - NO derives de entrada. Consultá get_debt y explicá que los pagos pueden tardar de 24 a \
 72 h hábiles en acreditarse en el sistema. El saldo que figura hoy y la fecha del dato ya \
 van en el mensaje de deuda: decí que es lo que figura hoy, sin repetir montos ni fechas.
-- Contá los días hábiles (lunes a viernes) desde el pago hasta hoy (fecha del contexto):
+- Contá los días hábiles desde el pago hasta hoy con el dato "Días hábiles para «ya \
+pagué»" del contexto (ya descuenta fines de semana, feriados y días cerrados):
   - 3 o menos (pagó hoy, ayer, hace un par de días): pedile que espere la acreditación; si \
 pasados 3 días hábiles sigue figurando, que vuelva a escribir. No ofrezcas derivar ahora.
   - más de 3, o no dice cuándo pagó: ofrecé pasarlo con una persona del estudio para que lo \
@@ -223,81 +225,103 @@ inventes números de distribuidoras, guardias ni otros servicios.
 3. Al final, el texto de tell_person.
 """
 
-_WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_WEEKDAYS = WEEKDAYS
 
 
-def is_office_hours(now: datetime, start: str, end: str, weekdays: list[int]) -> bool:
-    if now.weekday() not in weekdays:
-        return False
-    return time.fromisoformat(start) <= now.time() < time.fromisoformat(end)
+def _hour(value: time) -> str:
+    """9:00 -> "9", 17:30 -> "17:30"."""
+    return f"{value.hour}" if value.minute == 0 else f"{value.hour}:{value.minute:02d}"
 
 
-def _hour(value: str) -> str:
-    """ "09:00" -> "9", "17:30" -> "17:30"."""
-    t = time.fromisoformat(value)
-    return f"{t.hour}" if t.minute == 0 else f"{t.hour}:{t.minute:02d}"
-
-
-def describe_office_hours(start: str, end: str, weekdays: list[int]) -> str:
+def describe_office_hours(hours: OpeningHours) -> str:
     """ "de lunes a viernes de 9 a 17" (or "los lunes, miércoles y viernes de 9 a 17")."""
-    days = sorted(set(weekdays))
+    days = sorted(hours.weekdays)
     names = [_WEEKDAYS[d] for d in days]
     if len(days) > 2 and days == list(range(days[0], days[-1] + 1)):
         when = f"de {names[0]} a {names[-1]}"
     else:
         plural = [n if n.endswith("s") else f"{n}s" for n in names]
         when = "los " + (", ".join(plural[:-1]) + " y " if len(plural) > 1 else "") + plural[-1]
-    return f"{when} de {_hour(start)} a {_hour(end)}"
+    return f"{when} de {_hour(hours.start)} a {_hour(hours.end)}"
 
 
-def next_opening(now: datetime, start: str, weekdays: list[int]) -> str:
+def next_opening(now: datetime, hours: OpeningHours) -> str:
     """When the office opens next, said from outside office hours: "hoy a partir de las 9",
-    "mañana a partir de las 9" or "el lunes a partir de las 9"."""
-    opening = time.fromisoformat(start)
-    for offset in range(8):
-        day = now + timedelta(days=offset)
-        if day.weekday() not in weekdays or (offset == 0 and now.time() >= opening):
-            continue
-        name = {0: "hoy", 1: "mañana"}.get(offset, f"el {_WEEKDAYS[day.weekday()]}")
-        return f"{name} a partir de las {_hour(start)}"
-    return "en el próximo horario de atención"
+    "mañana a partir de las 9", "el martes a partir de las 9" or "el 26/12 a partir de las
+    9" (business days only)."""
+    try:
+        opening = hours.next_opening(now)
+    except ValueError:
+        return "en el próximo horario de atención"
+    day = day_text(opening.date(), hours.local(now).date())
+    return f"{day} a partir de las {_hour(opening.time())}"
 
 
-def handoff_notice(
-    now: datetime, start: str, end: str, weekdays: list[int], out_of_hours_text: str = ""
-) -> str:
+def closed_today(now: datetime, hours: OpeningHours) -> str:
+    """ "feriado" or "cerrado" when today is one of the office's days but the studio does not
+    open (a national holiday, a closed day of the panel); else ""."""
+    today = hours.local(now).date()
+    if today.weekday() not in hours.weekdays or hours.is_business_day(today):
+        return ""
+    return "feriado" if hours.calendar.is_holiday(today) else "cerrado"
+
+
+def handoff_notice(now: datetime, hours: OpeningHours, out_of_hours_text: str = "") -> str:
     """What the person is told when the conversation goes to a human. Outside office hours,
     out_of_hours_text (admin panel) replaces the automatic "when they will answer" sentence."""
-    if is_office_hours(now, start, end, weekdays):
+    if hours.is_open(now):
         return (
             "Ya le pasé tu consulta a una persona del estudio: te va a responder por acá a la "
             "brevedad."
         )
     if out_of_hours_text.strip():
         return f"Ya le pasé tu consulta a una persona del estudio. {out_of_hours_text.strip()}"
+    closed = closed_today(now, hours)
+    if closed == "feriado":
+        why = "Hoy es feriado y el estudio no atiende"
+    elif closed == "cerrado":
+        why = "Hoy el estudio está cerrado"
+    else:
+        why = f"Ahora estamos fuera del horario de atención ({describe_office_hours(hours)})"
     return (
-        "Ya le pasé tu consulta a una persona del estudio. Ahora estamos fuera del horario de "
-        f"atención ({describe_office_hours(start, end, weekdays)}), así que te van a responder "
-        f"{next_opening(now, start, weekdays)}."
+        f"Ya le pasé tu consulta a una persona del estudio. {why}, así que te van a responder "
+        f"{next_opening(now, hours)}."
     )
 
 
 def urgent_handoff_notice(
     now: datetime,
-    start: str,
-    end: str,
-    weekdays: list[int],
+    hours: OpeningHours,
     emergency_contact: str = "",
     out_of_hours_text: str = "",
 ) -> str:
     """What the person is told when an urgency goes to a human. Outside office hours it adds
     who to call meanwhile: EMERGENCY_CONTACT_TEXT or, if empty, the building's caretaker."""
-    notice = handoff_notice(now, start, end, weekdays, out_of_hours_text)
-    if is_office_hours(now, start, end, weekdays):
+    notice = handoff_notice(now, hours, out_of_hours_text)
+    if hours.is_open(now):
         return notice
     if emergency_contact.strip():
         return f"{notice} Para la urgencia, mientras tanto: {emergency_contact.strip()}"
     return f"{notice} Mientras tanto, si podés, avisale al encargado del edificio."
+
+
+# "Ya pagué": a payment counts as late after this many business days.
+PAYMENT_BUSINESS_DAYS = 3
+
+
+def payment_days_text(now: datetime, hours: OpeningHours) -> str:
+    """For "ya pagué", the business days already counted (weekends, holidays and closed days
+    out): from which date a payment has PAYMENT_BUSINESS_DAYS business days or fewer."""
+    today = hours.local(now).date()
+    days = hours.business_days_back(today, PAYMENT_BUSINESS_DAYS + 1)
+    if len(days) <= PAYMENT_BUSINESS_DAYS:
+        return ""
+    limit = days[PAYMENT_BUSINESS_DAYS]
+    return (
+        f"Un pago del {_WEEKDAYS[limit.weekday()]} {limit:%d/%m} en adelante lleva "
+        f"{PAYMENT_BUSINESS_DAYS} días hábiles o menos; uno de antes, más de "
+        f"{PAYMENT_BUSINESS_DAYS} (ya descontados fines de semana, feriados y días cerrados)."
+    )
 
 
 def describe_identity(who: Identity, pending: str = "") -> str:
@@ -321,21 +345,25 @@ def build_user_turn(
     *,
     who: Identity,
     now: datetime,
-    office_hours: bool,
-    hours_text: str,
+    hours: OpeningHours,
     first_message: bool,
     welcome_message: str = "",
     pending: str = "",
 ) -> str:
     """The person's message preceded by the variable context (kept out of the system prompt
     so that it stays identical and cacheable)."""
+    now = hours.local(now)
+    closed = closed_today(now, hours)
+    today = {"feriado": " Hoy es feriado.", "cerrado": " Hoy el estudio está cerrado."}
     context = [
         f"Fecha y hora en Córdoba: {_WEEKDAYS[now.weekday()]} {now:%d/%m/%Y %H:%M}",
-        f"Horario de atención: {hours_text}. Ahora "
-        f"{'estamos' if office_hours else 'NO estamos'} en horario de atención.",
+        f"Horario de atención: {describe_office_hours(hours)}, días hábiles.{today.get(closed, '')}"
+        f" Ahora {'estamos' if hours.is_open(now) else 'NO estamos'} en horario de atención.",
         f"Quién escribe: {describe_identity(who, pending)}",
         f"Primer mensaje de la conversación: {'sí' if first_message else 'no'}",
     ]
+    if payment := payment_days_text(now, hours):
+        context.append(f"Días hábiles para «ya pagué»: {payment}")
     if first_message and welcome_message.strip():
         context.append(f"Mensaje de bienvenida del estudio: {welcome_message.strip()}")
     return (

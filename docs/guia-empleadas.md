@@ -328,7 +328,8 @@ avisa a todos los vecinos que reclamaron. En la historia del reclamo ves cada av
   contesta: si escriben algo, lo ven ustedes y pueden responderles.
 
 **El horario de los proveedores:** a las empresas se les escribe en su horario (de lunes a
-sábado de 8 a 20, salvo feriados; se cambia en **Configuración de reclamos**). Un reclamo que
+sábado de 8 a 20, salvo feriados y los días cerrados de **Días cerrados**; se cambia en
+**Configuración de reclamos**). Un reclamo que
 llega de noche queda programado y sale solo cuando empieza el horario: en la ficha dice «Se le
 manda a … mañana a las 8:00», con un botón **Mandar ahora** por si no puede esperar. Los
 urgentes salen siempre en el momento. Si reenviás o cambiás el proveedor fuera de horario, el

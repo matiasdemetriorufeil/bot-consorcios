@@ -52,7 +52,6 @@ from app.bot.prompts import (
     build_user_turn,
     describe_office_hours,
     handoff_notice,
-    is_office_hours,
     urgent_handoff_notice,
 )
 from app.bot.registration_tools import describe_pending
@@ -198,13 +197,13 @@ class Agent:
             timezone=self.settings.timezone,
             email_sender=self._email_sender,
             conversation_id=conversation_id,
-            handoff_notice=handoff_notice(now, *hours, cfg.out_of_hours_text),
+            handoff_notice=handoff_notice(now, hours, cfg.out_of_hours_text),
             urgent_handoff_notice=urgent_handoff_notice(
-                now, *hours, cfg.emergency_contact_text, cfg.out_of_hours_text
+                now, hours, cfg.emergency_contact_text, cfg.out_of_hours_text
             ),
             payment_how_to=cfg.payment_code_how_to,
             autogestion_url=cfg.autogestion_url,
-            office_hours_text=describe_office_hours(*hours),
+            office_hours_text=describe_office_hours(hours),
             emergency_contact=cfg.emergency_contact_text,
             first_message=first_message,
             greeting=greeting,
@@ -227,8 +226,7 @@ class Agent:
             who=who,
             pending=describe_pending(request) if request is not None else "",
             now=now,
-            office_hours=is_office_hours(now, *hours),
-            hours_text=describe_office_hours(*hours),
+            hours=hours,
             first_message=first_message,
             welcome_message=cfg.welcome_message,
         )

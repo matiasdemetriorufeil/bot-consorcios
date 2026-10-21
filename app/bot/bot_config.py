@@ -1,5 +1,6 @@
 """Bot texts and office hours in effect: the admin panel's value (bot_settings) when not
-empty, otherwise the .env setting of the same name (or its default).
+empty, otherwise the .env setting of the same name (or its default). The office hours count
+only on business days (app.business_hours: national holidays and the panel's closed days).
 
 The panel row is cached for CACHE_SECONDS, so a change reaches the bot within a minute
 without restarting (right away in the process that saved it: see invalidate_bot_config).
@@ -16,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.business_hours import OpeningHours, load_calendar
 from app.config import Settings
 from app.db.models import BotSettings
 
@@ -40,10 +42,7 @@ class BotConfig:
     autogestion_url: str
     emergency_contact_text: str
     payment_code_how_to: str
-
-    @property
-    def hours(self) -> tuple[str, str, list[int]]:
-        return self.office_hours_start, self.office_hours_end, self.office_weekdays
+    hours: OpeningHours  # the office hours above, on business days
 
 
 def parse_hour(value: str) -> str | None:
@@ -108,4 +107,11 @@ def load_bot_config(session: Session, settings: Settings) -> BotConfig:
         values[name] = parse_hour(_text(panel.get(name))) or getattr(settings, name)
     weekdays = parse_weekdays(_text(panel.get("office_weekdays")))
     values["office_weekdays"] = weekdays or list(settings.office_weekdays)
+    values["hours"] = OpeningHours(
+        weekdays=frozenset(values["office_weekdays"]),
+        start=dtime.fromisoformat(values["office_hours_start"]),
+        end=dtime.fromisoformat(values["office_hours_end"]),
+        calendar=load_calendar(session),
+        timezone=settings.timezone,
+    )
     return BotConfig(**values)
