@@ -72,7 +72,9 @@
         <thead>
           <tr>
             {% if result.tab == 'review' %}<th class="w-1"><span class="visually-hidden">Elegir</span></th>{% endif %}
-            <th>Teléfono</th><th>Persona</th><th>Unidades</th><th>Origen</th><th>Estado</th><th>Fecha</th><th><span class="visually-hidden">Acciones</span></th>
+            {#- «A revisar» adds «Por qué»: there Origen and Fecha wait under 1280 px. -#}
+            {% set secondary = ' class="col-secondary"' | safe if result.tab == 'review' else '' %}
+            <th>Teléfono</th><th>Persona</th><th>Unidades</th>{% if result.tab == 'review' %}<th>Por qué</th>{% endif %}<th{{ secondary }}>Origen</th><th>Estado</th><th{{ secondary }}>Fecha</th><th><span class="visually-hidden">Acciones</span></th>
           </tr>
         </thead>
         <tbody>

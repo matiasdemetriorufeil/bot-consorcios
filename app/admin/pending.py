@@ -113,7 +113,8 @@ def counts(session: Session) -> dict[str, int]:
         "waiting_urgent": _count(session, WaConversation, WAITING_URGENT),
         "claims": _count(session, Claim, NEEDS_SOMEONE),
         "claims_urgent": _count(session, Claim, URGENT_OPEN_CLAIM),
-        "phones": _count(session, Phone, Phone.needs_review.is_(True)),
+        # «A revisar» of Teléfonos (app.admin.phones.REVIEW).
+        "phones": _count(session, Phone, Phone.needs_review.is_(True) | Phone.conflict.is_(True)),
         "verifications": _count(
             session,
             VerificationRequest,

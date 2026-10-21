@@ -515,6 +515,7 @@ def _link_phone(session: Session, e164: str, person_id: int, source: DataSource)
     # Written from WhatsApp and proven: neither in conflict nor with a guessed area code.
     row.needs_review = False
     row.conflict = False
+    row.conflict_person_id = None
     session.flush()
     session.expire(row, ["person"])
     return previous

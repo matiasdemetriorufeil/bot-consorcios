@@ -324,7 +324,12 @@ def seed(s: Session, empty: bool) -> None:
         p = Person(full_name=f"Persona Ejemplo {n}")
         s.add(p)
         s.flush()
-        s.add(Phone(person_id=p.id, e164=phone, source=DataSource.CONSORPLUS, needs_review=True))
+        s.add(
+            Phone(
+                person_id=p.id, e164=phone, raw=phone[-7:], source=DataSource.CONSORPLUS,
+                needs_review=True,
+            )
+        )  # fmt: skip
     s.add(
         VerificationRequest(
             phone_e164="+5493515550141",
@@ -479,9 +484,14 @@ def neighbors(s: Session, torre: Building, ana: Person) -> None:
     bruno = person("Bruno Ejemplo", ("+5493515550201", manual, {"verified": True}))
     carla = person("Carla Ejemplo", ("+5493515550202", bot, {"verified": True}))
     rita = person("Rita Ejemplo")
-    dario = person("Dario Ejemplo", ("+5493515550203", cp, {"needs_review": True}))
+    dario = person(
+        "Dario Ejemplo", ("+5493515550203", cp, {"needs_review": True, "raw": "155550203"})
+    )
+    # In conflict: ConsorPlus also lists it for Dario («También figura en …» in Teléfonos).
     elsa = person(
-        "Elsa Ejemplo", ("+5493515550204", cp, {"conflict": True}), ("+5493515550205", cp, {})
+        "Elsa Ejemplo",
+        ("+5493515550204", cp, {"conflict": True, "conflict_person_id": dario.id}),
+        ("+5493515550205", cp, {}),
     )
     link("2B", bruno, PersonRole.OWNER, manual)
     link("2B", carla, PersonRole.TENANT, bot)

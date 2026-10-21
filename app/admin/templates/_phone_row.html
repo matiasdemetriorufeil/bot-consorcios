@@ -1,16 +1,35 @@
 {#- One row of «Teléfonos» (the page, and redrawn after an action without reloading:
-    app.admin.phones). result.tab and back come from the page. -#}
+    app.admin.phones). result.tab and back come from the page. In «A revisar»: «Por qué»
+    (row.reason: app.admin.phones.review_reason), with the people in Vecinos; a phone in
+    conflict has no box nor «Aprobar» (it is left in the right person, not approved). -#}
+{% macro vecinos(person) -%}
+{%- if person.building_id -%}
+<a href="{{ url_for('admin:view-neighbors') }}?{{ {'building_id': person.building_id, 'mark': person.person_id} | urlencode }}">{{ person.name }}</a>
+{%- else -%}{{ person.name }}{%- endif -%}
+{%- endmacro %}
+{% set review_tab = result.tab == 'review' %}
 <tr data-phone="{{ row.id }}">
-  {% if result.tab == 'review' %}
-  <td class="row-check" data-label="Elegir"><input class="form-check-input" type="checkbox" name="pk" value="{{ row.id }}" form="approve-selected" aria-label="Elegir {{ row.number }}"></td>
+  {% if review_tab %}
+  <td class="row-check" data-label="Elegir">{% if row.status == 'review' %}<input class="form-check-input" type="checkbox" name="pk" value="{{ row.id }}" form="approve-selected" aria-label="Elegir {{ row.number }}">{% endif %}</td>
   {% endif %}
   <td data-label="Teléfono" class="text-nowrap">{{ row.number }}</td>
   <td data-label="Persona">{% if row.building_id %}<a href="{{ url_for('admin:view-neighbors') }}?{{ {'building_id': row.building_id, 'mark': row.person_id} | urlencode }}">{{ row.person }}</a>{% else %}{{ row.person }}{% endif %}</td>
   {#- «propietario/a»: it may break after the slash (a narrow column at 1024 px). -#}
   <td data-label="Unidades">{{ row.units | e | replace('/', '/<wbr>' | safe) if row.units else '—' }}</td>
-  <td data-label="Origen">{{ row.source }}</td>
+  {% if review_tab and row.reason %}
+  {#- One block inside the cell: on phones the cell is a flex row (its label, then this). -#}
+  <td data-label="Por qué" class="phone-reason"><span class="phone-reason-body">
+    {%- if row.reason.other -%}
+    También figura en {{ vecinos(row.reason.other) }} ({{ row.reason.other_units }}): {{ row.reason.text }}
+    {%- else -%}{{ row.reason.text }}{%- endif -%}
+    {% if row.reason.people %}
+    <span class="phone-reason-links">En Vecinos: {% for person in row.reason.people %}{{ vecinos(person) }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+    {% endif %}
+  </span></td>
+  {% endif %}
+  <td data-label="Origen"{% if review_tab %} class="col-secondary"{% endif %}>{{ row.source }}</td>
   <td data-label="Estado" class="phone-state"><span class="state state-{{ row.status | state('phone') }}">{{ row.status_label }}</span></td>
-  <td data-label="Fecha" class="text-nowrap">{{ row.date }}</td>
+  <td data-label="Fecha" class="text-nowrap{% if review_tab %} col-secondary{% endif %}">{{ row.date }}</td>
   <td class="row-actions">
     {% if row.status == 'review' %}
     <form method="POST" action="{{ url_for('admin:view-phone-approve', phone_id=row.id) }}" data-fetch>

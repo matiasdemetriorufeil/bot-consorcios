@@ -41,7 +41,7 @@ PAGE_HELP: dict[str, str] = {
     ),
     "view-phones": (
         "Números de los propietarios e inquilinos. En «A revisar» están los que hay que "
-        "confirmar antes de que el bot los reconozca."
+        "confirmar: «Por qué» dice qué pasa con cada uno y qué hacer."
     ),
     "view-verifications": (
         "Personas que se registraron por WhatsApp (propietarios sin email, inquilinos y "
@@ -332,7 +332,7 @@ PENDING_CARDS: dict[str, dict[str, str]] = {
     },
     "phones": {
         "title": "Teléfonos a revisar",
-        "text": "Números que hay que confirmar antes de que el bot los reconozca.",
+        "text": "Números que hay que confirmar o dejar en la persona correcta.",
         "button": "Revisar teléfonos",
     },
     "verifications": {

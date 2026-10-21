@@ -221,14 +221,20 @@ aparecer en Pendientes.
 
 ## Teléfonos
 
-Algunos números vienen de ConsorPlus incompletos y el sistema tuvo que adivinar una parte. Hasta
-que alguien los confirme, el bot no los usa.
+En **A revisar** están los números que hay que mirar. La columna **Por qué** dice qué pasa con
+cada uno y qué hacer:
+
+- **«Le agregamos el 351: confirmá que es un celular»**: vino de ConsorPlus sin la
+  característica y el sistema le puso la de Córdoba.
+- **«También figura en ‹persona› (‹unidad›)»**: ConsorPlus tiene el mismo número en dos
+  personas. Mientras tanto el bot no lo reconoce. Abrí las dos en Vecinos con los links y
+  dejalo en la persona correcta.
 
 1. Entrá a **Teléfonos**. Se abre en **A revisar** si hay alguno.
 2. Fijate que el número y la persona coincidan con lo que sabés (por ejemplo, con la ficha de
    ConsorPlus).
 3. Si está bien, tocá **Aprobar**. Si hay varios correctos, marcalos y tocá **Aprobar
-   seleccionados**.
+   seleccionados**. Los que figuran en dos personas no se aprueban: se resuelven en Vecinos.
 4. Si el número no es de esa persona, tocá **Desvincular**. El panel te va a pedir que lo
    confirmes y te explica qué pasa.
 

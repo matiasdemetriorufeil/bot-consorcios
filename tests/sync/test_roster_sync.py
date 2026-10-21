@@ -205,6 +205,9 @@ def test_phone_of_another_person_is_flagged_not_moved(db_session) -> None:
     assert count(db_session, Phone) == 1
     assert report.conflicts == 1
     assert count(db_session, Person) == 2
+    # Who else ConsorPlus lists it for: «También figura en …» in Teléfonos.
+    juan = db_session.scalar(select(Person).where(Person.id != other.id))
+    assert juan is not None and existing.conflict_person_id == juan.id
 
 
 def test_assumed_area_code_is_flagged_and_invalid_phones_are_counted(db_session) -> None:

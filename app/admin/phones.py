@@ -1,7 +1,9 @@
 """Panel page "Teléfonos": every phone, in two tabs, for operators and admins.
 
-- GET  /admin/phones                    "A revisar" (area code assumed on import, needs_review;
-                                        the default tab while there is any) and "Todos"
+- GET  /admin/phones                    "A revisar" (area code assumed on import, needs_review,
+                                        or listed for two people, conflict: REVIEW; the default
+                                        tab while there is any, each with «Por qué»: why and
+                                        what to do) and "Todos"
 - POST /admin/phones/{id}/approve       one phone to review is verified
 - POST /admin/phones/approve            the selected ones ("Aprobar seleccionados")
 - POST /admin/phones/{id}/unlink        "Desvincular": the phone is deleted (the person stays;
@@ -35,6 +37,7 @@ from app.admin.fetch import fetch_reply, wants_fetch
 from app.admin.views import _in_thread
 from app.config import Settings
 from app.db.models import DataSource, Person, Phone, Unit, UnitPerson
+from app.sync.normalize import normalize_phone
 
 PAGE_SIZE = 50
 TABS = {"review": "A revisar", "all": "Todos"}
@@ -42,6 +45,8 @@ SOURCE_LABELS = labels.PHONE_SOURCE
 STATUS_LABELS = labels.PHONE_STATUS  # by priority: see phone_status
 # The query string the actions go back to: only these keys (never a URL).
 LIST_PARAMS = ("tab", "q", "status", "source", "page")
+# «A revisar»: the area code was assumed, or ConsorPlus lists the number for two people.
+REVIEW = Phone.needs_review.is_(True) | Phone.conflict.is_(True)
 
 
 def phone_status(phone: Phone) -> str:
@@ -74,6 +79,70 @@ def person_units(phone: Phone) -> str:
     )
 
 
+@dataclass(frozen=True)
+class PersonLink:
+    """A person as «Por qué» links them: to their building in Vecinos, marked."""
+
+    name: str
+    building_id: int | None
+    person_id: int
+
+
+@dataclass(frozen=True)
+class ReviewReason:
+    """Why a phone is «A revisar» and what to do, deduced from what is stored (the reason
+    itself is not): conflict first (it does not identify anyone), then the assumed area code
+    (the same rule that flagged it on import: app.sync.normalize), then who loaded it.
+
+    kind: "conflict" | "area_code" | "bot" | "other". other: the conflict's other person
+    (None until the roster sync records it). people: the links to Vecinos."""
+
+    kind: str
+    text: str
+    other: PersonLink | None = None
+    other_units: str = ""
+    people: tuple[PersonLink, ...] = ()
+
+
+def _person_link(person: Person) -> PersonLink:
+    return PersonLink(person.full_name, _first_building(person), person.id)
+
+
+def _first_unit(person: Person) -> str:
+    """ "TORRE · 3B", "+N" more when there are."""
+    links = sorted(person.units, key=lambda link: (link.unit.building.name, link.unit.label))
+    if not links:
+        return "sin unidad"
+    first = f"{formatting.building(links[0].unit.building.name)} · {links[0].unit.label}"
+    return first if len(links) == 1 else f"{first} y {len(links) - 1} más"
+
+
+def review_reason(phone: Phone) -> ReviewReason:
+    this = _person_link(phone.person)
+    if phone.conflict:
+        other = phone.conflict_person
+        if other is not None and other.id != phone.person_id:
+            return ReviewReason(
+                "conflict",
+                "dejalo en la persona correcta.",
+                other=_person_link(other),
+                other_units=_first_unit(other),
+                people=(this, _person_link(other)),
+            )
+        return ReviewReason(
+            "conflict",
+            "En ConsorPlus figura también en otra persona: dejalo en la persona correcta. "
+            "Con quién, se sabe después de la próxima lectura de ConsorPlus.",
+            people=(this,),
+        )
+    normalized = normalize_phone(phone.raw or "")
+    if normalized is not None and normalized.needs_review:
+        return ReviewReason("area_code", "Le agregamos el 351: confirmá que es un celular.")
+    if phone.source == DataSource.BOT_VERIFIED:
+        return ReviewReason("bot", "Lo asoció el bot: confirmá que es de esta persona.")
+    return ReviewReason("other", "Confirmá que el número es de esta persona.")
+
+
 def _first_building(person: Person) -> int | None:
     links = sorted(person.units, key=lambda link: (link.unit.building.name, link.unit.label))
     return links[0].unit.building_id if links else None
@@ -102,6 +171,7 @@ class PhoneRow:
     date: str
     person_id: int = 0
     building_id: int | None = None  # of the person's first unit: the link to Vecinos
+    reason: ReviewReason | None = None  # «Por qué», in «A revisar»
 
 
 @dataclass(frozen=True)
@@ -127,16 +197,14 @@ def list_phones(
     source: str = "",
     page: int = 1,
 ) -> PhoneList:
-    review_count = (
-        session.scalar(select(func.count()).select_from(Phone).where(Phone.needs_review)) or 0
-    )
+    review_count = session.scalar(select(func.count()).select_from(Phone).where(REVIEW)) or 0
     if tab not in TABS:
         tab = "review" if review_count else "all"
     status = status if status in STATUS_LABELS else ""
     source = source if source in {s.value for s in DataSource} else ""
 
     stmt: Select = select(Phone).join(Phone.person)
-    stmt = stmt.where(Phone.needs_review.is_(True) if tab == "review" else true())
+    stmt = stmt.where(REVIEW if tab == "review" else true())
     if query.strip():
         stmt = stmt.where(search_condition(query))
     stmt = stmt.where(_status_condition(status) if status else true())
@@ -151,7 +219,11 @@ def list_phones(
             selectinload(Phone.person)
             .selectinload(Person.units)
             .selectinload(UnitPerson.unit)
-            .selectinload(Unit.building)
+            .selectinload(Unit.building),
+            selectinload(Phone.conflict_person)
+            .selectinload(Person.units)
+            .selectinload(UnitPerson.unit)
+            .selectinload(Unit.building),
         )
         .order_by(*order)
         .offset((page - 1) * PAGE_SIZE)
@@ -169,6 +241,7 @@ def list_phones(
             date=formatting.when(p.created_at, timezone=timezone),
             person_id=p.person_id,
             building_id=_first_building(p.person),
+            reason=review_reason(p) if tab == "review" else None,
         )
         for p in phones
     ]
@@ -179,9 +252,10 @@ def list_phones(
 
 
 def approve_phone(session: Session, phone_id: int, user: str) -> bool:
-    """Only a phone still to review (False otherwise)."""
+    """Only a phone still to review (False otherwise). Never one in conflict: it is left in the
+    right person (Vecinos), not approved."""
     phone = session.get(Phone, phone_id, with_for_update=True)
-    if phone is None or not phone.needs_review:
+    if phone is None or not phone.needs_review or phone.conflict:
         return False
     phone.verified = True
     phone.needs_review = False

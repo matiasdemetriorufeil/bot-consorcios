@@ -162,7 +162,7 @@ class Person(Base):
         back_populates="person", cascade="all, delete-orphan"
     )
     phones: Mapped[list["Phone"]] = relationship(
-        back_populates="person", cascade="all, delete-orphan"
+        back_populates="person", cascade="all, delete-orphan", foreign_keys="Phone.person_id"
     )
 
 
@@ -198,9 +198,15 @@ class Phone(Base):
     needs_review: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     # ConsorPlus lists the number for another person too: it does not identify anyone.
     conflict: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # That other person, as the roster sync last saw it (NULL: a conflict flagged before it was
+    # kept, until the next sync; or the person no longer exists).
+    conflict_person_id: Mapped[int | None] = mapped_column(
+        ForeignKey("people.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
-    person: Mapped[Person] = relationship(back_populates="phones")
+    person: Mapped[Person] = relationship(back_populates="phones", foreign_keys=[person_id])
+    conflict_person: Mapped[Person | None] = relationship(foreign_keys=[conflict_person_id])
 
 
 class SuppressionKind(StrEnum):

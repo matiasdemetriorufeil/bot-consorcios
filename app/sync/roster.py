@@ -340,6 +340,7 @@ def _sync_phones(
                 continue
             # phones.e164 is unique: the number is already someone else's. Flag, do not move.
             existing.conflict = True
+            existing.conflict_person_id = person.id  # «También figura en …» (Teléfonos)
             report.conflicts += 1
     session.flush()
 

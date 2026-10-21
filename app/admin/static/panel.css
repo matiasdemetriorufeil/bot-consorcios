@@ -646,6 +646,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   /* With the person's units in «A revisar» the eight columns need a narrower margin to fit. */
   #phones > :not(caption) > * > * { padding-left: var(--sp-2); padding-right: var(--sp-2); }
   #phones > :not(caption) > * > :first-child { padding-left: var(--sp-4); } }
+/* Teléfonos' «Por qué» (A revisar): what to do, and the people in Vecinos under it. */
+@media (min-width: 768px) { .phone-reason { min-width: 11rem; max-width: 16rem; } }
+.phone-reason-body { display: block; min-width: 0; }
+/* Links inside a sentence: underlined, not told only by their color (axe: link-in-text-block). */
+.phone-reason a { text-decoration: underline; }
+.phone-reason-links { display: block; margin-top: var(--sp-1); font-size: var(--fs-small); color: var(--c-text-2); }
 /* Verificaciones at 1024 px: since «Rol declarado» its seven columns need the same narrower
    margin as Teléfonos (and «Estado» waits: .col-secondary). */
 @media (min-width: 768px) and (max-width: 1279.98px) {

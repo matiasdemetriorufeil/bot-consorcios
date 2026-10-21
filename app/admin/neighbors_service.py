@@ -639,6 +639,7 @@ def move_phone(
     phone.verified = True
     phone.needs_review = False
     phone.conflict = False
+    phone.conflict_person_id = None
     session.flush()
     approved = _approve_pending(session, user, phone.e164, target.id)
     warning = provider_warning(session, phone.e164)

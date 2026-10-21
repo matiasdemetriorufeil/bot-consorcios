@@ -20,6 +20,8 @@ VERIFIED = "+5493515550404"
 REVIEW_2 = "+5493515550405"
 ALL = (PLAIN, REVIEW, CONFLICT, VERIFIED, REVIEW_2)
 COLUMNS = ["Teléfono", "Persona", "Unidades", "Origen", "Estado", "Fecha"]
+# «A revisar» adds why and what to do.
+REVIEW_COLUMNS = ["Teléfono", "Persona", "Unidades", "Por qué", "Origen", "Estado", "Fecha"]
 
 
 @pytest.fixture
@@ -68,8 +70,9 @@ def _phone(panel: Panel, pk: int) -> Phone | None:
 
 def test_opens_on_review_with_its_count(logged_in: Panel, phones: dict[str, int]) -> None:
     page = _page(logged_in)
-    assert _shown(page) == {REVIEW, REVIEW_2}
-    assert re.search(r"A revisar\s*<span[^>]*>2</span>", page)
+    # The assumed area codes and the one in conflict.
+    assert _shown(page) == {REVIEW, REVIEW_2, CONFLICT}
+    assert re.search(r"A revisar\s*<span[^>]*>3</span>", page)
     assert "Aprobar seleccionados" in page
 
 
@@ -97,12 +100,12 @@ def test_all_tab_shows_every_phone_with_person_units_and_status(
     assert "Aprobar seleccionados" not in page
 
 
-@pytest.mark.parametrize("tab", ["review", "all"])
-def test_same_columns_in_both_tabs_and_no_id(
-    logged_in: Panel, phones: dict[str, int], tab: str
+@pytest.mark.parametrize(("tab", "columns"), [("review", REVIEW_COLUMNS), ("all", COLUMNS)])
+def test_the_columns_of_each_tab_and_no_id(
+    logged_in: Panel, phones: dict[str, int], tab: str, columns: list[str]
 ) -> None:
     page = _page(logged_in, tab=tab)
-    assert _headers(page) == COLUMNS
+    assert _headers(page) == columns
     assert ">ID<" not in page and ">id<" not in page
 
 
