@@ -3,12 +3,15 @@
 ## Actualización: feriados y días cerrados (2026-10-21)
 
 - **Días cerrados** (Administración → Bot, debajo de «Configuración del bot»; solo admin,
-  `/admin/closed-day/list`): fecha, «Qué pasa ese día» (*El estudio cierra* / *Feriado: el
-  estudio abre igual*), motivo (solo lo ve el estudio) y el nombre del feriado nacional si lo
-  es. Solo alta y baja, auditadas (`closed_day_created` / `closed_day_deleted`, con la fecha y
-  el tipo, nunca el motivo). Valida en el servidor: «abre igual» solo sobre un feriado
-  nacional; «cierra» no hace falta sobre un feriado; motivo obligatorio para un cierre; un día
-  una sola vez. El formulario muestra los próximos feriados nacionales.
+  `/admin/closed-day/list`). Arriba, la línea «Estos días el estudio no atiende…». Primera
+  tarjeta: «Feriados nacionales <año>» con selector del año en curso y el siguiente (`?year=`),
+  cada feriado con fecha («lunes 23/11»), nombre y estado (`.state`: *Cerrado* gris / *Abre
+  igual* verde) y el botón «Abre igual» / «Quitar abre igual» con confirmación corta; los que
+  ya pasaron, plegados en «Ya pasaron (N)», en gris y sin botones. Segunda tarjeta: «Días
+  cerrados cargados a mano» (fecha, motivo, «Quitar»), con «Agregar día cerrado» arriba (fecha y
+  motivo). Los botones van a `/admin/closed-day/open-anyway` y `/remove`, que usan el mismo
+  alta y baja de SQLAdmin: mismas validaciones y auditoría (`closed_day_created` /
+  `closed_day_deleted`, con la fecha y el tipo, nunca el motivo).
 - **Feriados nacionales** de Argentina: librería `holidays` (país AR), calculados por año, sin
   red. Cuentan solos; no hace falta cargarlos.
 - **Un solo calendario** (`app/business_hours.py`) para el bot y los reclamos: el aviso de

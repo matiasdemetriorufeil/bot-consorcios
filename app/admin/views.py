@@ -3,20 +3,23 @@
 Views with AdminOnly first are only for admins (operators get 403 and do not see them)."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from functools import partial
 from typing import Any, ClassVar
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import anyio
 from markupsafe import Markup
 from sqladmin import BaseView, ModelView, expose
+from sqladmin.flash import Flash
 from sqladmin.formatters import BASE_FORMATTERS
 from sqlalchemy import select
 from sqlalchemy.orm import object_session
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from wtforms import ValidationError
 
 from app.admin import formatting, labels
@@ -25,7 +28,12 @@ from app.admin.auth import AdminOnly, admin_user
 from app.admin.filters import RelatedFilter, ValuesFilter, YesNoFilter
 from app.admin.metrics import compute_claim_metrics, compute_metrics
 from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
-from app.business_hours import invalidate_calendar, national_holiday, next_holidays
+from app.business_hours import (
+    WEEKDAYS,
+    invalidate_calendar,
+    national_holiday,
+    national_holidays,
+)
 from app.config import Settings
 from app.db.models import (
     BotSettings,
@@ -453,25 +461,59 @@ class ClosedDayProblem(ValueError):
     """A closed day that cannot be saved; SQLAdmin shows the text over the form (400)."""
 
 
+BAD_DAY = "No se entendió la fecha. Probá de nuevo desde la tabla."
+
+
 def _holiday_formatter(model: ClosedDay, attribute: Any) -> str:
     return national_holiday(model.day) or "—"
 
 
+@dataclass(frozen=True)
+class HolidayRow:
+    """A national holiday as «Días cerrados» lists it: «lunes 24/11», its name and whether the
+    studio opens anyway (the id of that row, to remove it)."""
+
+    day: date
+    label: str
+    name: str
+    open_anyway_id: int | None
+
+
+@dataclass(frozen=True)
+class HolidayTable:
+    year: int
+    years: list[int]
+    upcoming: list[HolidayRow]
+    past: list[HolidayRow]
+
+
 class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
-    """The days that change the business days of the bot and the claims (app.business_hours):
-    closed by hand, or national holidays the studio opens anyway. Only added and removed."""
+    """The days that change the business days of the bot and the claims (app.business_hours).
+    Its page (closed_day_list.html): the national holidays of this year or the next one, each
+    with «Abre igual» / «Quitar abre igual», and under them the days closed by hand. Only added
+    and removed; the buttons go through the same insert_model / delete_model as SQLAdmin's
+    forms, so the checks (on_model_change) and the audit are the same."""
 
     menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
     name = "Día cerrado"
     name_plural = "Días cerrados"
     icon = "fa-solid fa-calendar-xmark"
     audit_name = "closed_day"
+    list_template = "closed_day_list.html"
+    timezone = "America/Argentina/Cordoba"
+    clock: Callable[[], datetime] = staticmethod(lambda: datetime.now(UTC))
     can_edit = False
-    column_list = [ClosedDay.day, ClosedDay.kind, ClosedDay.reason, "national_holiday"]
-    column_details_list = [*column_list, ClosedDay.created_at]
+    column_list = [ClosedDay.day, ClosedDay.reason]
+    column_details_list = [
+        ClosedDay.day,
+        ClosedDay.kind,
+        ClosedDay.reason,
+        "national_holiday",
+        ClosedDay.created_at,
+    ]
     column_sortable_list = [ClosedDay.day]
-    column_default_sort = [(ClosedDay.day, True)]
-    form_columns = [ClosedDay.day, ClosedDay.kind, ClosedDay.reason]
+    column_default_sort = [(ClosedDay.day, False)]
+    form_columns = [ClosedDay.day, ClosedDay.reason]
     column_labels = {
         ClosedDay.day: "Fecha",
         ClosedDay.kind: "Qué pasa ese día",
@@ -485,10 +527,9 @@ class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
     }
     column_formatters_detail = column_formatters
     form_args = {
-        "kind": {
-            "description": "«El estudio cierra»: ese día no es hábil (el bot no promete "
-            "respuesta y los reclamos que no son urgentes esperan). «Abre igual»: un feriado "
-            "nacional que el estudio trabaja."
+        "day": {
+            "description": "Un día que el estudio no atiende. Los feriados nacionales ya cuentan "
+            "solos: no hace falta cargarlos."
         },
         "reason": {"description": "Por ejemplo «cierre del estudio». Solo lo ve el estudio."},
     }
@@ -497,16 +538,79 @@ class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
     def search_placeholder(self) -> str:
         return "motivo"
 
-    async def scaffold_form(self, rules: Any = None) -> Any:
-        form = await super().scaffold_form(rules)
-        form.kind.kwargs["choices"] = [(k.value, labels.CLOSED_DAY_KIND[k]) for k in ClosedDayKind]
-        form.kind.kwargs["coerce"] = lambda v: v.value if isinstance(v, StrEnum) else str(v)
-        upcoming = ", ".join(f"{day:%d/%m/%Y} ({name})" for day, name in next_holidays(4))
-        form.day.kwargs["description"] = (
-            "Los feriados nacionales ya cuentan solos: cargá uno acá solo si el estudio abre "
-            f"igual. Próximos: {upcoming}."
+    def list_query(self, request: Request) -> Any:
+        # The holidays the studio opens anyway are in the table of holidays, not here.
+        return super().list_query(request).where(ClosedDay.kind == ClosedDayKind.CLOSED)
+
+    async def list(self, request: Request) -> Any:
+        pagination = await super().list(request)
+        request.state.holidays = await _in_thread(self.holiday_table, request)
+        return pagination
+
+    def holiday_table(self, request: Request) -> HolidayTable:
+        today = self.clock().astimezone(ZoneInfo(self.timezone)).date()
+        years = [today.year, today.year + 1]
+        asked = request.query_params.get("year", "")
+        year = int(asked) if asked.isdigit() and int(asked) in years else today.year
+        with self.session_maker() as session:
+            found = session.execute(
+                select(ClosedDay.day, ClosedDay.id).where(
+                    ClosedDay.kind == ClosedDayKind.OPEN_ANYWAY,
+                    ClosedDay.day.between(date(year, 1, 1), date(year, 12, 31)),
+                )
+            )
+            open_anyway = {day: pk for day, pk in found}
+        rows = [
+            HolidayRow(day, f"{WEEKDAYS[day.weekday()]} {day:%d/%m}", name, open_anyway.get(day))
+            for day, name in national_holidays(year)
+        ]
+        return HolidayTable(
+            year=year,
+            years=years,
+            upcoming=[r for r in rows if r.day >= today],
+            past=[r for r in rows if r.day < today],
         )
-        return form
+
+    def _back(self, request: Request, year: str) -> RedirectResponse:
+        url = str(request.url_for("admin:list", identity=self.identity))
+        return RedirectResponse(f"{url}?year={year}" if year.isdigit() else url, 303)
+
+    @expose("/open-anyway", methods=["POST"])
+    async def open_anyway(self, request: Request) -> Response:
+        """«Abre igual» on a national holiday: the same insert as the form (checked, audited)."""
+        form = await request.form()
+        year = str(form.get("year") or "")
+        try:
+            day = date.fromisoformat(str(form.get("day") or ""))
+            data = {"day": day, "kind": ClosedDayKind.OPEN_ANYWAY.value, "reason": ""}
+            await self.insert_model(request, data)
+        except ClosedDayProblem as exc:
+            Flash.error(request, str(exc))
+        except ValueError:  # not a date
+            Flash.error(request, BAD_DAY)
+        else:
+            Flash.success(request, f"Listo: el {day:%d/%m/%Y} el estudio abre igual.")
+        return self._back(request, year)
+
+    @expose("/remove", methods=["POST"])
+    async def remove(self, request: Request) -> Response:
+        """«Quitar» / «Quitar abre igual»: the same delete as SQLAdmin's (audited)."""
+        form = await request.form()
+        year, pk = str(form.get("year") or ""), str(form.get("id") or "")
+        if not (pk.isdigit() and await _in_thread(self._exists, int(pk))):
+            Flash.error(request, "Ese día ya no estaba cargado.")
+            return self._back(request, year)
+        await self.delete_model(request, pk)
+        Flash.success(request, "Listo: se quitó.")
+        return self._back(request, year)
+
+    def day_label(self, day: date) -> str:
+        """ "jueves 24/12/2026"."""
+        return f"{WEEKDAYS[day.weekday()]} {day:%d/%m/%Y}"
+
+    def _exists(self, pk: int) -> bool:
+        with self.session_maker() as session:
+            return session.get(ClosedDay, pk) is not None
 
     def audit_ids(self, model: ClosedDay) -> dict[str, Any]:
         return {"closed_day_id": model.id, "day": model.day.isoformat(), "kind": str(model.kind)}
@@ -515,6 +619,7 @@ class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
         self, data: dict, model: Any, is_created: bool, request: Request
     ) -> None:
         day, kind = data.get("day"), ClosedDayKind(data.get("kind") or ClosedDayKind.CLOSED)
+        data["kind"] = kind.value
         data["reason"] = reason = (data.get("reason") or "").strip()
         holiday = national_holiday(day) if isinstance(day, date) else None
         if kind == ClosedDayKind.OPEN_ANYWAY and holiday is None:
@@ -530,7 +635,7 @@ class ClosedDayAdmin(AdminOnly, AuditedView, model=ClosedDay):
                 raise ClosedDayProblem("Escribí el motivo, por ejemplo «cierre del estudio».")
             data["reason"] = holiday
         if await _in_thread(self._taken, day):
-            raise ClosedDayProblem("Ese día ya está cargado: borralo primero para cambiarlo.")
+            raise ClosedDayProblem("Ese día ya está cargado: quitalo primero para cambiarlo.")
 
     def _taken(self, day: Any) -> bool:
         # Before SQLAdmin adds the new row to a session: its own one.

@@ -12,7 +12,7 @@ WhatsApp client is a fake one: nothing leaves the machine.
 import argparse
 import os
 import sys
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -54,6 +54,8 @@ from app.db.models import (  # noqa: E402
     ClaimScope,
     ClaimSource,
     ClaimStatus,
+    ClosedDay,
+    ClosedDayKind,
     DataSource,
     PanelRole,
     PanelUser,
@@ -278,6 +280,13 @@ def seed(s: Session, empty: bool) -> None:
                 title="Código de pago",
                 content="Podés pagar con el código que figura en tu boleta.",
                 sort_order=2,
+            ),
+            # «Días cerrados»: one closed by hand and a holiday the studio opens anyway.
+            ClosedDay(day=date(2026, 12, 24), reason="Cierre del estudio"),
+            ClosedDay(
+                day=date(2026, 11, 23),
+                kind=ClosedDayKind.OPEN_ANYWAY,
+                reason="Día de la Soberanía Nacional",
             ),
         ]
     )

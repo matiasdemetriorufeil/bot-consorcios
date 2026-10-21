@@ -104,6 +104,7 @@ def pages() -> list[tuple[str, str, str]]:
     elsa = one(select(Person.id).where(Person.full_name == "Elsa Ejemplo"))
     elsa_unit = one(select(UnitPerson.unit_id).where(UnitPerson.person_id == elsa))
     edit_query = f"unit_id={elsa_unit}&role=owner"
+    next_year = date.today().year + 1
     return [
         ("01-pendientes", "/admin/pending", "op"),
         ("02-conversaciones", "/admin/conversations", "op"),
@@ -138,6 +139,9 @@ def pages() -> list[tuple[str, str, str]]:
         ("31-tipo-de-problema-editar", f"/admin/claim-category/edit/{category}", "admin"),
         ("32-configuracion-reclamos", "/admin/claim-settings/list", "admin"),
         ("33-configuracion-bot", "/admin/bot-settings/list", "admin"),
+        ("33b-dias-cerrados", "/admin/closed-day/list", "admin"),
+        ("33c-dias-cerrados-otro-anio", f"/admin/closed-day/list?year={next_year}", "admin"),
+        ("33d-dia-cerrado-nuevo", "/admin/closed-day/create", "admin"),
         ("34-respuestas-rapidas", "/admin/quick-reply/list", "admin"),
         ("35-respuesta-rapida-editar", f"/admin/quick-reply/edit/{reply}", "admin"),
         ("36-plantillas", "/admin/wa-template/list", "admin"),

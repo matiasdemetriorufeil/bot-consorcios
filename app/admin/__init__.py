@@ -335,10 +335,13 @@ def setup_admin(
         "timezone": settings.timezone,
         "session_maker": session_maker,
     }
+    # «Días cerrados»: which year is the current one, and which holidays already passed.
+    closed_days: dict[str, object] = {"timezone": settings.timezone}
     if clock is not None:
         conversations["clock"] = staticmethod(clock)
         claims["clock"] = staticmethod(clock)
         pending_view["clock"] = staticmethod(clock)
+        closed_days["clock"] = staticmethod(clock)
     extra: dict[type, dict[str, object]] = {
         PendingView: pending_view,
         ConversationsView: conversations,
@@ -358,6 +361,7 @@ def setup_admin(
             "env_username": settings.admin_username,
         },
         BuildingClaimsView: {"session_maker": session_maker},
+        ClosedDayAdmin: closed_days,
         WaMediaView: {"media_dir": settings.whatsapp_media_dir, "session_maker": session_maker},
     }
     views: list[type] = list(VIEWS)

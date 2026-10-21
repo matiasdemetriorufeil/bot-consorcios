@@ -43,16 +43,9 @@ def national_holiday(day: date) -> str | None:
     return _national(day.year).get(day)
 
 
-def next_holidays(count: int, today: date | None = None) -> list[tuple[date, str]]:
-    """The next `count` national holidays from today (Córdoba) on."""
-    today = today or datetime.now(ZoneInfo(TIMEZONE)).date()
-    found = [
-        (day, name)
-        for year in (today.year, today.year + 1)
-        for day, name in sorted(_national(year).items())
-        if day >= today
-    ]
-    return found[:count]
+def national_holidays(year: int) -> list[tuple[date, str]]:
+    """Every national holiday of Argentina in that year, in order."""
+    return sorted(_national(year).items())
 
 
 @dataclass(frozen=True)

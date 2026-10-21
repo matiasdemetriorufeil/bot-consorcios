@@ -11,7 +11,7 @@ from app.business_hours import (
     Calendar,
     OpeningHours,
     national_holiday,
-    next_holidays,
+    national_holidays,
     when_text,
 )
 
@@ -86,8 +86,8 @@ def test_national_holidays_come_from_the_library_for_any_year() -> None:
     assert national_holiday(HOLIDAY) is not None
     assert national_holiday(date(2027, 7, 9)) is not None  # Independencia, another year
     assert national_holiday(FRIDAY) is None
-    upcoming = next_holidays(2, today=date(2026, 12, 20))
-    assert [day for day, _ in upcoming] == [date(2026, 12, 25), date(2027, 1, 1)]
+    days = [day for day, _ in national_holidays(2027)]
+    assert days[0] == date(2027, 1, 1) and date(2027, 12, 25) in days and days == sorted(days)
 
 
 def test_a_national_holiday_is_not_a_business_day() -> None:

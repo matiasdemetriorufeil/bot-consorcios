@@ -915,6 +915,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
   .claims-order { width: auto; }
 }
 
+/* --- Días cerrados (closed_day_list.html): the national holidays, then the days closed by hand --- */
+.closed-days-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.holidays-past > summary { cursor: pointer; list-style: none; color: var(--c-text-2); font-weight: var(--fw-bold); }
+.holidays-past > summary::-webkit-details-marker { display: none; }
+.holidays-past > summary::after { content: " ▾"; }
+.holidays-past[open] > summary::after { content: " ▴"; }
+.holidays-past[open] > summary { border-bottom: 1px solid var(--c-border); }
+.rows-table tr.holiday-past td { color: var(--c-text-2); }
+
 /* --- Reclamos (app.admin.claims) ------------------------------------------------------------------ */
 .claim-row-urgent td:first-child { box-shadow: inset 4px 0 0 var(--c-danger); }
 @media (max-width: 767.98px) {

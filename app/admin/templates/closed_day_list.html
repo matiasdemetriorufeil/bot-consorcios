@@ -1,0 +1,110 @@
+{#- «Días cerrados» (ClosedDayAdmin.list_template): SQLAdmin's list (sqladmin/list.html) as two
+    cards. First the national holidays of the chosen year (this one or the next: ?year=), each
+    with its state (.state: «Cerrado» / «Abre igual») and its button «Abre igual» / «Quitar abre
+    igual»; the ones already past folded under «Ya pasaron (N)», in grey and without buttons.
+    Then the days closed by hand (SQLAdmin's rows: only kind «closed»), each with «Quitar». The
+    buttons are forms with a short confirmation (_confirm_dialog.html) to the view's own routes,
+    which use SQLAdmin's same insert and delete (checked and audited). -#}
+{% extends "sqladmin/list.html" %}
+{% from "sqladmin/_macros.html" import empty_state %}
+{% block header_actions %}
+{% if model_view.can_create and model_view.check_can_create(request) %}
+<div class="col-auto">
+  <a href="{{ url_for('admin:create', identity=model_view.identity) }}" class="btn btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i>Agregar día cerrado</a>
+</div>
+{% endif %}
+{% endblock %}
+{% block content %}
+{% set table = request.state.holidays %}
+{% macro holiday_rows(rows, past=False) %}
+{% for row in rows %}
+<tr{% if past %} class="holiday-past"{% endif %}>
+  <td data-label="Fecha" class="text-nowrap">{{ row.label }}</td>
+  <td data-label="Feriado">{{ row.name }}</td>
+  <td data-label="Estado">
+    {% if row.open_anyway_id %}<span class="state state-ok"><i class="fa-solid fa-door-open" aria-hidden="true"></i>Abre igual</span>
+    {% else %}<span class="state state-info"><i class="fa-solid fa-door-closed" aria-hidden="true"></i>Cerrado</span>{% endif %}
+  </td>
+  {% if not past %}
+  <td class="row-actions text-end">
+    {% if row.open_anyway_id %}
+    <form method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
+      <input type="hidden" name="id" value="{{ row.open_anyway_id }}">
+      <input type="hidden" name="year" value="{{ table.year }}">
+      <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar abre igual</button>
+    </form>
+    {% else %}
+    <form method="POST" action="{{ url_for('admin:view-closed-day-open_anyway') }}" {{ confirm_attrs('open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
+      <input type="hidden" name="day" value="{{ row.day.isoformat() }}">
+      <input type="hidden" name="year" value="{{ table.year }}">
+      <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-door-open" aria-hidden="true"></i>Abre igual</button>
+    </form>
+    {% endif %}
+  </td>
+  {% endif %}
+</tr>
+{% endfor %}
+{% endmacro %}
+{% if error %}<div class="col-12"><div class="alert alert-danger" role="alert">{{ error }}</div></div>{% endif %}
+{#- One column per card: the layout's .row-deck lays out the cards of one column side by side. -#}
+<div class="col-12">
+  <section class="card closed-days-holidays" aria-labelledby="holidays-title">
+    <div class="card-header closed-days-head">
+      <h2 class="card-title" id="holidays-title">Feriados nacionales {{ table.year }}</h2>
+      <div class="segmented" role="group" aria-label="Año">
+        {% for year in table.years %}
+        <a class="segmented-item{{ ' active' if year == table.year }}" href="{{ request.url.include_query_params(year=year) }}"{% if year == table.year %} aria-current="true"{% endif %}>{{ year }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% if table.upcoming %}
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter rows-table" id="holidays">
+        <thead><tr><th>Fecha</th><th>Feriado</th><th>Estado</th><th class="text-end"><span class="visually-hidden">Acciones</span></th></tr></thead>
+        <tbody>{{ holiday_rows(table.upcoming) }}</tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card-body">{{ empty_state("No quedan feriados nacionales este año. Mirá el año que viene.", icon="fa-calendar-check") }}</div>
+    {% endif %}
+    {% if table.past %}
+    <details class="holidays-past">
+      <summary class="card-footer">Ya pasaron ({{ table.past | length }})</summary>
+      <div class="table-responsive">
+        <table class="table card-table table-vcenter rows-table" id="holidays-past">
+          <thead><tr><th>Fecha</th><th>Feriado</th><th>Estado</th></tr></thead>
+          <tbody>{{ holiday_rows(table.past, past=True) }}</tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </section>
+</div>
+<div class="col-12">
+  <section class="card closed-days-manual" aria-labelledby="manual-title">
+    <div class="card-header"><h2 class="card-title" id="manual-title">Días cerrados cargados a mano</h2></div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter rows-table" id="closed-days">
+        <thead><tr><th>Fecha</th><th>Motivo</th><th class="text-end"><span class="visually-hidden">Acciones</span></th></tr></thead>
+        <tbody>
+          {% for row in pagination.rows %}
+          <tr>
+            <td data-label="Fecha" class="text-nowrap">{{ model_view.day_label(row.day) }}</td>
+            <td data-label="Motivo">{{ row.reason }}</td>
+            <td class="row-actions text-end">
+              <form method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_closed_day', model_view.day_label(row.day) ~ ' · ' ~ row.reason ~ '.') | xmlattr }}>
+                <input type="hidden" name="id" value="{{ row.id }}">
+                <input type="hidden" name="year" value="{{ table.year }}">
+                <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr class="list-empty"><td colspan="99">{{ empty_state(empty_for(model_view.identity), icon="fa-calendar-xmark") }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}

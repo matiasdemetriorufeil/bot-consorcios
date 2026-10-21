@@ -99,8 +99,8 @@ PAGE_HELP: dict[str, str] = {
         "Los textos y horarios del bot. Los cambios se usan desde el próximo mensaje."
     ),
     "list:closed-day": (
-        "Los días que el estudio cierra además de los feriados nacionales (que el bot ya "
-        "conoce), y los feriados en que abre igual. El bot y los reclamos lo usan en un minuto."
+        "Estos días el estudio no atiende: el bot sigue respondiendo, pero si tiene que pasar a "
+        "una persona avisa que se responde el próximo día hábil."
     ),
     "create:closed-day": (
         "Un día cerrado: el bot no promete respuesta ese día y los reclamos que no son urgentes "
@@ -272,8 +272,8 @@ EMPTY: dict[str, str] = {
     ),
     "list:sync-run": "Todavía no se leyeron datos de ConsorPlus.",
     "list:closed-day": (
-        "No hay días cargados: el bot usa solo los feriados nacionales. Agregá uno con el botón "
-        "de arriba, por ejemplo el 24/12 si el estudio cierra."
+        "No hay días cerrados cargados a mano. Agregá uno con «Agregar día cerrado», por "
+        "ejemplo el 24/12 si el estudio cierra."
     ),
     "list:provider": (
         "Todavía no hay proveedores. Agregá uno con el botón de arriba para poder elegirlo en "
@@ -370,6 +370,27 @@ def empty_for(identity: str) -> str:
 # What happens to the person on the other side, said plainly (none of these sends anything).
 
 CONFIRM: dict[str, dict[str, str]] = {
+    "open_anyway": {
+        "title": "¿El estudio abre igual este feriado?",
+        "text": (
+            "Ese día cuenta como hábil: el bot dice que se responde en el día y los reclamos "
+            "salen en el horario de siempre."
+        ),
+        "button": "Abre igual",
+        "kind": "primary",
+    },
+    "remove_open_anyway": {
+        "title": "¿Quitar «abre igual»?",
+        "text": "Ese feriado vuelve a ser un día cerrado.",
+        "button": "Quitar abre igual",
+        "kind": "danger",
+    },
+    "remove_closed_day": {
+        "title": "¿Quitar este día cerrado?",
+        "text": "Ese día vuelve a ser hábil para el bot y los reclamos.",
+        "button": "Quitar",
+        "kind": "danger",
+    },
     "unlink": {
         "title": "¿Desvincular este teléfono?",
         "text": (
