@@ -226,3 +226,18 @@ def test_what_to_do_with_the_answer_of_an_action(
 ) -> None:
     args = json.dumps([status, is_json, network, session])[1:-1]
     assert _run(f"window.panelFetchOutcome({args})") == expected
+
+
+@pytest.mark.parametrize(
+    ("enabled", "before"),
+    [
+        ([True] * 10, -1),  # 10 fit in one WhatsApp list
+        ([True] * 11, 9),  # the 10th goes to «Más opciones»
+        ([True] * 9 + [False, False] + [True] * 2, 11),  # disabled ones do not count
+        ([False] + [True] * 12, 10),
+        ([], -1),
+    ],
+)
+def test_where_the_line_of_mas_opciones_goes(enabled: list[bool], before: int) -> None:
+    """«Problemas y proveedores»: the same rule as the bot (split_for_whatsapp)."""
+    assert _run(f"panelSecondListBefore({json.dumps(enabled)})") == before

@@ -1,6 +1,9 @@
 {#- "Problemas y proveedores" of one building (app.admin.claims_setup): the whole table is
     saved at once. second_list_from: the first problem that goes to WhatsApp's second list
-    ("Más opciones", app.claims.setup.split_for_whatsapp). -#}
+    ("Más opciones", app.claims.setup.split_for_whatsapp: only with more than 10 enabled).
+    The order: each row's visible position (position_<id>, hidden) and «Subir» / «Bajar»,
+    shown and handled by panel.js (it moves the row, numbers them again and moves the line of
+    «Más opciones»); without JavaScript the rows are saved in the order they were drawn. -#}
 {% extends "sqladmin/layout.html" %}
 {% from "sqladmin/_macros.html" import empty_state %}
 {% block content %}
@@ -28,13 +31,12 @@
       </div>
     </div>
     {% if error %}<div class="card-body pb-0"><div class="alert alert-danger mb-0" role="alert">{{ error }}</div></div>{% endif %}
-    {% if enabled_count > 10 %}
-    <div class="card-body pb-0">
+    <div class="card-body pb-0" data-more-note {% if enabled_count <= 10 %}hidden{% endif %}>
       <p class="text-secondary mb-0">
-        Hay {{ enabled_count }} problemas habilitados. WhatsApp muestra hasta 10 por lista: el bot muestra los primeros 9 y una opción «Más opciones» con el resto.
+        Hay <span data-enabled-count>{{ enabled_count }}</span> problemas habilitados. WhatsApp muestra hasta 10 por lista: el bot muestra los primeros 9 y una opción «Más opciones» con el resto.
       </p>
     </div>
-    {% endif %}
+    <p class="visually-hidden" aria-live="polite" id="claims-order-status"></p>
     <div class="table-responsive">
       <table class="table table-vcenter card-table rows-table" id="building-claims-table">
         <thead><tr><th>Problema</th><th>Habilitado</th><th>¿Quién lo atiende?</th><th>Orden</th></tr></thead>
@@ -42,9 +44,9 @@
           {% for row in rows %}
           {% set cid = row.category.id %}
           {% if cid == second_list_from %}
-          <tr class="claims-second-list"><td colspan="4">Estos aparecen en una segunda lista («Más opciones»)</td></tr>
+          <tr class="claims-second-list" data-second-list><td colspan="4">Estos aparecen en «Más opciones»</td></tr>
           {% endif %}
-          <tr class="{{ '' if row.enabled else 'text-secondary' }}">
+          <tr class="{{ '' if row.enabled else 'text-secondary' }}" data-claims-row data-title="{{ row.category.list_title }}">
             <td data-label="Problema">
               {#- One block (on a phone the cell is a line: label, then this). -#}
               <div>
@@ -73,7 +75,14 @@
               </select>
             </td>
             <td class="claims-order" data-label="Orden">
-              <input class="form-control" type="number" inputmode="numeric" min="0" step="1" name="order_{{ cid }}" value="{{ row.sort_order }}" required aria-label="Orden: {{ row.category.list_title }}">
+              <div class="claims-order-cell">
+                <span class="claims-position" data-position-text>{{ loop.index }}</span>
+                <input type="hidden" name="position_{{ cid }}" value="{{ loop.index }}" data-position>
+                <span class="claims-move" data-move-buttons hidden>
+                  <button type="button" class="btn btn-sm btn-secondary" data-move="up" aria-label="Subir {{ row.category.list_title }}" {% if loop.first %}disabled{% endif %}><i class="fa-solid fa-caret-up" aria-hidden="true"></i></button>
+                  <button type="button" class="btn btn-sm btn-secondary" data-move="down" aria-label="Bajar {{ row.category.list_title }}" {% if loop.last %}disabled{% endif %}><i class="fa-solid fa-caret-down" aria-hidden="true"></i></button>
+                </span>
+              </div>
             </td>
           </tr>
           {% else %}
@@ -84,7 +93,7 @@
     </div>
     <div class="card-footer">
       <p class="form-hint mb-2"><strong>Alcance.</strong> {{ scope_help }}</p>
-      <p class="form-hint mb-3">Los de número más chico aparecen primero en la lista de WhatsApp.</p>
+      <p class="form-hint mb-3">Es el orden en que los vecinos ven la lista en WhatsApp: movelos con «Subir» y «Bajar» y tocá «Guardar».</p>
       {% if rows %}
       <div class="text-end">
         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>Guardar</button>

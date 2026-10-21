@@ -919,9 +919,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .tour-done { max-width: 26rem; width: calc(100% - 2rem); }
 
 /* --- Claims' set-up (app.admin.claims_setup) ----------------------------------------------------- */
-.claims-order { width: 7rem; }
-.claims-second-list td { background: var(--c-primary-soft); color: var(--c-primary); font-weight: var(--fw-bold);
-  font-size: var(--fs-small); padding: var(--sp-2) var(--sp-4) !important; }
+.claims-order { width: 8rem; }
+/* The row's place (1, 2, 3…) and «Subir» / «Bajar» (shown by panel.js). */
+.claims-order-cell { display: flex; align-items: center; gap: var(--sp-2); }
+.claims-position { min-width: 1.5rem; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.claims-move { display: inline-flex; gap: var(--sp-1); }
+.claims-move[hidden] { display: none; }
+/* Where WhatsApp's first list ends: a thin line and «Estos aparecen en "Más opciones"». */
+.claims-second-list td { border-top: 2px solid var(--c-primary); color: var(--c-primary); font-weight: var(--fw-bold);
+  font-size: var(--fs-small); padding: var(--sp-1) var(--sp-4) !important; }
 @media (max-width: 991.98px) {
   .claims-order { width: auto; }
 }

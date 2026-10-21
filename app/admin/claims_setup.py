@@ -372,25 +372,42 @@ def _int(value: Any) -> int | None:
         return None
 
 
+# sort_order is recalculated from the rows' positions: 10, 20, 30… (room to insert by hand).
+ORDER_STEP = 10
+BAD_POSITION = "El orden de la tabla llegó mal. Recargá la página y probá de nuevo."
+
+
+def _position(value: Any) -> int | None:
+    """A row's visible position: a whole number from 1 ("3", never "-1", "2.5" nor "tres")."""
+    text = str(value).strip()
+    return int(text) if text.isascii() and text.isdigit() and int(text) >= 1 else None
+
+
 def parse_table(form: FormData, rows: list[TableRow]) -> dict[int, Choice]:
     """The table's form: enabled_<id> (checkbox), provider_<id> ("" = the studio) and
-    order_<id>, for each kind of problem shown."""
-    choices = {}
+    position_<id> (1, 2, 3…: where the row is, moved with «Subir» / «Bajar»; without JavaScript
+    the order it was drawn in), for each kind of problem shown. The positions must be whole,
+    from 1 and not repeated (a form sent by hand): sort_order is recalculated from them as
+    10, 20, 30…"""
+    found: list[tuple[int, int, bool, int | None]] = []
     for row in rows:
         cid = row.category.id
-        if f"order_{cid}" not in form:
+        if f"position_{cid}" not in form:
             continue  # not in the page the admin saw (a kind added meanwhile)
-        order = _int(form.get(f"order_{cid}"))
-        if order is None:
-            raise SetupProblem(f"{row.category.list_title}: el orden tiene que ser un número.")
+        position = _position(form.get(f"position_{cid}"))
+        if position is None:
+            raise SetupProblem(BAD_POSITION)
         raw_provider = str(form.get(f"provider_{cid}", "")).strip()
         provider_id = _int(raw_provider) if raw_provider else None
         if raw_provider and provider_id is None:
             raise SetupProblem(f"{row.category.list_title}: elegí quién lo atiende.")
-        choices[cid] = Choice(
-            enabled=form.get(f"enabled_{cid}") == "on", provider_id=provider_id, sort_order=order
-        )
-    return choices
+        found.append((position, cid, form.get(f"enabled_{cid}") == "on", provider_id))
+    if len({position for position, *_ in found}) != len(found):
+        raise SetupProblem(BAD_POSITION)
+    return {
+        cid: Choice(enabled=enabled, provider_id=provider_id, sort_order=ORDER_STEP * n)
+        for n, (_, cid, enabled, provider_id) in enumerate(sorted(found), start=1)
+    }
 
 
 def _redirect(request: Request, identity: str, **params: Any) -> RedirectResponse:

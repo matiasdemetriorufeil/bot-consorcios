@@ -6,6 +6,7 @@ import html
 import re
 from typing import Any
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -310,10 +311,10 @@ def test_save_the_whole_table(logged_in: Panel) -> None:
         data={
             f"enabled_{water.id}": "on",
             f"provider_{water.id}": "",
-            f"order_{water.id}": "2",
+            f"position_{water.id}": "2",
             f"enabled_{lift.id}": "on",
             f"provider_{lift.id}": str(lifts.id),
-            f"order_{lift.id}": "1",
+            f"position_{lift.id}": "1",
         },  # fmt: skip
         follow_redirects=True,
     )
@@ -321,9 +322,10 @@ def test_save_the_whole_table(logged_in: Panel) -> None:
     page = _text(response.text)
     assert "Tabla guardada." in page
     assert "Estos los va a atender el estudio (no tienen proveedor): Sin agua." in page
+    # The order is recalculated from the positions: 10, 20, 30…
     assert _table(logged_in.session, b.id) == {
-        water.id: (True, None, 2),
-        lift.id: (True, lifts.id, 1),
+        water.id: (True, None, 20),
+        lift.id: (True, lifts.id, 10),
     }
     [event] = logged_in.admin_events("building_claims_saved")
     assert event["building_id"] == b.id
@@ -334,13 +336,13 @@ def test_save_the_whole_table(logged_in: Panel) -> None:
         f"/admin/building-claims/{b.id}",
         data={
             f"provider_{water.id}": "",
-            f"order_{water.id}": "2",
+            f"position_{water.id}": "2",
             f"enabled_{lift.id}": "on",
             f"provider_{lift.id}": str(lifts.id),
-            f"order_{lift.id}": "1",
+            f"position_{lift.id}": "1",
         },  # fmt: skip
     )
-    assert _table(logged_in.session, b.id)[water.id] == (False, None, 2)
+    assert _table(logged_in.session, b.id)[water.id] == (False, None, 20)
 
 
 def test_a_provider_without_whatsapp_warns(logged_in: Panel) -> None:
@@ -351,17 +353,85 @@ def test_a_provider_without_whatsapp_warns(logged_in: Panel) -> None:
     assert "Plomería Inventada no tiene WhatsApp cargado: el bot no le va a poder avisar" in page
 
 
-def test_a_bad_table_is_refused_and_nothing_changes(logged_in: Panel) -> None:
+@pytest.mark.parametrize(
+    ("water", "lift"),
+    [
+        ("primero", "1"),  # not a number
+        ("-1", "1"),  # negative
+        ("0", "1"),  # positions start at 1
+        ("1.5", "2"),  # not whole
+        ("1", "1"),  # repeated
+        ("", "1"),  # empty
+    ],
+)
+def test_a_bad_order_is_refused_and_nothing_changes(
+    logged_in: Panel, water: str, lift: str
+) -> None:
+    """A form sent by hand: the positions must be whole, from 1 and not repeated."""
     s = _setup(logged_in.session)
-    b, water = s["building"], s["water"]
+    b = s["building"]
     response = logged_in.client.post(
         f"/admin/building-claims/{b.id}",
-        data={f"enabled_{water.id}": "on", f"order_{water.id}": "primero"},
+        data={
+            f"enabled_{s['water'].id}": "on",
+            f"position_{s['water'].id}": water,
+            f"enabled_{s['lift'].id}": "on",
+            f"position_{s['lift'].id}": lift,
+        },  # fmt: skip
     )
     assert response.status_code == 400
-    assert "Sin agua: el orden tiene que ser un número." in _text(response.text)
+    assert "El orden de la tabla llegó mal. Recargá la página y probá de nuevo." in _text(
+        response.text
+    )
     assert _table(logged_in.session, b.id) == {}
     assert logged_in.admin_events("building_claims_saved") == []
+
+
+def test_the_old_order_field_is_ignored(logged_in: Panel) -> None:
+    """order_<id> (the old number) no longer counts: only the position does."""
+    s = _setup(logged_in.session)
+    b, water, lift = s["building"], s["water"], s["lift"]
+    logged_in.client.post(
+        f"/admin/building-claims/{b.id}",
+        data={
+            f"position_{water.id}": "1",
+            f"order_{water.id}": "-50",
+            f"position_{lift.id}": "2",
+            f"order_{lift.id}": "7",
+        },  # fmt: skip
+    )
+    assert _table(logged_in.session, b.id) == {
+        water.id: (False, None, 10),
+        lift.id: (False, None, 20),
+    }
+
+
+def test_gaps_in_the_positions_keep_their_order(logged_in: Panel) -> None:
+    s = _setup(logged_in.session)
+    b, water, lift = s["building"], s["water"], s["lift"]
+    logged_in.client.post(
+        f"/admin/building-claims/{b.id}",
+        data={f"position_{water.id}": "7", f"position_{lift.id}": "3"},
+    )
+    assert _table(logged_in.session, b.id) == {
+        lift.id: (False, None, 10),
+        water.id: (False, None, 20),
+    }
+
+
+def test_the_table_shows_positions_and_buttons(logged_in: Panel) -> None:
+    s = _setup(logged_in.session)
+    page = logged_in.client.get(f"/admin/building-claims/{s['building'].id}").text
+    table = page.split('id="building-claims-table"', 1)[1].split("</table>", 1)[0]
+    # No number to type: the position, hidden, and «Subir» / «Bajar» with their names.
+    assert 'type="number"' not in table and 'name="order_' not in table
+    assert f'name="position_{s["water"].id}" value="1"' in table
+    assert f'name="position_{s["lift"].id}" value="2"' in table
+    assert 'aria-label="Subir Sin agua" disabled' in table  # the first one
+    assert re.search(r'aria-label="Bajar Sin agua"\s*>', table)  # it can go down
+    assert 'aria-label="Bajar Ascensor" disabled' in table  # the last one
+    assert table.count("data-move-buttons hidden") == 2  # shown by panel.js
+    assert 'aria-live="polite" id="claims-order-status"' in page
 
 
 def test_more_than_ten_enabled_go_to_a_second_list(logged_in: Panel) -> None:
@@ -374,11 +444,37 @@ def test_more_than_ten_enabled_go_to_a_second_list(logged_in: Panel) -> None:
 
     page = _text(logged_in.client.get(f"/admin/building-claims/{building.id}").text)
 
-    assert "Hay 12 problemas habilitados" in page
+    assert "Hay <span data-enabled-count>12</span> problemas habilitados" in page
     table = page.split('id="claims-table"', 1)[1]
-    before, after = table.split("Estos aparecen en una segunda lista («Más opciones»)")
+    before, after = table.split("Estos aparecen en «Más opciones»")
     assert "Problema inventado 09" in before and "Problema inventado 10" not in before
     assert all(f"Problema inventado {n}" in after for n in (10, 11, 12))
+
+
+def test_the_line_counts_only_the_enabled(logged_in: Panel) -> None:
+    """Disabled problems in between do not count: the line goes before the 10th enabled."""
+    session = logged_in.session
+    building = f.building(session, "001 TORRE INVENTADA")
+    for n in range(1, 13):
+        category = cf.category(session, f"Problema inventado {n:02}", sort_order=n)
+        cf.assign(session, building.id, category, enabled=n != 3)  # 11 enabled
+    session.commit()
+    page = _text(logged_in.client.get(f"/admin/building-claims/{building.id}").text)
+    before, after = page.split("Estos aparecen en «Más opciones»")
+    assert "Problema inventado 10" in before and "Problema inventado 11" in after
+
+
+@pytest.mark.parametrize("enabled", [9, 10])
+def test_no_line_while_they_fit_in_one_list(logged_in: Panel, enabled: int) -> None:
+    session = logged_in.session
+    building = f.building(session, "001 TORRE INVENTADA")
+    for n in range(1, 13):
+        category = cf.category(session, f"Problema inventado {n:02}", sort_order=n)
+        cf.assign(session, building.id, category, enabled=n <= enabled)
+    session.commit()
+    page = logged_in.client.get(f"/admin/building-claims/{building.id}").text
+    assert "Estos aparecen en «Más opciones»" not in page
+    assert "data-more-note hidden" in page  # panel.js shows it when an 11th is enabled
 
 
 def test_copy_from_another_building(logged_in: Panel) -> None:

@@ -380,6 +380,25 @@ def seed(s: Session, empty: bool) -> None:
                     sort_order=c.sort_order,
                 )
             )
+    # Six more in TORRE EJEMPLO only: 12 enabled, so «Problemas y proveedores» shows where
+    # WhatsApp's first list ends («Más opciones»).
+    for order, (name, title) in enumerate(
+        (
+            ("Ruidos molestos", "Ruidos"),
+            ("Portero eléctrico roto", "Portero"),
+            ("Pérdida de gas", "Gas"),
+            ("Basura acumulada", "Basura"),
+            ("Pintura dañada", "Pintura"),
+            ("Plaga en el edificio", "Plagas"),
+        ),
+        start=len(cats) + 1,
+    ):
+        extra = ClaimCategory(
+            name=name, list_title=title, scope=ClaimScope.BUILDING, sort_order=order
+        )
+        s.add(extra)
+        s.flush()
+        s.add(BuildingClaimCategory(building_id=torre.id, category_id=extra.id, sort_order=order))
     s.flush()
 
     def claim(key, phone, hours, building=torre, name="Vecina Ejemplo"):

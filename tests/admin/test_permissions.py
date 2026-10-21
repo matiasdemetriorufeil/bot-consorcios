@@ -229,7 +229,7 @@ PROVIDER_FORM = {"name": "Proveedor de la operadora", "whatsapp_e164": "351 555-
 CATEGORY_FORM = {"name": "Cambio", "list_title": "Cambio", "scope": "unit", "sort_order": "1",
                  "active": "y", "save": "Save"}  # fmt: skip
 CLAIMS_TABLE_FORM = {"enabled_{category}": "on", "provider_{category}": "{provider}",
-                     "order_{category}": "5"}  # fmt: skip
+                     "position_{category}": "1"}  # fmt: skip
 INFO_FORM = {"building": "{building}", "category": "otros", "title": "T", "content": "C"}
 TEMPLATE_FORM = {"label": "L", "name": "n", "language": "es", "body": "B", "save": "Save"}
 QUICK_FORM = {"title": "T", "content": "C", "sort_order": "1", "save": "Save"}

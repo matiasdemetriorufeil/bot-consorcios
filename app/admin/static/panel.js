@@ -43,6 +43,21 @@
     return { fresh: fresh, stored: next };
   };
 
+  // «Problemas y proveedores» of a building: before which row (its index) the line «Estos
+  // aparecen en "Más opciones"» goes, given whether each row is enabled, in order; -1 for none.
+  // The same rule as the bot (app.claims.setup.split_for_whatsapp): up to 10 enabled fit in one
+  // WhatsApp list; with more, the first 9 and «Más opciones» with the rest, from the 10th.
+  root.panelSecondListBefore = function (enabled) {
+    var max = 10, seen = 0;
+    if (enabled.filter(Boolean).length <= max) return -1;
+    for (var i = 0; i < enabled.length; i += 1) {
+      if (!enabled[i]) continue;
+      seen += 1;
+      if (seen === max) return i;
+    }
+    return -1;
+  };
+
   // The list of «Reclamos» when the panel's numbers arrive: "none" (no claim changed), "refresh"
   // (redraw it) or "wait" (something changed, but she is typing in the search or has the
   // filters open: later).
@@ -715,6 +730,80 @@
     if (!event.persisted) return;
     document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
   });
+
+  // --- «Problemas y proveedores» (building_claims.html): «Subir» / «Bajar» move a row --------
+  // Without this the buttons stay hidden and the rows are saved in the order they were drawn.
+  // Moving: the row swaps with its neighbor, every row is numbered again (the visible number
+  // and position_<id>), the first has no «Subir» and the last no «Bajar», the line of «Más
+  // opciones» moves (also when a problem is enabled or disabled), and the new place is said
+  // aloud. The focus stays on the button pressed (or on the other one, at an end).
+  var claimsTable = document.getElementById("building-claims-table");
+  if (claimsTable) {
+    var claimsBody = claimsTable.tBodies[0];
+    var claimsStatus = document.getElementById("claims-order-status");
+    var claimsRows = function () {
+      return Array.prototype.slice.call(claimsBody.querySelectorAll("tr[data-claims-row]"));
+    };
+    var enabledOf = function (row) {
+      var box = row.querySelector('input[type="checkbox"][name^="enabled_"]');
+      return !!(box && box.checked);
+    };
+    var claimsRedraw = function () {
+      var rows = claimsRows();
+      rows.forEach(function (row, i) {
+        row.querySelector("[data-position-text]").textContent = String(i + 1);
+        row.querySelector("[data-position]").value = String(i + 1);
+        row.querySelector('[data-move="up"]').disabled = i === 0;
+        row.querySelector('[data-move="down"]').disabled = i === rows.length - 1;
+        row.classList.toggle("text-secondary", !enabledOf(row));
+      });
+      var line = claimsBody.querySelector("tr[data-second-list]");
+      var enabled = rows.map(enabledOf);
+      var before = root.panelSecondListBefore(enabled);
+      if (before < 0) {
+        if (line) line.remove();
+      } else {
+        if (!line) {
+          line = document.createElement("tr");
+          line.className = "claims-second-list";
+          line.setAttribute("data-second-list", "");
+          line.innerHTML = '<td colspan="4">Estos aparecen en «Más opciones»</td>';
+        }
+        claimsBody.insertBefore(line, rows[before]);
+      }
+      var count = enabled.filter(Boolean).length;
+      var note = document.querySelector("[data-more-note]");
+      if (note) {
+        note.hidden = count <= 10;
+        var number = note.querySelector("[data-enabled-count]");
+        if (number) number.textContent = String(count);
+      }
+    };
+    claimsRows().forEach(function (row) { row.querySelector("[data-move-buttons]").hidden = false; });
+    claimsTable.addEventListener("click", function (event) {
+      var button = event.target.closest ? event.target.closest("button[data-move]") : null;
+      if (!button || button.disabled) return;
+      var rows = claimsRows();
+      var row = button.closest("tr");
+      var index = rows.indexOf(row);
+      var up = button.dataset.move === "up";
+      var other = rows[up ? index - 1 : index + 1];
+      if (!other) return;
+      if (up) claimsBody.insertBefore(row, other);
+      else claimsBody.insertBefore(other, row);
+      claimsRedraw();
+      var place = claimsRows().indexOf(row);
+      var total = claimsRows().length;
+      if (button.disabled) row.querySelector('[data-move="' + (up ? "down" : "up") + '"]').focus();
+      else button.focus();
+      if (claimsStatus) {
+        claimsStatus.textContent = row.dataset.title + ": lugar " + (place + 1) + " de " + total + ".";
+      }
+    });
+    claimsTable.addEventListener("change", function (event) {
+      if (event.target.matches && event.target.matches('input[name^="enabled_"]')) claimsRedraw();
+    });
+  }
 
   // --- A field with a list to pick from (<input list data-submit-on-pick>): picking one of its
   // options sends its form at once (Vecinos' building). The value is the name of a field to
