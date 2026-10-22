@@ -19,7 +19,7 @@ Cancelling: until cancel_until_hours before the start; the panel can always canc
 
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 from zoneinfo import ZoneInfo
 
@@ -86,9 +86,10 @@ def slot_end(day: date, slot: AmenitySlot, timezone: str) -> datetime:
 
 
 def describe_slot(slot: AmenitySlot) -> str:
-    """ "20:00 a 02:00 (del día siguiente)" or "12:00 a 16:00 · Almuerzo"."""
+    """ "20:00 a 02:00 (del día siguiente)", "20:00 a 00:00" (until midnight: it ends with the
+    day, nothing of the next one) or "12:00 a 16:00 · Almuerzo"."""
     text = f"{slot.start_time:%H:%M} a {slot.end_time:%H:%M}"
-    if slot.overnight:
+    if slot.overnight and slot.end_time != time(0):
         text += " (del día siguiente)"
     return f"{text} · {slot.label}" if slot.label else text
 

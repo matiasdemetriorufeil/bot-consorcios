@@ -750,7 +750,7 @@ def test_kinds_of_problem_have_the_same_list(logged_in: Panel) -> None:
     page = logged_in.client.get("/admin/claim-category/list").text
     assert 'id="search-input"' in page and page.count('class="segmented"') == 1
     assert "filter-sidebar-col" not in page and "Agregar tipo de problema" in page
-    assert "Título en la lista · " in page and "en que el propietario ve la lista" in page
+    assert "Título en la lista · " in page and "en el que el propietario ve la lista" in page
 
 
 def test_verifications_fit_at_1024(operator: Panel) -> None:
@@ -794,9 +794,9 @@ def test_the_rules_that_keep_tables_inside_their_card() -> None:
 )
 def test_more_lists_are_row_cards_on_phones(name: str, table_id: str) -> None:
     text = (ADMIN_DIR / "templates" / name).read_text(encoding="utf-8")
-    table = re.search(rf'<table class="([^"]+)" id="{table_id}">', text)
+    table = re.search(rf'<table class="([^"]+)" id="{table_id}"[^>]*>', text)
     assert table is not None and "rows-table" in table.group(1)
-    body = text.split(f'id="{table_id}">', 1)[1].split("</table>", 1)[0]
+    body = text.split(f'id="{table_id}"', 1)[1].split(">", 1)[1].split("</table>", 1)[0]
     cells = re.findall(r"<td(?: [^>]*)?>", body)
     labelled = [c for c in cells if "data-label" in c or "row-actions" in c or "colspan" in c]
     assert cells and labelled == cells

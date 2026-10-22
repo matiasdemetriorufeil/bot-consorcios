@@ -44,7 +44,7 @@ from starlette.responses import RedirectResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from app.admin import errors, formatting, help, i18n, labels, pending
+from app.admin import errors, formatting, help, hours, i18n, labels, pending
 from app.admin.amenities import AmenitiesView
 from app.admin.auth import AdminAuth, LoginLimiter, current_user_id
 from app.admin.claims import ClaimsView, claim_links
@@ -275,6 +275,7 @@ def _install_texts(env: object, timezone: str) -> None:
     filters["state"] = labels.state
     env.globals.update(help.globals_for_templates())  # type: ignore[attr-defined]
     env.globals["menu_groups"] = MENU_GROUPS  # type: ignore[attr-defined]
+    env.globals["hour_options"] = hours.hour_choices  # type: ignore[attr-defined]
     env.globals["error_texts"] = errors.texts  # type: ignore[attr-defined]
     # In every static file's URL (asset_url): a change reaches every browser (no stale cache).
     env.globals["asset_url"] = _asset_url(asset_versions())  # type: ignore[attr-defined]

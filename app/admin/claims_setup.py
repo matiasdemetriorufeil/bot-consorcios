@@ -14,6 +14,7 @@ open them, 403 on the server; each POST also checks require_admin):
 Rules live in app.claims.setup; every change is audited in bot_events (admin_action).
 """
 
+from collections.abc import Iterable
 from typing import Any, ClassVar
 
 from markupsafe import Markup
@@ -31,7 +32,8 @@ from app.admin import formatting, help, labels
 from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user, require_admin
 from app.admin.filters import YesNoFilter
-from app.admin.views import AuditedView
+from app.admin.hours import HourField, check_listed
+from app.admin.views import AuditedView, _in_thread
 from app.bot.bot_config import parse_hour, parse_weekdays
 from app.claims.claim_config import invalidate_claim_config
 from app.claims.setup import (
@@ -233,6 +235,37 @@ class ProviderAdmin(AdminOnly, AuditedView, model=Provider):
         return None
 
 
+# --- The order of a table: «Subir» / «Bajar» (table[data-reorder], panel.js) -----------------
+# Each row sends position_<id> (1, 2, 3…); sort_order is recalculated from them: 10, 20, 30…
+# (Tipos de problema, and Problemas y proveedores of each building).
+ORDER_STEP = 10
+BAD_POSITION = "El orden de la tabla llegó mal. Recargá la página y probá de nuevo."
+
+
+def _position(value: Any) -> int | None:
+    """A row's visible position: a whole number from 1 ("3", never "-1", "2.5" nor "tres")."""
+    text = str(value).strip()
+    return int(text) if text.isascii() and text.isdigit() and int(text) >= 1 else None
+
+
+def in_position_order(form: FormData, ids: Iterable[int]) -> list[int]:
+    """The ids in the order of their position_<id>. Those not in the form are left out (not in
+    the page that was saved). The positions must be whole, from 1 and not repeated (a form sent
+    by hand): SetupProblem(BAD_POSITION) otherwise."""
+    found: list[tuple[int, int]] = []
+    for item in ids:
+        key = f"position_{item}"
+        if key not in form:
+            continue
+        position = _position(form.get(key))
+        if position is None:
+            raise SetupProblem(BAD_POSITION)
+        found.append((position, item))
+    if len({position for position, _ in found}) != len(found):
+        raise SetupProblem(BAD_POSITION)
+    return [item for _, item in sorted(found)]
+
+
 # --- Kinds of problem -----------------------------------------------------------------------
 
 SCOPE_CHOICES = [(s.value, labels.CLAIM_SCOPE[s]) for s in ClaimScope]
@@ -254,8 +287,9 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
         ClaimCategory.urgent,
         ClaimCategory.active,
     ]
-    # Hidden under 1280 px in the list (templates/sqladmin/list.html); the record has them.
-    column_secondary = ["sort_order", "list_title"]
+    # Hidden under 1280 px in the list (claim_category_list.html: since the order has its
+    # buttons, «Alcance» waits too); the record has them.
+    column_secondary = ["list_title", "scope"]
     column_details_list = [
         ClaimCategory.name,
         ClaimCategory.list_title,
@@ -286,7 +320,6 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
         ClaimCategory.follow_up_question,
         ClaimCategory.safety_text,
         ClaimCategory.emergency_phone,
-        ClaimCategory.sort_order,
         ClaimCategory.active,
     ]
     # data-count: panel.js shows "12 / 24" under the field.
@@ -316,10 +349,6 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
         "emergency_phone": {
             "description": "Opcional: un teléfono de emergencias que el bot da junto con eso."
         },
-        "sort_order": {
-            "description": "Los de número más chico aparecen primero. En cada edificio se puede "
-            "cambiar."
-        },
         "active": {"description": "Si lo desactivás, deja de aparecer en todos los edificios."},
     }
     column_labels = {
@@ -340,6 +369,71 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
     def search_placeholder(self) -> str:
         return "problema o título"
 
+    # --- The order (claim_category_list.html): «Subir» / «Bajar» and «Guardar orden» ---------
+
+    def _ordered_ids(self, session: Any) -> list[int]:
+        return list(
+            session.scalars(
+                select(ClaimCategory.id).order_by(ClaimCategory.sort_order, ClaimCategory.name)
+            )
+        )
+
+    def order_positions(self) -> dict[int, int]:
+        """Each kind of problem's place in the general order (1, 2, 3…), inactive ones too."""
+        with self.session_maker() as session:
+            return {cid: n for n, cid in enumerate(self._ordered_ids(session), start=1)}
+
+    def can_reorder(self, request: Request, pagination: Any) -> bool:
+        """«Subir» / «Bajar» only on the whole list: no search, no filter, the general order
+        and one page (a part of it cannot be ordered)."""
+        params = request.query_params
+        filtered = any(params.get(f.parameter_name) for f in self.get_filters())
+        sorted_other = params.get("sortBy") not in (None, "", "sort_order") or (
+            params.get("sortBy") == "sort_order" and params.get("sort") == "desc"
+        )
+        return not (
+            params.get("search")
+            or filtered
+            or sorted_other
+            or pagination.count > len(pagination.rows)
+        )
+
+    @expose("/order", methods=["POST"])
+    async def save_order(self, request: Request) -> Response:
+        """«Guardar orden»: sort_order recalculated as 10, 20, 30… from the positions sent (the
+        kinds not in the form keep their place after them). Audited."""
+        form = await request.form()
+        with self.session_maker() as session:
+            try:
+                current = self._ordered_ids(session)
+                ordered = in_position_order(form, current)
+                ordered += [cid for cid in current if cid not in ordered]
+                changed = []
+                for n, cid in enumerate(ordered, start=1):
+                    category = session.get(ClaimCategory, cid)
+                    if category is not None and category.sort_order != ORDER_STEP * n:
+                        category.sort_order = ORDER_STEP * n
+                        changed.append(cid)
+            except SetupProblem as exc:
+                session.rollback()
+                Flash.error(request, str(exc))
+            else:
+                if changed:
+                    log_admin_action(
+                        session,
+                        admin_user(request),
+                        "claim_categories_reordered",
+                        category_ids=changed,
+                    )
+                session.commit()
+                Flash.success(request, "Orden guardado." if changed else "No había cambios.")
+        return RedirectResponse(request.url_for("admin:list", identity=self.identity), 302)
+
+    def _next_order(self) -> int:
+        with self.session_maker() as session:
+            last = session.scalar(select(func.max(ClaimCategory.sort_order))) or 0
+        return max(last, 0) + ORDER_STEP
+
     async def scaffold_form(self, rules: Any = None) -> Any:
         form = await super().scaffold_form(rules)
         # As in BuildingInfoAdmin: the values in Spanish, and the stored enum compared by value.
@@ -359,6 +453,11 @@ class ClaimCategoryAdmin(AdminOnly, AuditedView, model=ClaimCategory):
             data[field] = value or None
         if not data.get("list_title"):
             raise SetupProblem("El título en la lista no puede quedar vacío.")
+        # The order is changed only from the list: never from this form, even sent by hand. A
+        # new one goes last (never 0 nor negative).
+        data.pop("sort_order", None)
+        if is_created:
+            data["sort_order"] = await _in_thread(self._next_order)
         await super().on_model_change(data, model, is_created, request)
 
 
@@ -372,42 +471,27 @@ def _int(value: Any) -> int | None:
         return None
 
 
-# sort_order is recalculated from the rows' positions: 10, 20, 30… (room to insert by hand).
-ORDER_STEP = 10
-BAD_POSITION = "El orden de la tabla llegó mal. Recargá la página y probá de nuevo."
-
-
-def _position(value: Any) -> int | None:
-    """A row's visible position: a whole number from 1 ("3", never "-1", "2.5" nor "tres")."""
-    text = str(value).strip()
-    return int(text) if text.isascii() and text.isdigit() and int(text) >= 1 else None
-
-
 def parse_table(form: FormData, rows: list[TableRow]) -> dict[int, Choice]:
     """The table's form: enabled_<id> (checkbox), provider_<id> ("" = the studio) and
     position_<id> (1, 2, 3…: where the row is, moved with «Subir» / «Bajar»; without JavaScript
     the order it was drawn in), for each kind of problem shown. The positions must be whole,
     from 1 and not repeated (a form sent by hand): sort_order is recalculated from them as
     10, 20, 30…"""
-    found: list[tuple[int, int, bool, int | None]] = []
-    for row in rows:
-        cid = row.category.id
-        if f"position_{cid}" not in form:
-            continue  # not in the page the admin saw (a kind added meanwhile)
-        position = _position(form.get(f"position_{cid}"))
-        if position is None:
-            raise SetupProblem(BAD_POSITION)
+    titles = {row.category.id: row.category.list_title for row in rows}
+    # A kind added meanwhile is not in the page the admin saw: left as it is.
+    ordered = in_position_order(form, titles)
+    choices = {}
+    for n, cid in enumerate(ordered, start=1):
         raw_provider = str(form.get(f"provider_{cid}", "")).strip()
         provider_id = _int(raw_provider) if raw_provider else None
         if raw_provider and provider_id is None:
-            raise SetupProblem(f"{row.category.list_title}: elegí quién lo atiende.")
-        found.append((position, cid, form.get(f"enabled_{cid}") == "on", provider_id))
-    if len({position for position, *_ in found}) != len(found):
-        raise SetupProblem(BAD_POSITION)
-    return {
-        cid: Choice(enabled=enabled, provider_id=provider_id, sort_order=ORDER_STEP * n)
-        for n, (_, cid, enabled, provider_id) in enumerate(sorted(found), start=1)
-    }
+            raise SetupProblem(f"{titles[cid]}: elegí quién lo atiende.")
+        choices[cid] = Choice(
+            enabled=form.get(f"enabled_{cid}") == "on",
+            provider_id=provider_id,
+            sort_order=ORDER_STEP * n,
+        )
+    return choices
 
 
 def _redirect(request: Request, identity: str, **params: Any) -> RedirectResponse:
@@ -614,11 +698,6 @@ class WeekdaysField(SelectMultipleField):
         super().pre_validate(form)
 
 
-def _valid_hour(form: Any, field: Any) -> None:
-    if parse_hour(str(field.data or "")) is None:
-        raise ValidationError("Usá el formato HH:MM, por ejemplo 08:00.")
-
-
 def _positive(form: Any, field: Any) -> None:
     if field.data is None or field.data < 1:
         raise ValidationError("Tiene que ser un número entero desde 1.")
@@ -648,7 +727,11 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
         ClaimSettings.alert_urgent_minutes,
         ClaimSettings.stale_days,
     ]
-    form_overrides = {"provider_weekdays": WeekdaysField}
+    form_overrides = {
+        "provider_weekdays": WeekdaysField,
+        "provider_hours_start": HourField,
+        "provider_hours_end": HourField,
+    }
     column_labels = {
         ClaimSettings.id: "Configuración",
         ClaimSettings.provider_weekdays: "Días para escribirles a los proveedores",
@@ -670,11 +753,10 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
             "cuentan."
         },
         "provider_hours_start": {
-            "description": "HH:MM. Fuera de este horario, un reclamo que no es urgente se le "
-            "manda al proveedor cuando abre.",
-            "validators": [_valid_hour],
+            "description": "Fuera de este horario, un reclamo que no es urgente se le manda al "
+            "proveedor cuando abre."
         },
-        "provider_hours_end": {"description": "HH:MM.", "validators": [_valid_hour]},
+        "provider_hours_end": {"description": "Tiene que ser después de «desde»."},
         "urgent_any_time": {
             "description": "Los reclamos urgentes (gas, ascensor...) se le mandan al proveedor "
             "aunque sea de noche o feriado."
@@ -710,6 +792,10 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
     async def on_model_change(
         self, data: dict, model: Any, is_created: bool, request: Request
     ) -> None:
+        try:
+            check_listed(data, model, ("provider_hours_start", "provider_hours_end"))
+        except ValueError as exc:
+            raise SetupProblem(str(exc)) from exc
         days = data.get("provider_weekdays") or []
         data["provider_weekdays"] = ",".join(str(d) for d in sorted(set(days)))
         start = parse_hour(str(data.get("provider_hours_start") or "")) or ""

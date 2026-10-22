@@ -26,8 +26,9 @@ from app.admin import formatting, labels
 from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user
 from app.admin.filters import RelatedFilter, ValuesFilter, YesNoFilter
+from app.admin.hours import HourField, check_listed
 from app.admin.metrics import compute_claim_metrics, compute_metrics
-from app.bot.bot_config import invalidate_bot_config, parse_hour, parse_weekdays
+from app.bot.bot_config import invalidate_bot_config, parse_weekdays
 from app.business_hours import (
     WEEKDAYS,
     invalidate_calendar,
@@ -348,11 +349,6 @@ def stats_table(stats: dict[str, Any] | None, *, translate: bool = True) -> Mark
 # --- General settings -------------------------------------------------------------------
 
 
-def _valid_hour(form: Any, field: Any) -> None:
-    if field.data and field.data.strip() and parse_hour(field.data) is None:
-        raise ValidationError("Usá el formato HH:MM, por ejemplo 09:00.")
-
-
 def _valid_weekdays(form: Any, field: Any) -> None:
     if field.data and field.data.strip() and parse_weekdays(field.data) is None:
         raise ValidationError("Números del 0 (lunes) al 6 (domingo) separados por coma.")
@@ -369,6 +365,13 @@ def _valid_url(form: Any, field: Any) -> None:
 # Never the .env value itself: only that there is a default.
 _DEFAULT_TEXT = "Si lo dejás vacío, el bot usa el texto por defecto."
 _DEFAULT_VALUE = "Si lo dejás vacío, el bot usa el valor por defecto."
+# The office hours: a list of hours (app.admin.hours); «Por defecto» = empty.
+DEFAULT_OPTION = "Por defecto"
+_DEFAULT_HOUR = "Con «Por defecto», el bot usa el horario de siempre."
+
+
+class SettingsProblem(ValueError):
+    """A setting that cannot be saved; SQLAdmin shows the text over the form (400)."""
 
 
 class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
@@ -383,6 +386,7 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     can_delete = False
     column_list = [BotSettings.id, BotSettings.updated_at]
     column_details_exclude_list = [BotSettings.id]
+    form_overrides = {"office_hours_start": HourField, "office_hours_end": HourField}
     form_columns = [
         BotSettings.welcome_message,
         BotSettings.office_hours_start,
@@ -410,13 +414,10 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
         "welcome_message": {
             "description": "El bot saluda con este texto en el primer mensaje. " + _DEFAULT_TEXT
         },
-        "office_hours_start": {
-            "description": "HH:MM. " + _DEFAULT_VALUE,
-            "validators": [_valid_hour],
-        },
+        "office_hours_start": {"description": _DEFAULT_HOUR, "empty": DEFAULT_OPTION},
         "office_hours_end": {
-            "description": "HH:MM. " + _DEFAULT_VALUE,
-            "validators": [_valid_hour],
+            "description": "Tiene que ser después de «desde». " + _DEFAULT_HOUR,
+            "empty": DEFAULT_OPTION,
         },
         "office_weekdays": {
             "description": "0 = lunes … 6 = domingo, separados por coma (ej. 0,1,2,3,4). "
@@ -445,6 +446,15 @@ class BotSettingsAdmin(AdminOnly, AuditedView, model=BotSettings):
     async def on_model_change(
         self, data: dict, model: Any, is_created: bool, request: Request
     ) -> None:
+        try:
+            check_listed(data, model, ("office_hours_start", "office_hours_end"))
+        except ValueError as exc:
+            raise SettingsProblem(str(exc)) from exc
+        start, end = data.get("office_hours_start") or "", data.get("office_hours_end") or ""
+        if start and end and end <= start:
+            raise SettingsProblem(
+                "El horario de atención «hasta» tiene que ser después del «desde»."
+            )
         fields = changed_fields(model, data)
         session = object_session(model)
         if fields and session is not None:

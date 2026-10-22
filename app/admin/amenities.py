@@ -28,6 +28,7 @@ from app.admin import formatting, labels
 from app.admin.agenda import build_agenda
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user, is_admin, require_admin
+from app.admin.hours import accepted_hour
 from app.amenities.booking import (
     POLICY_RULES,
     BookingError,
@@ -411,9 +412,11 @@ class AmenitiesView(BaseView):
                         raise FormProblem("Elegí el día de origen.")
                     added = copy_slots(session, amenity, source, _weekdays(form, "to"), user)
                 else:
-                    start, end = _time(form.get("start")), _time(form.get("end"))
+                    # Only hours of the list (app.admin.hours), also in a form sent by hand.
+                    start = _time(accepted_hour(form.get("start")))
+                    end = _time(accepted_hour(form.get("end")))
                     if start is None or end is None:
-                        raise FormProblem("Indicá la hora de inicio y de fin del turno.")
+                        raise FormProblem("Elegí la hora de inicio y de fin del turno de la lista.")
                     added = add_slots(
                         session,
                         amenity,

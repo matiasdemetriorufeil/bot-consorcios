@@ -135,8 +135,8 @@ PAGE_HELP: dict[str, str] = {
         "elegí qué problemas atiende en «Reclamos por edificio»."
     ),
     "list:claim-category": (
-        "Los problemas que un propietario va a poder elegir al hacer un reclamo por WhatsApp, "
-        "en este orden."
+        "Los problemas que un propietario va a poder elegir al hacer un reclamo por WhatsApp. "
+        "Este es el orden general: en cada edificio se puede cambiar en «Reclamos por edificio»."
     ),
     "edit:claim-category": (
         "El título y la descripción son lo que la persona ve en la lista de WhatsApp: tienen "
@@ -144,7 +144,7 @@ PAGE_HELP: dict[str, str] = {
     ),
     "create:claim-category": (
         "El título y la descripción son lo que la persona ve en la lista de WhatsApp: tienen "
-        "un largo máximo."
+        "un largo máximo. Se agrega al final de la lista; el orden se cambia desde la lista."
     ),
     "view-building-claims": (
         "Qué problemas se pueden reclamar en cada edificio y quién los atiende. Entrá a un "

@@ -1,10 +1,13 @@
 {#- «Tipos de problema» (ClaimCategoryAdmin.list_template): SQLAdmin's list (sqladmin/list.html)
     drawn like «Edificios» (building_list.html, its same classes): the search (SQLAdmin's
     main.js: #search-input, #search-button, #search-reset) and «Activo» as Todos / Sí / No in
-    the card, the order in a small box (hidden under 1280 px, as in 5f.4), the title of WhatsApp's list with the whole problem
-    under it, the scope and «Urgente» as labels, «Ver» and «Editar» under «Acciones». -#}
+    the card, the title of WhatsApp's list with the whole problem under it, the scope and
+    «Urgente» as labels, «Ver» and «Editar» under «Acciones». The order: each one's place in
+    the general order (1, 2, 3…); on the whole list (no search, filter nor other sorting: see
+    ClaimCategoryAdmin.can_reorder) «Subir» / «Bajar» (reorder_cell, panel.js) and «Guardar
+    orden», which sends every position at once. -#}
 {% extends "sqladmin/list.html" %}
-{% from "sqladmin/_macros.html" import empty_state %}
+{% from "sqladmin/_macros.html" import empty_state, reorder_cell %}
 {% block header_actions %}
 {% if model_view.can_create and model_view.check_can_create(request) %}
 <div class="col-auto">
@@ -20,6 +23,8 @@
 <a class="building-sort" href="{{ request.url.include_query_params(sortBy=name, sort='desc' if sorted_here and direction == 'asc' else 'asc') }}">{{ label }}{% if sorted_here %} <i class="fa-solid fa-arrow-{{ 'up' if direction == 'asc' else 'down' }}" aria-hidden="true"></i>{% endif %}</a>
 {% else %}{{ label }}{% endif %}
 {% endmacro %}
+{% set reorder = model_view.can_reorder(request, pagination) and pagination.rows | length > 1 %}
+{% set positions = model_view.order_positions() %}
 <div class="col-12">
   <div class="card building-list">
     <div class="card-body building-list-top">
@@ -49,13 +54,15 @@
         {% endif %}
       </div>
     </div>
+    <p class="visually-hidden" aria-live="polite" id="category-order-status"></p>
+    {% if reorder %}<form method="POST" action="{{ url_for('admin:view-claim-category-save_order') }}" id="category-order">{% endif %}
     <div class="table-responsive">
-      <table class="table card-table table-vcenter rows-table building-table">
+      <table class="table card-table table-vcenter rows-table building-table"{% if reorder %} data-reorder data-reorder-status="category-order-status"{% endif %}>
         <thead>
           <tr>
-            <th class="text-center col-secondary">{{ sort_header("sort_order", "Orden") }}</th>
+            <th>{{ sort_header("sort_order", "Orden") }}</th>
             <th>Título en la lista · {{ sort_header("name", "Problema") }}</th>
-            <th>Alcance</th>
+            <th class="col-secondary">Alcance</th>
             <th class="text-center">Urgente</th>
             <th class="text-center">Activo</th>
             <th class="text-end">Acciones</th>
@@ -63,15 +70,21 @@
         </thead>
         <tbody>
           {% for row in pagination.rows %}
-          <tr>
-            <td data-label="Orden" class="text-center col-secondary"><span class="category-order">{{ row.sort_order }}</span></td>
+          <tr{% if reorder %} data-reorder-row data-title="{{ row.list_title }}"{% endif %}>
+            <td data-label="Orden" class="claims-order">
+              {%- if reorder -%}
+              {{ reorder_cell("position_" ~ row.id, positions[row.id], row.list_title, loop.first, loop.last) }}
+              {%- else -%}
+              <span class="reorder-position">{{ positions.get(row.id, "") }}</span>
+              {%- endif -%}
+            </td>
             <td data-label="Problema" class="building-cell-name category-title">
               <span class="provider-stack">
                 <span class="provider-name">{{ row.list_title }}</span>
                 <span class="provider-contact cell-cut"{% if row.name | length > 30 %} title="{{ row.name }}"{% endif %}>{{ row.name }}</span>
               </span>
             </td>
-            <td data-label="Alcance"><span class="state state-info"><i class="fa-regular {{ 'fa-building' if row.scope == 'building' else 'fa-house' }}" aria-hidden="true"></i>{{ model_view.get_list_value(row, "scope", request)[1] }}</span></td>
+            <td data-label="Alcance" class="col-secondary"><span class="state state-info"><i class="fa-regular {{ 'fa-building' if row.scope == 'building' else 'fa-house' }}" aria-hidden="true"></i>{{ model_view.get_list_value(row, "scope", request)[1] }}</span></td>
             <td data-label="Urgente" class="text-center">{% if row.urgent %}<span class="state provider-inactive"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>Urgente</span>{% else %}<span class="building-count-off">—</span>{% endif %}</td>
             <td data-label="Activo" class="text-center">{% if row.active %}<i class="fa fa-check text-success" aria-hidden="true"></i><span class="visually-hidden">Sí</span>{% else %}<i class="fa fa-times text-danger" aria-hidden="true"></i><span class="visually-hidden">No</span>{% endif %}</td>
             <td class="building-row-actions">
@@ -104,8 +117,14 @@
         </li>
       </ul>
       {% endif %}
-      <span>El orden es el mismo en que el propietario ve la lista en WhatsApp.</span>
+      <span>El orden general es en el que el propietario ve la lista en WhatsApp. En cada edificio se puede cambiar en «Reclamos por edificio».</span>
+      {% if reorder %}
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check me-1"></i>Guardar orden</button>
+      {% elif pagination.rows %}
+      <span class="text-secondary">Para cambiar el orden, borrá la búsqueda y los filtros.</span>
+      {% endif %}
     </div>
+    {% if reorder %}</form>{% endif %}
   </div>
 </div>
 {% endblock %}

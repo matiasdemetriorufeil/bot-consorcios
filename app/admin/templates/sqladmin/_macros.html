@@ -19,7 +19,7 @@
 {% if field.errors %}{% set _ = described.append(field.id ~ '-error') %}{% endif %}
 {% if field.description %}{% set _ = described.append(field.id ~ '-help') %}{% endif %}
 {% if described %}{% set _ = attrs.update({"aria-describedby": described | join(' ')}) %}{% endif %}
-{% if field.errors %}{% set _ = attrs.update({"aria-invalid": "true", "class_": "form-control is-invalid"}) %}{% endif %}
+{% if field.errors %}{% set _ = attrs.update({"aria-invalid": "true", "class_": ("form-select" if field.type == "HourField" else "form-control") ~ " is-invalid"}) %}{% endif %}
 <div class="form-field{% if field.type == 'BooleanField' %} form-field-check{% endif %}">
   {{ field.label(
     class_="form-label" + (' required-label' if field.flags.required else ''),
@@ -164,5 +164,32 @@
   <i class="fa-solid {{ icon }}" aria-hidden="true"></i>
   <p class="empty-help">{{ text }}</p>
   {% if href and label %}<a class="btn btn-primary" href="{{ href }}">{{ label }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{# The one hour picker of the panel's own forms (app.admin.hours, like HourField in SQLAdmin's):
+   00:00 to 23:30 every 30 minutes, never typed; value (a time or "HH:MM") stays picked even off
+   the list; empty: the text of a first option without a value (none: no empty option). #}
+{% macro hour_select(name, id, value=None, empty="Elegí la hora", required=True) %}
+{% set chosen = (value | string)[:5] if value else "" %}
+<select class="form-select" id="{{ id }}" name="{{ name }}"{% if required %} required{% endif %}>
+  {% for option, text in hour_options(chosen, empty=empty) %}
+  <option value="{{ option }}"{% if option == chosen %} selected{% endif %}>{{ text }}</option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+{# A row's place in a table ordered with «Subir» / «Bajar» (table[data-reorder], panel.js): the
+   visible number, the hidden position sent with the form (name) and the two buttons, hidden
+   until panel.js shows them (without JavaScript the order stays as drawn). The first row has
+   no «Subir» and the last no «Bajar». #}
+{% macro reorder_cell(name, position, title, first, last) %}
+<div class="reorder-cell">
+  <span class="reorder-position" data-position-text>{{ position }}</span>
+  <input type="hidden" name="{{ name }}" value="{{ position }}" data-position>
+  <span class="reorder-move" data-move-buttons hidden>
+    <button type="button" class="btn btn-sm btn-secondary" data-move="up" aria-label="Subir {{ title }}"{% if first %} disabled{% endif %}><i class="fa-solid fa-caret-up" aria-hidden="true"></i></button>
+    <button type="button" class="btn btn-sm btn-secondary" data-move="down" aria-label="Bajar {{ title }}"{% if last %} disabled{% endif %}><i class="fa-solid fa-caret-down" aria-hidden="true"></i></button>
+  </span>
 </div>
 {% endmacro %}

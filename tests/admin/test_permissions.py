@@ -265,6 +265,7 @@ ADMIN_ACTIONS: list[tuple[str, str, dict[str, str] | None]] = [
     ("get", "/admin/claim-category/edit/{category}", None),
     ("post", "/admin/claim-category/edit/{category}", CATEGORY_FORM),
     ("delete", "/admin/claim-category/delete?pks={category}", None),
+    ("post", "/admin/claim-category/order", {"position_{category}": "1"}),
     ("get", "/admin/building-claims", None),
     ("get", "/admin/building-claims/{building}", None),
     ("post", "/admin/building-claims/{building}", CLAIMS_TABLE_FORM),
@@ -359,7 +360,8 @@ def _snapshot(session: Session) -> dict[str, Any]:
             (p.name, p.whatsapp_e164, p.active) for p in session.scalars(select(Provider))
         ],
         "categories": [
-            (c.name, c.list_title, c.scope) for c in session.scalars(select(ClaimCategory))
+            (c.name, c.list_title, c.scope, c.sort_order)
+            for c in session.scalars(select(ClaimCategory))
         ],
         "claims_tables": [
             (r.building_id, r.category_id, r.enabled, r.provider_id, r.sort_order)

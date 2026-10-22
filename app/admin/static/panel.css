@@ -776,11 +776,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 .provider-whatsapp { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--c-primary); white-space: nowrap; }
 .provider-inactive { background: var(--c-danger-soft); color: var(--c-danger); border-color: var(--c-danger-border); }
 .provider-pages { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-/* Tipos de problema: the order in a small box (the title and the problem use .provider-name
-   and .provider-contact: bold above, small below). */
-.category-order { display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; min-height: 1.75rem;
-  padding: 0 var(--sp-2); border: 1px solid var(--c-border); border-radius: var(--radius-sm); background: var(--c-surface-2);
-  font-size: var(--fs-small); font-weight: var(--fw-bold); }
+/* Tipos de problema: the title and the problem use .provider-name and .provider-contact (bold
+   above, small below); the order, the same cell as Problemas y proveedores (.reorder-cell). */
 .category-title { min-width: 0; }
 .building-row-actions .building-delete { width: var(--btn-h-sm); padding: 0; }
 .building-row-actions { white-space: nowrap; text-align: right; }
@@ -920,11 +917,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .form-check-i
 
 /* --- Claims' set-up (app.admin.claims_setup) ----------------------------------------------------- */
 .claims-order { width: 8rem; }
-/* The row's place (1, 2, 3…) and «Subir» / «Bajar» (shown by panel.js). */
-.claims-order-cell { display: flex; align-items: center; gap: var(--sp-2); }
-.claims-position { min-width: 1.5rem; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
-.claims-move { display: inline-flex; gap: var(--sp-1); }
-.claims-move[hidden] { display: none; }
+/* A row's place (1, 2, 3…) and «Subir» / «Bajar» (table[data-reorder], shown by panel.js):
+   Problemas y proveedores and Tipos de problema. */
+.reorder-cell { display: flex; align-items: center; gap: var(--sp-2); }
+.reorder-position { min-width: 1.5rem; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.reorder-move { display: inline-flex; gap: var(--sp-1); }
+.reorder-move[hidden] { display: none; }
 /* Where WhatsApp's first list ends: a thin line and «Estos aparecen en "Más opciones"». */
 .claims-second-list td { border-top: 2px solid var(--c-primary); color: var(--c-primary); font-weight: var(--fw-bold);
   font-size: var(--fs-small); padding: var(--sp-1) var(--sp-4) !important; }

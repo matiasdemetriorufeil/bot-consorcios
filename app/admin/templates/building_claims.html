@@ -2,10 +2,11 @@
     saved at once. second_list_from: the first problem that goes to WhatsApp's second list
     ("Más opciones", app.claims.setup.split_for_whatsapp: only with more than 10 enabled).
     The order: each row's visible position (position_<id>, hidden) and «Subir» / «Bajar»,
-    shown and handled by panel.js (it moves the row, numbers them again and moves the line of
-    «Más opciones»); without JavaScript the rows are saved in the order they were drawn. -#}
+    shown and handled by panel.js (table[data-reorder]: it moves the row, numbers them again and
+    moves the line of «Más opciones»); without JavaScript the rows are saved in the order they
+    were drawn. -#}
 {% extends "sqladmin/layout.html" %}
-{% from "sqladmin/_macros.html" import empty_state %}
+{% from "sqladmin/_macros.html" import empty_state, reorder_cell %}
 {% block content %}
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
@@ -38,7 +39,7 @@
     </div>
     <p class="visually-hidden" aria-live="polite" id="claims-order-status"></p>
     <div class="table-responsive">
-      <table class="table table-vcenter card-table rows-table" id="building-claims-table">
+      <table class="table table-vcenter card-table rows-table" id="building-claims-table" data-reorder data-reorder-second-list data-reorder-status="claims-order-status">
         <thead><tr><th>Problema</th><th>Habilitado</th><th>¿Quién lo atiende?</th><th>Orden</th></tr></thead>
         <tbody>
           {% for row in rows %}
@@ -46,7 +47,7 @@
           {% if cid == second_list_from %}
           <tr class="claims-second-list" data-second-list><td colspan="4">Estos aparecen en «Más opciones»</td></tr>
           {% endif %}
-          <tr class="{{ '' if row.enabled else 'text-secondary' }}" data-claims-row data-title="{{ row.category.list_title }}">
+          <tr class="{{ '' if row.enabled else 'text-secondary' }}" data-reorder-row data-title="{{ row.category.list_title }}">
             <td data-label="Problema">
               {#- One block (on a phone the cell is a line: label, then this). -#}
               <div>
@@ -75,14 +76,7 @@
               </select>
             </td>
             <td class="claims-order" data-label="Orden">
-              <div class="claims-order-cell">
-                <span class="claims-position" data-position-text>{{ loop.index }}</span>
-                <input type="hidden" name="position_{{ cid }}" value="{{ loop.index }}" data-position>
-                <span class="claims-move" data-move-buttons hidden>
-                  <button type="button" class="btn btn-sm btn-secondary" data-move="up" aria-label="Subir {{ row.category.list_title }}" {% if loop.first %}disabled{% endif %}><i class="fa-solid fa-caret-up" aria-hidden="true"></i></button>
-                  <button type="button" class="btn btn-sm btn-secondary" data-move="down" aria-label="Bajar {{ row.category.list_title }}" {% if loop.last %}disabled{% endif %}><i class="fa-solid fa-caret-down" aria-hidden="true"></i></button>
-                </span>
-              </div>
+              {{ reorder_cell("position_" ~ cid, loop.index, row.category.list_title, loop.first, loop.last) }}
             </td>
           </tr>
           {% else %}

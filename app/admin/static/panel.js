@@ -731,33 +731,30 @@
     document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
   });
 
-  // --- «Problemas y proveedores» (building_claims.html): «Subir» / «Bajar» move a row --------
+  // --- Tables ordered with «Subir» / «Bajar» (table[data-reorder]): «Problemas y proveedores»
+  // of a building (building_claims.html) and «Tipos de problema» (claim_category_list.html).
   // Without this the buttons stay hidden and the rows are saved in the order they were drawn.
-  // Moving: the row swaps with its neighbor, every row is numbered again (the visible number
-  // and position_<id>), the first has no «Subir» and the last no «Bajar», the line of «Más
-  // opciones» moves (also when a problem is enabled or disabled), and the new place is said
-  // aloud. The focus stays on the button pressed (or on the other one, at an end).
-  var claimsTable = document.getElementById("building-claims-table");
-  if (claimsTable) {
-    var claimsBody = claimsTable.tBodies[0];
-    var claimsStatus = document.getElementById("claims-order-status");
-    var claimsRows = function () {
-      return Array.prototype.slice.call(claimsBody.querySelectorAll("tr[data-claims-row]"));
+  // Each row (tr[data-reorder-row], data-title) has its place ([data-position-text]), its
+  // hidden position ([data-position]) and the two buttons ([data-move] up / down). Moving: the
+  // row swaps with its neighbor, every row is numbered again, the first has no «Subir» and the
+  // last no «Bajar», and the new place is said aloud (data-reorder-status: the live region's
+  // id). The focus stays on the button pressed (or on the other one, at an end).
+  // data-reorder-second-list (Problemas y proveedores): also the line of «Más opciones», moved
+  // when a problem is enabled or disabled too, and the count of enabled ones.
+  document.querySelectorAll("table[data-reorder]").forEach(function (table) {
+    var body = table.tBodies[0];
+    var status = document.getElementById(table.dataset.reorderStatus || "");
+    var secondList = table.hasAttribute("data-reorder-second-list");
+    var columns = table.tHead ? table.tHead.rows[0].cells.length : 1;
+    var rowsOf = function () {
+      return Array.prototype.slice.call(body.querySelectorAll("tr[data-reorder-row]"));
     };
     var enabledOf = function (row) {
       var box = row.querySelector('input[type="checkbox"][name^="enabled_"]');
       return !!(box && box.checked);
     };
-    var claimsRedraw = function () {
-      var rows = claimsRows();
-      rows.forEach(function (row, i) {
-        row.querySelector("[data-position-text]").textContent = String(i + 1);
-        row.querySelector("[data-position]").value = String(i + 1);
-        row.querySelector('[data-move="up"]').disabled = i === 0;
-        row.querySelector('[data-move="down"]').disabled = i === rows.length - 1;
-        row.classList.toggle("text-secondary", !enabledOf(row));
-      });
-      var line = claimsBody.querySelector("tr[data-second-list]");
+    var placeLine = function (rows) {
+      var line = body.querySelector("tr[data-second-list]");
       var enabled = rows.map(enabledOf);
       var before = root.panelSecondListBefore(enabled);
       if (before < 0) {
@@ -767,9 +764,9 @@
           line = document.createElement("tr");
           line.className = "claims-second-list";
           line.setAttribute("data-second-list", "");
-          line.innerHTML = '<td colspan="4">Estos aparecen en «Más opciones»</td>';
+          line.innerHTML = '<td colspan="' + columns + '">Estos aparecen en «Más opciones»</td>';
         }
-        claimsBody.insertBefore(line, rows[before]);
+        body.insertBefore(line, rows[before]);
       }
       var count = enabled.filter(Boolean).length;
       var note = document.querySelector("[data-more-note]");
@@ -779,31 +776,43 @@
         if (number) number.textContent = String(count);
       }
     };
-    claimsRows().forEach(function (row) { row.querySelector("[data-move-buttons]").hidden = false; });
-    claimsTable.addEventListener("click", function (event) {
+    var redraw = function () {
+      var rows = rowsOf();
+      rows.forEach(function (row, i) {
+        row.querySelector("[data-position-text]").textContent = String(i + 1);
+        row.querySelector("[data-position]").value = String(i + 1);
+        row.querySelector('[data-move="up"]').disabled = i === 0;
+        row.querySelector('[data-move="down"]').disabled = i === rows.length - 1;
+        if (secondList) row.classList.toggle("text-secondary", !enabledOf(row));
+      });
+      if (secondList) placeLine(rows);
+    };
+    rowsOf().forEach(function (row) { row.querySelector("[data-move-buttons]").hidden = false; });
+    table.addEventListener("click", function (event) {
       var button = event.target.closest ? event.target.closest("button[data-move]") : null;
       if (!button || button.disabled) return;
-      var rows = claimsRows();
+      var rows = rowsOf();
       var row = button.closest("tr");
       var index = rows.indexOf(row);
       var up = button.dataset.move === "up";
       var other = rows[up ? index - 1 : index + 1];
       if (!other) return;
-      if (up) claimsBody.insertBefore(row, other);
-      else claimsBody.insertBefore(other, row);
-      claimsRedraw();
-      var place = claimsRows().indexOf(row);
-      var total = claimsRows().length;
+      if (up) body.insertBefore(row, other);
+      else body.insertBefore(other, row);
+      redraw();
+      var now = rowsOf();
       if (button.disabled) row.querySelector('[data-move="' + (up ? "down" : "up") + '"]').focus();
       else button.focus();
-      if (claimsStatus) {
-        claimsStatus.textContent = row.dataset.title + ": lugar " + (place + 1) + " de " + total + ".";
+      if (status) {
+        status.textContent = row.dataset.title + ": lugar " + (now.indexOf(row) + 1) + " de " + now.length + ".";
       }
     });
-    claimsTable.addEventListener("change", function (event) {
-      if (event.target.matches && event.target.matches('input[name^="enabled_"]')) claimsRedraw();
-    });
-  }
+    if (secondList) {
+      table.addEventListener("change", function (event) {
+        if (event.target.matches && event.target.matches('input[name^="enabled_"]')) redraw();
+      });
+    }
+  });
 
   // --- A field with a list to pick from (<input list data-submit-on-pick>): picking one of its
   // options sends its form at once (Vecinos' building). The value is the name of a field to

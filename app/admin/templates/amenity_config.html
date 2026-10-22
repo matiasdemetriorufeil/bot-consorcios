@@ -1,4 +1,5 @@
 {% extends "sqladmin/layout.html" %}
+{% from "sqladmin/_macros.html" import hour_select %}
 {% block content %}
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
@@ -108,11 +109,11 @@
       <div class="row g-2">
         <div class="col-6">
           <label class="form-label" for="start">Desde</label>
-          <input class="form-control" type="time" id="start" name="start" required>
+          {{ hour_select("start", "start") }}
         </div>
         <div class="col-6">
           <label class="form-label" for="end">Hasta</label>
-          <input class="form-control" type="time" id="end" name="end" required>
+          {{ hour_select("end", "end") }}
         </div>
         <div class="col-12 form-hint">Si "hasta" es menor que "desde", el turno termina al día siguiente (por ejemplo, 20:00 a 02:00).</div>
         <div class="col-12">

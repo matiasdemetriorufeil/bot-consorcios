@@ -72,7 +72,8 @@ def test_saving_is_audited_and_used_right_away(logged_in: Panel) -> None:
     ("change", "message"),
     [
         ({"provider_weekdays": []}, "Elegí al menos un día"),
-        ({"provider_hours_start": "8 de la mañana"}, "HH:MM"),
+        ({"provider_hours_start": "8 de la mañana"}, "Elegí una hora de la lista."),
+        ({"provider_hours_start": "07:13"}, "Elegí una hora de la lista."),  # off the list
         ({"provider_hours_end": "07:00"}, "después del «desde»"),
         ({"reminder_hours": "0"}, "desde 1"),
         ({"alert_hours": "2"}, "después del recordatorio"),

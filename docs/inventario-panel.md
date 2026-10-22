@@ -1,5 +1,22 @@
 # Inventario del panel `/admin`
 
+## Actualización: orden con «Subir»/«Bajar» y horas de una lista (2026-10-22)
+
+- **Orden sin números a mano** (Problemas y proveedores de cada edificio y Tipos de problema): la
+  posición visible (1, 2, 3…) con «Subir» y «Bajar» (▲▼, con aria-label), un solo componente
+  (`reorder_cell` en `sqladmin/_macros.html` y `table[data-reorder]` en `panel.js`). El servidor
+  recalcula 10, 20, 30… y rechaza posiciones no enteras, menores a 1 o repetidas.
+  - **Tipos de problema:** «Guardar orden» manda todo junto (`/admin/claim-category/order`,
+    auditado `claim_categories_reordered`). Solo en la lista entera: con búsqueda, filtro u
+    otro orden no hay botones y se explica por qué. El formulario ya no tiene «Orden»: uno
+    nuevo va al final. Por debajo de 1280 px se esconden «Título en la lista» y «Alcance».
+  - **Problemas y proveedores:** la línea fina «Estos aparecen en «Más opciones»» se mueve sola
+    (antes del 10.º habilitado, solo con más de 10).
+- **Horas de una lista** (`app/admin/hours.py`): 00:00 a 23:30 cada 30 minutos en Configuración
+  de reclamos (horario de proveedores), Configuración del bot (horario de atención, con «Por
+  defecto») y «Agregar un turno» del SUM. Un valor guardado fuera de la lista se sigue viendo
+  elegido y se acepta si no se cambia. «Hasta» tiene que ser después de «desde».
+
 ## Actualización: feriados y días cerrados (2026-10-21)
 
 - **Días cerrados** (Administración → Bot, debajo de «Configuración del bot»; solo admin,
@@ -261,7 +278,7 @@ En 5f.4 no cambia qué hace el panel, solo cómo se acomodan las tablas.
   | Edificios | Dirección |
   | Información de edificios | Actualizado |
   | Proveedores | Edificios, Problemas |
-  | Tipos de problema | Orden, Título en la lista |
+  | Tipos de problema | Título en la lista, Alcance (desde 2026-10-22; antes Orden) |
   | Sincronizaciones | Tipo, Terminó |
   | Plantillas | Idioma |
 
