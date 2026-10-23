@@ -297,7 +297,7 @@ def test_remove_from_one_of_several_units(operator: Panel, roster, db_session: S
 
 def test_the_operator_page_never_posts_to_the_admin_actions(operator: Panel, roster) -> None:
     page = _get(operator, "/admin/neighbors", building_id=roster["torre"])
-    actions = re.findall(r'<form method="POST" action="([^"]+)"', page)
+    actions = re.findall(r'<form novalidate method="POST" action="([^"]+)"', page)
     assert actions and not [a for a in actions if "refresh" in a or "restore" in a]
     assert "/admin/neighbors/remove" in " ".join(actions)
     assert 'data-open-editor="top"' in page  # «Agregar persona», also for her

@@ -3,7 +3,7 @@
     going on. -#}
 {% macro value(name, default='') %}{{ form.get(name, default) if form else default }}{% endmacro %}
 {% set conversation_id = conversation.conversation_id if conversation else '' %}
-<form class="card" method="POST" id="claim-form" action="{{ url_for('admin:view-claim-new') }}">
+<form novalidate class="card" method="POST" id="claim-form" action="{{ url_for('admin:view-claim-new') }}">
   <input type="hidden" name="building_id" value="{{ building.id }}">
   <input type="hidden" name="reporter" value="{{ mode }}">
   {% if conversation_id %}<input type="hidden" name="conversation" value="{{ conversation_id }}">{% endif %}

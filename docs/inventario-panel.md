@@ -1,5 +1,23 @@
 # Inventario del panel `/admin`
 
+## Actualización: números de una lista y sin carteles del navegador (2026-10-22)
+
+- **Números de configuración, de una lista** (`app/admin/numbers.py`: `Options`, `ChoiceNumberField`
+  en SQLAdmin y la macro `number_select` en el SUM), con texto legible («4 horas», «1 día»,
+  «Sin límite»):
+  - Configuración de reclamos: horas 1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 36, 48, 72; minutos 5,
+    10, 15, 20, 30, 45, 60, 90, 120, 180, 240; días 1 a 7, 10, 14, 21, 30;
+  - SUM: anticipación mínima y cancelación 0 («Sin mínimo» / «Hasta que empieza»), 1, 2, 3, 6,
+    12, 24, 48, 72, 96, 120, 168 horas; anticipación máxima 1, 2, 3, 7, 14, 21, 30, 45, 60, 90,
+    120, 180, 365 días; reservas por mes «Sin límite», 1 a 10, 15, 20, 31.
+  El servidor acepta un valor de la lista o el ya guardado sin cambiar (que se ve elegido aunque
+  no esté en la lista); otro, mandado a mano, se rechaza con «Elegí una opción de la lista.»
+  junto al campo. «Orden» de Respuestas rápidas sigue siendo un número de 0 a 999.
+- **El navegador nunca valida por su cuenta:** `novalidate` en los 63 formularios del panel
+  (también los de SQLAdmin, el ingreso y el diálogo de confirmación). Los mensajes salen del
+  servidor en castellano; el diálogo de confirmación avisa «Completá este campo.» adentro, sin
+  el globito del navegador.
+
 ## Actualización: orden con «Subir»/«Bajar» y horas de una lista (2026-10-22)
 
 - **Un solo orden de los problemas: el general, en «Tipos de problema»** (decisión del

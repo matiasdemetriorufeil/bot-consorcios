@@ -21,7 +21,7 @@
   <div class="card" id="claim-who" {% if chosen or mode == 'other' %}hidden{% endif %}>
     <div class="card-header"><h2 class="card-title">¿Quién reclama?</h2></div>
     <div class="card-body">
-      <form method="GET" class="row g-2" id="claim-people-form" action="{{ url_for('admin:view-claim-new') }}">
+      <form novalidate method="GET" class="row g-2" id="claim-people-form" action="{{ url_for('admin:view-claim-new') }}">
         {% if conversation_id %}<input type="hidden" name="conversation" value="{{ conversation_id }}">{% endif %}
         <div class="col-12 col-sm">
           <input class="form-control" type="search" name="q" id="claim-people-q" value="{{ query }}" autocomplete="off"
@@ -39,7 +39,7 @@
   <div class="card" id="claim-other" {% if mode != 'other' %}hidden{% endif %}>
     <div class="card-header"><h2 class="card-title">No está en el padrón</h2></div>
     <div class="card-body">
-      <form method="GET" class="row g-2" id="claim-other-form" action="{{ url_for('admin:view-claim-new') }}">
+      <form novalidate method="GET" class="row g-2" id="claim-other-form" action="{{ url_for('admin:view-claim-new') }}">
         <input type="hidden" name="reporter" value="other">
         {% if conversation_id %}<input type="hidden" name="conversation" value="{{ conversation_id }}">{% endif %}
         <div class="col-12 col-sm">

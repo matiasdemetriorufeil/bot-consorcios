@@ -1,7 +1,7 @@
 {% extends "sqladmin/layout.html" %}
 {% block content %}
 <div class="col-12 col-lg-8">
-  <form class="card" method="POST" id="book-form">
+  <form novalidate class="card" method="POST" id="book-form">
     <input type="hidden" name="slot" value="{{ slot.id }}">
     <input type="hidden" name="date" value="{{ day.isoformat() }}">
     <div class="card-header">

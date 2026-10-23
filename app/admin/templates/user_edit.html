@@ -12,7 +12,7 @@
       {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
       <p class="text-secondary small">Rol: {{ roles[user.role] }} · Último ingreso: {{ last_login or 'nunca' }}</p>
 
-      <form method="POST" class="mb-4">
+      <form novalidate method="POST" class="mb-4">
         <input type="hidden" name="change" value="name">
         <label class="form-label" for="display_name">Nombre</label>
         <div class="input-group">
@@ -21,7 +21,7 @@
         </div>
       </form>
 
-      <form method="POST" class="mb-4">
+      <form novalidate method="POST" class="mb-4">
         <input type="hidden" name="change" value="role">
         <label class="form-label" for="role">Rol</label>
         <div class="input-group">
@@ -35,7 +35,7 @@
         {% if myself %}<div class="form-hint">No podés cambiar tu propio rol.</div>{% endif %}
       </form>
 
-      <form method="POST" class="mb-4" autocomplete="off">
+      <form novalidate method="POST" class="mb-4" autocomplete="off">
         <input type="hidden" name="change" value="password">
         <div class="form-label">Nueva contraseña (mínimo {{ min_length }} caracteres)</div>
         <div class="row g-2">
@@ -47,13 +47,13 @@
       </form>
 
       {% if user.active %}
-      <form method="POST" {{ confirm_attrs('deactivate_user', user.display_name ~ '.') | xmlattr }}>
+      <form novalidate method="POST" {{ confirm_attrs('deactivate_user', user.display_name ~ '.') | xmlattr }}>
         <input type="hidden" name="change" value="deactivate">
         <button type="submit" class="btn btn-danger" {% if myself %}disabled{% endif %}>Desactivar</button>
         {% if myself %}<span class="form-hint d-inline ms-2">No podés desactivar tu propio usuario.</span>{% endif %}
       </form>
       {% else %}
-      <form method="POST">
+      <form novalidate method="POST">
         <input type="hidden" name="change" value="reactivate">
         <button type="submit" class="btn btn-primary">Reactivar</button>
       </form>

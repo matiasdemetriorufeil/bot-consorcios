@@ -22,7 +22,7 @@
 {% endif %}
 
 <div class="col-12">
-  <form class="card" method="POST" id="claims-table">
+  <form novalidate class="card" method="POST" id="claims-table">
     <div class="card-header">
       <h2 class="card-title">Problemas y proveedores</h2>
       <div class="ms-auto small text-secondary">
@@ -99,7 +99,7 @@
   <div class="card">
     <div class="card-header"><h2 class="card-title">Copiar de otro edificio</h2></div>
     <div class="card-body">
-      <form method="POST" action="{{ url_for('admin:view-building-claims-copy', building_id=building.id) }}" class="row g-2"
+      <form novalidate method="POST" action="{{ url_for('admin:view-building-claims-copy', building_id=building.id) }}" class="row g-2"
         {{ confirm_attrs('copy_claims') | xmlattr }}>
         <div class="col-12 col-sm">
           <select name="source_id" class="form-select" required aria-label="Edificio de origen">

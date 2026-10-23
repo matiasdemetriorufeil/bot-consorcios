@@ -27,7 +27,7 @@
        data-tour-auto="{{ 'true' if tour_auto else 'false' }}" data-tour-seen-url="{{ url_for('admin:view-tour-seen') }}">
     {% if example %}<script type="application/json" id="tour-steps">{{ tour_steps | tojson }}</script>{% endif %}
     <section class="card inbox-list">
-      <form class="inbox-top" {% if example %}method="dialog" data-example-note="{{ example_notes.search }}"{% else %}method="GET" action="{{ url_for('admin:view-conversations') }}"{% endif %}>
+      <form novalidate class="inbox-top" {% if example %}method="dialog" data-example-note="{{ example_notes.search }}"{% else %}method="GET" action="{{ url_for('admin:view-conversations') }}"{% endif %}>
         <input type="hidden" name="tab" value="{{ tab }}">
         <input class="form-control form-control-sm" type="search" name="q" value="{{ query }}"
                placeholder="Nombre, teléfono o unidad" aria-label="Buscar conversaciones">
@@ -66,7 +66,7 @@
             {% elif conversation.status.value != 'human' %}
             <div class="composer-hint">Al responder tomás la conversación y el bot deja de contestar.</div>
             {% endif %}
-            <form {% if example %}method="dialog" data-example-note="{{ example_notes.reply }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
+            <form novalidate {% if example %}method="dialog" data-example-note="{{ example_notes.reply }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
               <input type="hidden" name="action" value="reply">
               <input type="hidden" name="form_token" value="{{ form_token }}">
               <textarea class="form-control" id="reply-text" name="text" rows="3" maxlength="4096" required placeholder="Escribí tu respuesta…"></textarea>
@@ -87,7 +87,7 @@
           {% else %}
             <div class="alert alert-info small mb-2">{{ window_closed_text }}</div>
             {% if templates_list %}
-            <form {% if example %}method="dialog" data-example-note="{{ example_notes.template }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
+            <form novalidate {% if example %}method="dialog" data-example-note="{{ example_notes.template }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
               <input type="hidden" name="action" value="template">
               <input type="hidden" name="form_token" value="{{ form_token }}">
               <div class="composer-row">
@@ -103,7 +103,7 @@
           {% endif %}
         </div>
         <div data-pane-body="note" hidden>
-          <form {% if example %}method="dialog" data-example-note="{{ example_notes.note }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
+          <form novalidate {% if example %}method="dialog" data-example-note="{{ example_notes.note }}"{% else %}method="POST" action="{{ action_url }}"{% endif %}{% if not example %} data-busy-text="Enviando…"{% endif %}>
             <input type="hidden" name="action" value="note">
             <input type="hidden" name="form_token" value="{{ form_token }}">
             <textarea class="form-control" id="note-text" name="text" rows="2" maxlength="4000" required placeholder="Solo la ve el estudio, no le llega al contacto."></textarea>

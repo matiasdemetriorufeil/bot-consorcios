@@ -18,7 +18,7 @@
   <div class="card building-list">
     <div class="card-body building-list-top">
       {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
-      <form class="building-search" method="get" action="{{ request.url.path }}" role="search">
+      <form novalidate class="building-search" method="get" action="{{ request.url.path }}" role="search">
         {% for key in ("sortBy", "sort", "pageSize") %}{% if request.query_params.get(key) %}
         <input type="hidden" name="{{ key }}" value="{{ request.query_params.get(key) }}">
         {% endif %}{% endfor %}

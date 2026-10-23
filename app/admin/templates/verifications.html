@@ -28,7 +28,7 @@
             <td data-label="Estado" class="col-secondary"><span class="state state-waiting">{{ row.status }}</span></td>
             <td class="row-actions">
               <a class="btn btn-sm btn-primary" href="{{ url_for('admin:view-verification-approve', request_id=row.id) }}"><i class="fa-solid fa-check me-1"></i>Aprobar</a>
-              <form method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" data-fetch {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>
+              <form novalidate method="POST" action="{{ url_for('admin:view-verification-reject', request_id=row.id) }}" data-fetch {{ confirm_attrs('reject', row.claimed_name ~ ' · ' ~ row.building ~ ' ' ~ row.unit ~ '.') | xmlattr }}>
                 <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Rechazar</button>
               </form>
             </td>

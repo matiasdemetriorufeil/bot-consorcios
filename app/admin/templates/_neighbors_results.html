@@ -45,7 +45,7 @@
         <td data-label="Origen">{{ person.source }}</td>
         <td class="row-actions neighbor-actions">
           <a class="btn btn-sm btn-secondary" href="{{ url_for('admin:view-neighbor-edit', person_id=person.person_id) }}?{{ {'unit_id': group.unit_id, 'role': person.role_value, 'back': back} | urlencode }}" data-open-editor="{{ group.unit_id }}"><i class="fa-solid fa-pen" aria-hidden="true"></i>Editar<span class="visually-hidden"> a {{ person.name }}</span></a>
-          <form method="POST" action="{{ remove_url }}" data-fetch {{ neighbor_remove_attrs(person.name, person.role_text, group.label, only_unit=person.only_unit, consorplus=person.from_consorplus, admin=is_admin) | xmlattr }}>
+          <form novalidate method="POST" action="{{ remove_url }}" data-fetch {{ neighbor_remove_attrs(person.name, person.role_text, group.label, only_unit=person.only_unit, consorplus=person.from_consorplus, admin=is_admin) | xmlattr }}>
             <input type="hidden" name="unit_id" value="{{ group.unit_id }}">
             <input type="hidden" name="person_id" value="{{ person.person_id }}">
             <input type="hidden" name="role" value="{{ person.role_value }}">

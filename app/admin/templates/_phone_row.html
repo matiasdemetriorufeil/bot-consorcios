@@ -32,12 +32,12 @@
   <td data-label="Fecha" class="text-nowrap{% if review_tab %} col-secondary{% endif %}">{{ row.date }}</td>
   <td class="row-actions">
     {% if row.status == 'review' %}
-    <form method="POST" action="{{ url_for('admin:view-phone-approve', phone_id=row.id) }}" data-fetch>
+    <form novalidate method="POST" action="{{ url_for('admin:view-phone-approve', phone_id=row.id) }}" data-fetch>
       <input type="hidden" name="back" value="{{ back }}">
       <button class="btn btn-sm btn-primary" type="submit"><i class="fa-solid fa-check me-1"></i>Aprobar</button>
     </form>
     {% endif %}
-    <form method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" data-fetch {{ confirm_attrs('unlink', row.number ~ ' · ' ~ row.person ~ '.') | xmlattr }}>
+    <form novalidate method="POST" action="{{ url_for('admin:view-phone-unlink', phone_id=row.id) }}" data-fetch {{ confirm_attrs('unlink', row.number ~ ' · ' ~ row.person ~ '.') | xmlattr }}>
       <input type="hidden" name="back" value="{{ back }}">
       <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-link-slash" aria-hidden="true"></i>Desvincular</button>
     </form>

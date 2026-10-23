@@ -28,6 +28,7 @@ from app.admin.auth import AdminOnly, admin_user
 from app.admin.filters import RelatedFilter, ValuesFilter, YesNoFilter
 from app.admin.hours import HourField, check_listed
 from app.admin.metrics import compute_claim_metrics, compute_metrics
+from app.admin.numbers import QUICK_REPLY_ORDER, NumberField, RemembersRecord
 from app.bot.bot_config import invalidate_bot_config, parse_weekdays
 from app.business_hours import (
     WEEKDAYS,
@@ -763,7 +764,7 @@ class WaTemplateAdmin(AdminOnly, AuditedView, model=WaTemplate):
     page_size = 50
 
 
-class QuickReplyAdmin(AdminOnly, AuditedView, model=QuickReply):
+class QuickReplyAdmin(AdminOnly, RemembersRecord, AuditedView, model=QuickReply):
     """Saved texts the operators insert in a reply with one click."""
 
     menu_group = "bot"  # its block of «Administración» (app.admin.MENU_GROUPS)
@@ -776,6 +777,7 @@ class QuickReplyAdmin(AdminOnly, AuditedView, model=QuickReply):
     column_sortable_list = [QuickReply.title, QuickReply.sort_order]
     column_default_sort = [(QuickReply.sort_order, False), (QuickReply.title, False)]
     form_columns = [QuickReply.title, QuickReply.content, QuickReply.sort_order, QuickReply.active]
+    form_overrides = {"sort_order": NumberField}  # a whole number, 0 to 999 (app.admin.numbers)
     form_widget_args = {"content": {"rows": 5}}
     column_labels = {
         QuickReply.title: "Título",
@@ -785,7 +787,10 @@ class QuickReplyAdmin(AdminOnly, AuditedView, model=QuickReply):
         QuickReply.updated_at: "Actualizada",
     }
     form_args = {
-        "sort_order": {"description": "Las de número más chico aparecen primero."},
+        "sort_order": {
+            "description": "Las de número más chico aparecen primero. De 0 a 999.",
+            "bounds": QUICK_REPLY_ORDER,
+        },
         "content": {"description": "Se inserta tal cual en la caja de respuesta (editable)."},
     }
     page_size = 50

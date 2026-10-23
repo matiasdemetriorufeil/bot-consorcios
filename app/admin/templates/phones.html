@@ -16,7 +16,7 @@
       </ul>
     </div>
     <div class="card-body border-bottom py-3">
-      <form method="GET" class="row g-2" id="phone-search">
+      <form novalidate method="GET" class="row g-2" id="phone-search">
         <input type="hidden" name="tab" value="{{ result.tab }}">
         <div class="col-12 col-md">
           <input class="form-control" type="search" name="q" value="{{ result.query }}"
@@ -56,7 +56,7 @@
     </div>
 
     {% if result.tab == 'review' and result.rows %}
-    <form method="POST" action="{{ approve_many_url }}" id="approve-selected" data-fetch class="card-body border-bottom py-2 d-flex flex-wrap align-items-center gap-2">
+    <form novalidate method="POST" action="{{ approve_many_url }}" id="approve-selected" data-fetch class="card-body border-bottom py-2 d-flex flex-wrap align-items-center gap-2">
       <input type="hidden" name="back" value="{{ back }}">
       <label class="form-check mb-0 d-inline-flex">
         <input class="form-check-input me-2" type="checkbox" id="select-all" aria-label="Elegir todos">

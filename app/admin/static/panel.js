@@ -515,7 +515,9 @@
   // before anything else: forms the page redraws (the conversation's header) are covered too.
   // Looked up when used: the dialog comes after this script in the page. The form's
   // [data-confirm-fields] (a reason, a provider) are shown inside the dialog while it is open
-  // (still the form's fields: form="<its id>"); "ok" does nothing while a required one is empty.
+  // (still the form's fields: form="<its id>"); "ok" does nothing while a required one is empty:
+  // it says so in the dialog (#confirm-error), never with the browser's own bubble (the forms
+  // are novalidate: the server checks them too).
   function blank(el) { return el.required && !String(el.value || "").trim(); }
   document.addEventListener("submit", function (event) {
     var form = event.target;
@@ -542,17 +544,27 @@
     var inputs = [];
     if (fields && box && form.id) {
       inputs = Array.prototype.slice.call(fields.querySelectorAll("input, select, textarea"));
-      inputs.forEach(function (el) { el.setAttribute("form", form.id); el.setCustomValidity(""); });
+      inputs.forEach(function (el) { el.setAttribute("form", form.id); el.removeAttribute("aria-invalid"); });
       fields.hidden = false;
       box.appendChild(fields);
     }
+    var problem = document.getElementById("confirm-error");
+    if (problem) { problem.hidden = true; problem.textContent = ""; }
     ok.onclick = function (click) {
       var empty = inputs.filter(blank)[0];
       if (!empty) return;
       click.preventDefault();
-      empty.setCustomValidity("Completá este campo.");
-      empty.reportValidity();
-      empty.addEventListener("input", function () { empty.setCustomValidity(""); }, { once: true });
+      if (problem) {
+        problem.textContent = "Completá este campo.";
+        problem.hidden = false;
+        empty.setAttribute("aria-describedby", "confirm-error");
+      }
+      empty.setAttribute("aria-invalid", "true");
+      empty.focus();
+      empty.addEventListener("input", function () {
+        empty.removeAttribute("aria-invalid");
+        if (problem) problem.hidden = true;
+      }, { once: true });
     };
     dialog.onclose = function () {
       if (fields && box && fields.parentNode === box) {

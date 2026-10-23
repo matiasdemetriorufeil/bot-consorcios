@@ -6,7 +6,7 @@
 <span class="neighbor-hint-error">{{ taken_text }}</span>
 <span class="neighbor-hint-buttons">
   {% if mode == 'edit' %}
-  <form method="POST" action="{{ url_for('admin:view-neighbor-phone-move', phone_id=check.taken.phone_id) }}" data-fetch {{ confirm_attrs('neighbor_phone_move') | xmlattr }}>
+  <form novalidate method="POST" action="{{ url_for('admin:view-neighbor-phone-move', phone_id=check.taken.phone_id) }}" data-fetch {{ confirm_attrs('neighbor_phone_move') | xmlattr }}>
     <input type="hidden" name="person_id" value="{{ person_id }}">
     <input type="hidden" name="unit_id" value="{{ unit_id }}">
     <input type="hidden" name="role" value="{{ role }}">

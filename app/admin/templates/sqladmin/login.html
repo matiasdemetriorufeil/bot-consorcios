@@ -7,7 +7,7 @@
 {% block page_title %}Ingresar · Panel · Estudio Diego Rufeil{% endblock %}
 {% block body %}
 <main id="contenido" tabindex="-1" class="login-page">
-  <form class="card login-card" action="{{ url_for('admin:login') }}" method="POST">
+  <form novalidate class="card login-card" action="{{ url_for('admin:login') }}" method="POST">
     <div class="card-body">
       <div class="login-brand">
         <img src="{{ asset_url('panel-static', 'logo.svg') }}" alt="" width="56" height="56">

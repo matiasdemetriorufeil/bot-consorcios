@@ -24,7 +24,7 @@
   <div class="card building-list">
     <div class="card-body building-list-top">
       <div class="building-search">
-        <form class="building-search-field" method="get" action="{{ request.url.path }}" role="search">
+        <form novalidate class="building-search-field" method="get" action="{{ request.url.path }}" role="search">
           {% if provider %}<input type="hidden" name="provider" value="{{ provider }}">{% endif %}
           {% if bot %}<input type="hidden" name="bot" value="{{ bot }}">{% endif %}
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>

@@ -29,6 +29,13 @@ from app.admin.agenda import build_agenda
 from app.admin.audit import log_admin_action
 from app.admin.auth import admin_user, is_admin, require_admin
 from app.admin.hours import accepted_hour
+from app.admin.numbers import (
+    SUM_CANCEL_HOURS,
+    SUM_MAX_ADVANCE_DAYS,
+    SUM_MIN_ADVANCE_HOURS,
+    SUM_PER_UNIT_MONTH,
+    check_choice,
+)
 from app.amenities.booking import (
     POLICY_RULES,
     BookingError,
@@ -52,18 +59,29 @@ from app.db.models import (
 
 WEEKDAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 WEEKDAYS_SHORT = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"]
-# Config form: (field, label, minimum). max_per_unit_per_month may be blank (no limit).
+# Config form: (field, label, options). Picked from a list (app.admin.numbers), never typed.
 NUMBER_FIELDS = (
-    ("min_advance_hours", "Anticipación mínima (horas)", 0),
-    ("max_advance_days", "Anticipación máxima (días)", 1),
-    ("max_per_unit_per_month", "Reservas por unidad por mes", 1),
-    ("cancel_until_hours", "Cancelación hasta (horas antes)", 0),
+    ("min_advance_hours", "Anticipación mínima", SUM_MIN_ADVANCE_HOURS),
+    ("max_advance_days", "Anticipación máxima", SUM_MAX_ADVANCE_DAYS),
+    ("max_per_unit_per_month", "Reservas por unidad por mes", SUM_PER_UNIT_MONTH),
+    ("cancel_until_hours", "Cancelación hasta (antes del turno)", SUM_CANCEL_HOURS),
 )
 FLAG_FIELDS = ("active", "bot_booking_enabled", "blocks_debtors")
 
 
 class FormProblem(ValueError):
-    """What is wrong in a form, in Spanish (shown as is)."""
+    """What is wrong in a form, in Spanish (shown as is). fields: the message of each field
+    that is wrong (shown next to it); typed: what was typed, to show it again."""
+
+    def __init__(
+        self,
+        message: str,
+        fields: dict[str, str] | None = None,
+        typed: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.fields = fields or {}
+        self.typed = typed or {}
 
 
 def _redirect(request: Request, identity: str, **params: Any) -> RedirectResponse:
@@ -129,15 +147,15 @@ def update_amenity(session: Session, amenity: Amenity, form: FormData, user: str
         raise FormProblem("El nombre no puede quedar vacío.")
     values["name"] = name[:100]
     values["rules_text"] = str(form.get("rules_text", "")).strip() or None
-    for field, label, minimum in NUMBER_FIELDS:
-        raw = str(form.get(field, "")).strip()
-        if field == "max_per_unit_per_month" and not raw:
-            values[field] = None  # no limit
-            continue
-        number = _int(raw)
-        if number is None or number < minimum:
-            raise FormProblem(f"{label}: tiene que ser un número entero desde {minimum}.")
-        values[field] = number
+    errors: dict[str, str] = {}
+    for field, _label, options in NUMBER_FIELDS:
+        try:
+            values[field] = check_choice(form.get(field), options, getattr(amenity, field))
+        except ValueError as exc:
+            errors[field] = str(exc)
+    if errors:
+        typed = {field: str(form.get(field, "")) for field, *_ in NUMBER_FIELDS}
+        raise FormProblem("Revisá los campos marcados.", fields=errors, typed=typed)
     for field in FLAG_FIELDS:
         values[field] = form.get(field) == "on"
     changed = sorted(f for f, v in values.items() if getattr(amenity, f) != v)
@@ -365,6 +383,8 @@ class AmenitiesView(BaseView):
         require_admin(request)  # the SUM's set-up: admins only
         amenity_id = request.path_params["amenity_id"]
         error = None
+        field_errors: dict[str, str] = {}
+        typed: dict[str, str] = {}
         with self.session_maker() as session:
             amenity = self._amenity(session, amenity_id)
             if amenity is None:
@@ -376,7 +396,7 @@ class AmenitiesView(BaseView):
                     )
                 except FormProblem as exc:
                     session.rollback()
-                    error = str(exc)
+                    error, field_errors, typed = str(exc), exc.fields, exc.typed
                 else:
                     Flash.success(
                         request, "Configuración guardada." if changed else "No había cambios."
@@ -392,6 +412,8 @@ class AmenitiesView(BaseView):
                 by_day=by_day,
                 describe_slot=describe_slot,
                 number_fields=NUMBER_FIELDS,
+                field_errors=field_errors,
+                typed=typed,
                 error=error,
             )
 

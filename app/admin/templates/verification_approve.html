@@ -39,7 +39,7 @@
       {% if not pending %}
       <div class="alert alert-info" role="alert">Esta solicitud ya está resuelta ({{ status_label }}).</div>
       {% else %}
-      <form method="POST" id="approve-registration"
+      <form novalidate method="POST" id="approve-registration"
             data-confirm-title="{{ confirm['data-confirm-title'] }}" data-confirm-button="{{ confirm['data-confirm-button'] }}"
             data-confirm-kind="{{ confirm['data-confirm-kind'] }}"
             data-confirm-text="{{ confirm['data-confirm-text'] ~ (' ' ~ owner_note if owner_now else '') }}"

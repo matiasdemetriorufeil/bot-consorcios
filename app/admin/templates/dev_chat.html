@@ -25,7 +25,7 @@
         {% endif %}
       </div>
       <div id="phone-typing"></div>
-      <form class="phone-input" id="phone-form" autocomplete="off">
+      <form novalidate class="phone-input" id="phone-form" autocomplete="off">
         <textarea id="phone-text" rows="1" class="form-control" maxlength="4096" placeholder="Mensaje" required></textarea>
         <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane me-1"></i>Enviar</button>
       </form>
@@ -39,7 +39,7 @@
     <div class="card mb-3">
       <div class="card-header"><h2 class="card-title">Teléfono de prueba</h2></div>
       <div class="card-body">
-        <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
+        <form novalidate method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
           <div class="col-12 col-md-8">
             <input class="form-control{% if phone_invalid %} is-invalid{% endif %}" name="phone"
                    value="{{ raw_phone or phone or default_phone }}" placeholder="+5493515550000" required>
@@ -59,7 +59,7 @@
     <div class="card mb-3">
       <div class="card-header"><h2 class="card-title">Hablar como proveedor</h2></div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('admin:view-dev-chat-provider') }}" class="row g-2">
+        <form novalidate method="post" action="{{ url_for('admin:view-dev-chat-provider') }}" class="row g-2">
           <div class="col-12 col-md-8">
             <select class="form-select" name="provider_id" required aria-label="Proveedor">
               {% for p in providers %}<option value="{{ p.id }}">{{ p.name }} · {{ p.whatsapp_e164 | phone }}</option>{% endfor %}
@@ -79,7 +79,7 @@
     <div class="card mb-3" id="claim-jobs">
       <div class="card-header"><h2 class="card-title">Tareas de reclamos</h2></div>
       <div class="card-body">
-        <form method="post" action="{{ url_for('admin:view-dev-chat-claim-jobs') }}" class="row g-2">
+        <form novalidate method="post" action="{{ url_for('admin:view-dev-chat-claim-jobs') }}" class="row g-2">
           <input type="hidden" name="phone" value="{{ phone or '' }}">
           <div class="col-12 col-md-8">
             <label class="form-label small" for="claim-jobs-at">Como si fueran las (hora de Córdoba; vacío: ahora)</label>
@@ -98,7 +98,7 @@
     <div class="card mb-3">
       <div class="card-header"><h2 class="card-title">Buscar una persona de la base</h2></div>
       <div class="card-body">
-        <form method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
+        <form novalidate method="get" action="{{ url_for('admin:view-dev-chat') }}" class="row g-2">
           {% if phone %}<input type="hidden" name="phone" value="{{ phone }}">{% endif %}
           <div class="col-12 col-md-8"><input class="form-control" name="q" value="{{ term }}" placeholder="Nombre, unidad o edificio"></div>
           <div class="col-12 col-md-4"><button class="btn btn-primary w-100" type="submit"><i class="fa-solid fa-magnifying-glass me-1"></i>Buscar</button></div>
@@ -124,7 +124,7 @@
         <div class="d-flex flex-wrap gap-2">
           {% if conversation_id %}
           <a class="btn btn-outline-primary" href="{{ url_for('admin:view-conversation', conversation_id=conversation_id) }}" target="_blank" rel="noopener">Ver en Conversaciones</a>
-          <form method="post" action="{{ url_for('admin:view-dev-chat-restart') }}"
+          <form novalidate method="post" action="{{ url_for('admin:view-dev-chat-restart') }}"
                 {{ confirm_attrs('restart_test_chat') | xmlattr }}>
             <input type="hidden" name="phone" value="{{ phone }}">
             <button class="btn btn-danger" type="submit"><i class="fa-solid fa-rotate-left me-1"></i>Empezar de nuevo</button>

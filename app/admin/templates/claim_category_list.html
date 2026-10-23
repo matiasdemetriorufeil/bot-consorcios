@@ -55,7 +55,7 @@
       </div>
     </div>
     <p class="visually-hidden" aria-live="polite" id="category-order-status"></p>
-    {% if reorder %}<form method="POST" action="{{ url_for('admin:view-claim-category-save_order') }}" id="category-order">{% endif %}
+    {% if reorder %}<form novalidate method="POST" action="{{ url_for('admin:view-claim-category-save_order') }}" id="category-order">{% endif %}
     <div class="table-responsive">
       <table class="table card-table table-vcenter rows-table building-table"{% if reorder %} data-reorder data-reorder-status="category-order-status"{% endif %}>
         <thead>

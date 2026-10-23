@@ -28,13 +28,13 @@
   {% if not past %}
   <td class="row-actions text-end">
     {% if row.open_anyway_id %}
-    <form method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
+    <form novalidate method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
       <input type="hidden" name="id" value="{{ row.open_anyway_id }}">
       <input type="hidden" name="year" value="{{ table.year }}">
       <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar abre igual</button>
     </form>
     {% else %}
-    <form method="POST" action="{{ url_for('admin:view-closed-day-open_anyway') }}" {{ confirm_attrs('open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
+    <form novalidate method="POST" action="{{ url_for('admin:view-closed-day-open_anyway') }}" {{ confirm_attrs('open_anyway', row.label ~ ' · ' ~ row.name ~ '.') | xmlattr }}>
       <input type="hidden" name="day" value="{{ row.day.isoformat() }}">
       <input type="hidden" name="year" value="{{ table.year }}">
       <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-door-open" aria-hidden="true"></i>Abre igual</button>
@@ -92,7 +92,7 @@
             <td data-label="Fecha" class="text-nowrap">{{ model_view.day_label(row.day) }}</td>
             <td data-label="Motivo">{{ row.reason }}</td>
             <td class="row-actions text-end">
-              <form method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_closed_day', model_view.day_label(row.day) ~ ' · ' ~ row.reason ~ '.') | xmlattr }}>
+              <form novalidate method="POST" action="{{ url_for('admin:view-closed-day-remove') }}" {{ confirm_attrs('remove_closed_day', model_view.day_label(row.day) ~ ' · ' ~ row.reason ~ '.') | xmlattr }}>
                 <input type="hidden" name="id" value="{{ row.id }}">
                 <input type="hidden" name="year" value="{{ table.year }}">
                 <button type="submit" class="btn btn-sm btn-secondary"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar</button>

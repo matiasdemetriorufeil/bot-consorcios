@@ -8,7 +8,7 @@
 <div class="neighbor-form" data-neighbor-form>
   <h2 class="neighbor-form-title">Agregar a Vecinos<span class="neighbor-form-where">Teléfono {{ form.phone }}</span></h2>
   {% if form.warning %}<div class="alert alert-warning mb-0" role="alert">{{ form.warning }}</div>{% endif %}
-  <form method="GET" action="{{ url_for('admin:view-neighbor-add') }}" class="neighbor-form-grid">
+  <form novalidate method="GET" action="{{ url_for('admin:view-neighbor-add') }}" class="neighbor-form-grid">
     <input type="hidden" name="phone" value="{{ form.phone }}">
     <div class="neighbor-field">
       <label class="form-label required-label" for="add-building">Edificio</label>
@@ -32,7 +32,7 @@
     {% if form.mode == 'add' %}Agregar persona{% if form.unit %} en {{ form.unit.label }}{% endif %}{% else %}Editar a {{ form.full_name }}{% endif %}
     <span class="neighbor-form-where">{{ form.building }}{% if form.mode == 'edit' %} · {{ form.unit.label }}{% endif %}</span>
   </h2>
-  <form method="POST" id="neighbor-{{ key }}" class="neighbor-form-grid"{% if inline %} data-fetch{% endif %} data-busy-text="Guardando…"
+  <form novalidate method="POST" id="neighbor-{{ key }}" class="neighbor-form-grid"{% if inline %} data-fetch{% endif %} data-busy-text="Guardando…"
         action="{{ url_for('admin:view-neighbor-add-save') if form.mode == 'add' else url_for('admin:view-neighbor-save', person_id=form.person_id) }}"
         data-confirm-title="{{ confirm['data-confirm-title'] }}" data-confirm-button="{{ confirm['data-confirm-button'] }}"
         data-confirm-kind="{{ confirm['data-confirm-kind'] }}" data-confirm-text="{{ base_text ~ (' ' ~ owner_note if owner else '') }}"
@@ -103,7 +103,7 @@
     {% for phone in form.phones %}
     <div class="neighbor-phone-row">
       <span class="neighbor-phone"><span class="text-nowrap">{{ phone.number }}</span>{% if phone.status %}<span class="state state-{{ phone.status | state('phone') }}">{{ phone.status_label }}</span>{% endif %}</span>
-      <form method="POST" action="{{ url_for('admin:view-neighbor-phone-remove', phone_id=phone.id) }}" data-fetch {{ confirm_attrs('neighbor_phone_remove', phone.number ~ '.') | xmlattr }}>
+      <form novalidate method="POST" action="{{ url_for('admin:view-neighbor-phone-remove', phone_id=phone.id) }}" data-fetch {{ confirm_attrs('neighbor_phone_remove', phone.number ~ '.') | xmlattr }}>
         {% include "_neighbor_editor_keys.html" %}
         <button class="btn btn-sm btn-outline-danger" type="submit"><i class="fa-solid fa-xmark" aria-hidden="true"></i>Quitar<span class="visually-hidden"> el {{ phone.number }}</span></button>
       </form>
@@ -111,7 +111,7 @@
     {% else %}
     <p class="neighbor-none mb-2">Sin teléfono</p>
     {% endfor %}
-    <form method="POST" action="{{ url_for('admin:view-neighbor-phone-add') }}" data-fetch class="neighbor-phone-add">
+    <form novalidate method="POST" action="{{ url_for('admin:view-neighbor-phone-add') }}" data-fetch class="neighbor-phone-add">
       {% include "_neighbor_editor_keys.html" %}
       <div class="neighbor-phone-field" data-phone-field>
         <input class="form-control" type="tel" name="phone" aria-label="Teléfono nuevo" placeholder="Ej. 351 555-0101" inputmode="tel" autocomplete="off" required

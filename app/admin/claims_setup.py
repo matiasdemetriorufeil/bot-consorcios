@@ -33,6 +33,13 @@ from app.admin.audit import changed_fields, log_admin_action
 from app.admin.auth import AdminOnly, admin_user, require_admin
 from app.admin.filters import YesNoFilter
 from app.admin.hours import HourField, check_listed
+from app.admin.numbers import (
+    CLAIM_DAYS,
+    CLAIM_HOURS,
+    CLAIM_MINUTES,
+    ChoiceNumberField,
+    RemembersRecord,
+)
 from app.admin.views import AuditedView, _in_thread
 from app.bot.bot_config import parse_hour, parse_weekdays
 from app.claims.claim_config import invalidate_claim_config
@@ -693,12 +700,7 @@ class WeekdaysField(SelectMultipleField):
         super().pre_validate(form)
 
 
-def _positive(form: Any, field: Any) -> None:
-    if field.data is None or field.data < 1:
-        raise ValidationError("Tiene que ser un número entero desde 1.")
-
-
-class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
+class ClaimSettingsAdmin(AdminOnly, RemembersRecord, AuditedView, model=ClaimSettings):
     """The single row of "Configuración de reclamos" (app.claims.claim_config): the menu opens
     its form directly, like "Configuración del bot"."""
 
@@ -726,6 +728,12 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
         "provider_weekdays": WeekdaysField,
         "provider_hours_start": HourField,
         "provider_hours_end": HourField,
+        # Picked from a list (app.admin.numbers), never typed.
+        "reminder_hours": ChoiceNumberField,
+        "reminder_urgent_minutes": ChoiceNumberField,
+        "alert_hours": ChoiceNumberField,
+        "alert_urgent_minutes": ChoiceNumberField,
+        "stale_days": ChoiceNumberField,
     }
     column_labels = {
         ClaimSettings.id: "Configuración",
@@ -759,25 +767,25 @@ class ClaimSettingsAdmin(AdminOnly, AuditedView, model=ClaimSettings):
         "reminder_hours": {
             "description": "Si no tocó «Recibido», se le recuerda una vez, contando solo horas "
             "del horario.",
-            "validators": [_positive],
+            "options": CLAIM_HOURS,
         },
         "reminder_urgent_minutes": {
             "description": "Lo mismo para los urgentes, en minutos a cualquier hora.",
-            "validators": [_positive],
+            "options": CLAIM_MINUTES,
         },
         "alert_hours": {
             "description": "Si sigue sin confirmar, el panel avisa (con sonido). Tiene que ser "
             "más que el recordatorio.",
-            "validators": [_positive],
+            "options": CLAIM_HOURS,
         },
         "alert_urgent_minutes": {
             "description": "Lo mismo para los urgentes, en minutos. Más que su recordatorio.",
-            "validators": [_positive],
+            "options": CLAIM_MINUTES,
         },
         "stale_days": {
             "description": "Un reclamo confirmado, o que tiene el estudio, y que sigue sin "
             "solucionar: el panel avisa a los tantos días.",
-            "validators": [_positive],
+            "options": CLAIM_DAYS,
         },
     }
 

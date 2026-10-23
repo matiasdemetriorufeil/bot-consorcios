@@ -530,7 +530,7 @@ def test_a_wrong_login_never_says_which_field(panel: Panel) -> None:
     assert wrong_user.status_code == wrong_password.status_code == 400
 
     def error_part(page: str) -> str:
-        return page.split('<form class="card login-card"', 1)[1].split("</form>", 1)[0]
+        return page.split('<form novalidate class="card login-card"', 1)[1].split("</form>", 1)[0]
 
     assert error_part(wrong_user.text) == error_part(wrong_password.text)
     form = error_part(wrong_user.text)
@@ -729,7 +729,9 @@ def test_buildings_have_their_own_list(logged_in: Panel) -> None:
 def test_building_info_has_the_same_list(logged_in: Panel) -> None:
     """5g: like «Edificios», the filters as selects in one form with the search."""
     page = logged_in.client.get("/admin/building-info/list?category=horarios").text
-    assert '<form class="building-search" method="get"' in page and 'name="search"' in page
+    assert (
+        '<form novalidate class="building-search" method="get"' in page and 'name="search"' in page
+    )
     assert "filter-sidebar-col" not in page and page.count('class="building-select"') == 2
     assert '<option value="horarios" selected>' in page and "Borrar la búsqueda" in page
     assert re.search(r'<th class="col-secondary">\s*(<a [^>]*>)?\s*Actualizado', page)

@@ -197,7 +197,7 @@
       {% endfor %}
     </ol>
     <div class="card-footer">
-      <form method="POST" action="{{ url_for('admin:view-claim-note', claim_id=c.id) }}" data-fetch>
+      <form novalidate method="POST" action="{{ url_for('admin:view-claim-note', claim_id=c.id) }}" data-fetch>
         <label class="form-label" for="note-text">Nota interna</label>
         <textarea class="form-control mb-2" id="note-text" name="text" rows="2" required placeholder="Solo la ve el estudio"></textarea>
         <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-note-sticky me-1"></i>Guardar nota</button>

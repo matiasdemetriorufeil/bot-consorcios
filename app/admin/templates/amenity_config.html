@@ -1,5 +1,5 @@
 {% extends "sqladmin/layout.html" %}
-{% from "sqladmin/_macros.html" import hour_select %}
+{% from "sqladmin/_macros.html" import hour_select, number_select %}
 {% block content %}
 <div class="col-12">
   <div class="d-flex flex-wrap gap-2">
@@ -11,7 +11,7 @@
 </div>
 
 <div class="col-12 col-xl-6">
-  <form class="card" method="POST" id="config-form">
+  <form novalidate class="card" method="POST" id="config-form">
     <div class="card-header"><h2 class="card-title">Reglas y límites</h2></div>
     <div class="card-body">
       {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
@@ -25,14 +25,10 @@
           placeholder="Limpieza, música, costo, capacidad…">{{ amenity.rules_text or "" }}</textarea>
       </div>
       <div class="row g-3">
-        {% for field, label, minimum in number_fields %}
+        {% for field, label, options in number_fields %}
         <div class="col-12 col-sm-6">
           <label class="form-label" for="{{ field }}">{{ label }}</label>
-          {% set value = amenity[field] %}
-          <input class="form-control" type="number" inputmode="numeric" min="{{ minimum }}" step="1"
-            id="{{ field }}" name="{{ field }}" value="{{ '' if value is none else value }}"
-            {% if field != 'max_per_unit_per_month' %}required{% endif %}>
-          {% if field == 'max_per_unit_per_month' %}<div class="form-hint">Vacío: sin límite.</div>{% endif %}
+          {{ number_select(field, amenity[field], options, typed.get(field), field_errors.get(field)) }}
         </div>
         {% endfor %}
       </div>
@@ -68,7 +64,7 @@
         {% for slot in day_slots %}
         <div class="d-flex align-items-center justify-content-between gap-2 py-1">
           <span>{{ describe_slot(slot) }}</span>
-          <form method="POST" action="{{ url_for('admin:view-amenity-slot-remove', amenity_id=amenity.id, slot_id=slot.id) }}"
+          <form novalidate method="POST" action="{{ url_for('admin:view-amenity-slot-remove', amenity_id=amenity.id, slot_id=slot.id) }}"
             {{ confirm_attrs('remove_slot', day_name ~ ', ' ~ describe_slot(slot) ~ '.') | xmlattr }}>
             {#- One per slot: quiet (a red link), the dialog still asks. -#}
             <button type="submit" class="btn btn-sm btn-link-danger">
@@ -86,7 +82,7 @@
 </div>
 
 <div class="col-12 col-md-6">
-  <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="add-slot">
+  <form novalidate class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="add-slot">
     <div class="card-header"><h2 class="card-title">Agregar un turno</h2></div>
     <div class="card-body">
       <div class="mb-2">
@@ -129,7 +125,7 @@
 </div>
 
 <div class="col-12 col-md-6">
-  <form class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="copy-slots">
+  <form novalidate class="card" method="POST" action="{{ url_for('admin:view-amenity-slots', amenity_id=amenity.id) }}" id="copy-slots">
     <div class="card-header"><h2 class="card-title">Copiar los turnos de un día</h2></div>
     <div class="card-body">
       <div class="mb-3">

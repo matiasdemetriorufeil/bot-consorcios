@@ -193,3 +193,18 @@
   </span>
 </div>
 {% endmacro %}
+
+{# A number picked from a list of the panel's own forms (app.admin.numbers Options, like
+   ChoiceNumberField in SQLAdmin's): each option with its text («4 horas», «Sin límite»); the
+   stored value stays picked even off the list. typed: what was sent (picked again after an
+   error); error: below it, pointed to with aria-describedby. #}
+{% macro number_select(name, stored, options, typed=None, error=None) %}
+{% set chosen = typed if typed is not none else ('' if stored is none else stored | string) %}
+<select class="form-select{{ ' is-invalid' if error }}" id="{{ name }}" name="{{ name }}"
+  {%- if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+  {% for value, text in number_choices(options, stored) %}
+  <option value="{{ value }}"{% if value == chosen %} selected{% endif %}>{{ text }}</option>
+  {% endfor %}
+</select>
+{% if error %}<div class="field-error" id="{{ name }}-error">{{ error }}</div>{% endif %}
+{% endmacro %}

@@ -49,7 +49,7 @@
     <div class="card-header"><h2 class="card-title">Agregar el SUM a un edificio</h2></div>
     <div class="card-body">
       {% if buildings %}
-      <form method="POST" action="{{ url_for('admin:view-amenity-new') }}" class="row g-2">
+      <form novalidate method="POST" action="{{ url_for('admin:view-amenity-new') }}" class="row g-2">
         <div class="col-12 col-sm">
           <select name="building_id" class="form-select" required aria-label="Edificio">
             <option value="">Elegí el edificio…</option>
