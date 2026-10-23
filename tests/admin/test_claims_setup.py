@@ -241,12 +241,12 @@ def test_the_claims_switch_of_a_building(logged_in: Panel) -> None:
 # --- Each building's table ------------------------------------------------------------------
 
 
-def _table(session: Session, building_id: int) -> dict[int, tuple[bool, int | None, int]]:
+def _table(session: Session, building_id: int) -> dict[int, tuple[bool, int | None]]:
     session.expire_all()
     rows = session.scalars(
         select(BuildingClaimCategory).where(BuildingClaimCategory.building_id == building_id)
     )
-    return {r.category_id: (r.enabled, r.provider_id, r.sort_order) for r in rows}
+    return {r.category_id: (r.enabled, r.provider_id) for r in rows}
 
 
 def _setup(session: Session) -> dict[str, Any]:
@@ -311,10 +311,8 @@ def test_save_the_whole_table(logged_in: Panel) -> None:
         data={
             f"enabled_{water.id}": "on",
             f"provider_{water.id}": "",
-            f"position_{water.id}": "2",
             f"enabled_{lift.id}": "on",
             f"provider_{lift.id}": str(lifts.id),
-            f"position_{lift.id}": "1",
         },  # fmt: skip
         follow_redirects=True,
     )
@@ -322,27 +320,22 @@ def test_save_the_whole_table(logged_in: Panel) -> None:
     page = _text(response.text)
     assert "Tabla guardada." in page
     assert "Estos los va a atender el estudio (no tienen proveedor): Sin agua." in page
-    # The order is recalculated from the positions: 10, 20, 30…
-    assert _table(logged_in.session, b.id) == {
-        water.id: (True, None, 20),
-        lift.id: (True, lifts.id, 10),
-    }
+    assert _table(logged_in.session, b.id) == {water.id: (True, None), lift.id: (True, lifts.id)}
     [event] = logged_in.admin_events("building_claims_saved")
     assert event["building_id"] == b.id
     assert sorted(event["category_ids"]) == sorted([water.id, lift.id])
+    assert event["fields"] == ["enabled", "provider_id"]
 
     # Unchecked: disabled.
     logged_in.client.post(
         f"/admin/building-claims/{b.id}",
         data={
             f"provider_{water.id}": "",
-            f"position_{water.id}": "2",
             f"enabled_{lift.id}": "on",
             f"provider_{lift.id}": str(lifts.id),
-            f"position_{lift.id}": "1",
         },  # fmt: skip
     )
-    assert _table(logged_in.session, b.id)[water.id] == (False, None, 20)
+    assert _table(logged_in.session, b.id)[water.id] == (False, None)
 
 
 def test_a_provider_without_whatsapp_warns(logged_in: Panel) -> None:
@@ -353,85 +346,50 @@ def test_a_provider_without_whatsapp_warns(logged_in: Panel) -> None:
     assert "Plomería Inventada no tiene WhatsApp cargado: el bot no le va a poder avisar" in page
 
 
-@pytest.mark.parametrize(
-    ("water", "lift"),
-    [
-        ("primero", "1"),  # not a number
-        ("-1", "1"),  # negative
-        ("0", "1"),  # positions start at 1
-        ("1.5", "2"),  # not whole
-        ("1", "1"),  # repeated
-        ("", "1"),  # empty
-    ],
-)
-def test_a_bad_order_is_refused_and_nothing_changes(
-    logged_in: Panel, water: str, lift: str
-) -> None:
-    """A form sent by hand: the positions must be whole, from 1 and not repeated."""
+def test_positions_sent_by_hand_are_ignored(logged_in: Panel) -> None:
+    """The order is the general one: a position_<id> (or the old order_<id>) changes nothing,
+    even a bad one."""
     s = _setup(logged_in.session)
-    b = s["building"]
+    b, water, lift = s["building"], s["water"], s["lift"]
     response = logged_in.client.post(
         f"/admin/building-claims/{b.id}",
         data={
-            f"enabled_{s['water'].id}": "on",
-            f"position_{s['water'].id}": water,
-            f"enabled_{s['lift'].id}": "on",
-            f"position_{s['lift'].id}": lift,
-        },  # fmt: skip
-    )
-    assert response.status_code == 400
-    assert "El orden de la tabla llegó mal. Recargá la página y probá de nuevo." in _text(
-        response.text
-    )
-    assert _table(logged_in.session, b.id) == {}
-    assert logged_in.admin_events("building_claims_saved") == []
-
-
-def test_the_old_order_field_is_ignored(logged_in: Panel) -> None:
-    """order_<id> (the old number) no longer counts: only the position does."""
-    s = _setup(logged_in.session)
-    b, water, lift = s["building"], s["water"], s["lift"]
-    logged_in.client.post(
-        f"/admin/building-claims/{b.id}",
-        data={
-            f"position_{water.id}": "1",
+            f"enabled_{water.id}": "on",
+            f"provider_{water.id}": "",
+            f"position_{water.id}": "2",
             f"order_{water.id}": "-50",
-            f"position_{lift.id}": "2",
-            f"order_{lift.id}": "7",
+            f"enabled_{lift.id}": "on",
+            f"provider_{lift.id}": "",
+            f"position_{lift.id}": "-1",
         },  # fmt: skip
+        follow_redirects=False,
     )
-    assert _table(logged_in.session, b.id) == {
-        water.id: (False, None, 10),
-        lift.id: (False, None, 20),
-    }
-
-
-def test_gaps_in_the_positions_keep_their_order(logged_in: Panel) -> None:
-    s = _setup(logged_in.session)
-    b, water, lift = s["building"], s["water"], s["lift"]
-    logged_in.client.post(
-        f"/admin/building-claims/{b.id}",
-        data={f"position_{water.id}": "7", f"position_{lift.id}": "3"},
+    assert response.status_code == 302
+    assert _table(logged_in.session, b.id) == {water.id: (True, None), lift.id: (True, None)}
+    titles = re.findall(
+        r'<div class="fw-bold">([^<]+)</div>',
+        logged_in.client.get(f"/admin/building-claims/{b.id}").text,
     )
-    assert _table(logged_in.session, b.id) == {
-        lift.id: (False, None, 10),
-        water.id: (False, None, 20),
-    }
+    assert titles == ["Sin agua", "Ascensor"]  # «Tipos de problema»: water 10, lift 20
 
 
-def test_the_table_shows_positions_and_buttons(logged_in: Panel) -> None:
+def test_the_table_follows_the_general_order(logged_in: Panel) -> None:
     s = _setup(logged_in.session)
+    s["lift"].sort_order, s["water"].sort_order = 10, 20  # reordered in «Tipos de problema»
+    logged_in.session.commit()
     page = logged_in.client.get(f"/admin/building-claims/{s['building'].id}").text
     table = page.split('id="building-claims-table"', 1)[1].split("</table>", 1)[0]
-    # No number to type: the position, hidden, and «Subir» / «Bajar» with their names.
-    assert 'type="number"' not in table and 'name="order_' not in table
-    assert f'name="position_{s["water"].id}" value="1"' in table
-    assert f'name="position_{s["lift"].id}" value="2"' in table
-    assert 'aria-label="Subir Sin agua" disabled' in table  # the first one
-    assert re.search(r'aria-label="Bajar Sin agua"\s*>', table)  # it can go down
-    assert 'aria-label="Bajar Ascensor" disabled' in table  # the last one
-    assert table.count("data-move-buttons hidden") == 2  # shown by panel.js
-    assert 'aria-live="polite" id="claims-order-status"' in page
+    assert re.findall(r'<div class="fw-bold">([^<]+)</div>', table) == ["Ascensor", "Sin agua"]
+    # The place, only to read: no box, no buttons, nothing sent.
+    places = re.findall(r'data-label="Orden"><span class="reorder-position">(\d+)</span>', table)
+    assert places == ["1", "2"]
+    assert "position_" not in table and "data-move" not in table and "data-reorder" not in table
+    assert 'type="number"' not in table
+    # Where to change it, for every building.
+    assert "El orden se cambia en" in page and "y vale para todos los edificios." in page
+    assert re.search(
+        r'<a href="[^"]*/admin/claim-category/list">Reclamos › Tipos de problema</a>', page
+    )
 
 
 def test_more_than_ten_enabled_go_to_a_second_list(logged_in: Panel) -> None:
@@ -444,7 +402,7 @@ def test_more_than_ten_enabled_go_to_a_second_list(logged_in: Panel) -> None:
 
     page = _text(logged_in.client.get(f"/admin/building-claims/{building.id}").text)
 
-    assert "Hay <span data-enabled-count>12</span> problemas habilitados" in page
+    assert "Hay 12 problemas habilitados" in page
     table = page.split('id="claims-table"', 1)[1]
     before, after = table.split("Estos aparecen en «Más opciones»")
     assert "Problema inventado 09" in before and "Problema inventado 10" not in before
@@ -472,19 +430,22 @@ def test_no_line_while_they_fit_in_one_list(logged_in: Panel, enabled: int) -> N
         category = cf.category(session, f"Problema inventado {n:02}", sort_order=n)
         cf.assign(session, building.id, category, enabled=n <= enabled)
     session.commit()
-    page = logged_in.client.get(f"/admin/building-claims/{building.id}").text
+    page = _text(logged_in.client.get(f"/admin/building-claims/{building.id}").text)
     assert "Estos aparecen en «Más opciones»" not in page
-    assert "data-more-note hidden" in page  # panel.js shows it when an 11th is enabled
+    assert "problemas habilitados. WhatsApp muestra hasta 10" not in page
 
 
 def test_copy_from_another_building(logged_in: Panel) -> None:
+    """Copies what is enabled and who attends it; the order is the general one."""
     s = _setup(logged_in.session)
     b, other, lift, lifts = s["building"], s["other"], s["lift"], s["lifts"]
-    cf.assign(logged_in.session, other.id, lift, lifts, sort_order=1)
+    cf.assign(logged_in.session, other.id, lift, lifts)
     logged_in.session.commit()
 
     page = _text(logged_in.client.get(f"/admin/building-claims/{b.id}").text)
     assert help.CONFIRM["copy_claims"]["text"] in page  # asks before
+    assert "el orden" not in help.CONFIRM["copy_claims"]["text"]
+    assert "Copia los habilitados y quién atiende cada uno." in page
 
     response = logged_in.client.post(
         f"/admin/building-claims/{b.id}/copy",
@@ -493,11 +454,12 @@ def test_copy_from_another_building(logged_in: Panel) -> None:
     )
     assert "Copiado de OTRA FICTICIA" in _text(response.text)
     assert _table(logged_in.session, b.id) == {
-        lift.id: (True, lifts.id, 1),
-        s["water"].id: (False, None, 10),
+        lift.id: (True, lifts.id),
+        s["water"].id: (False, None),
     }
     [event] = logged_in.admin_events("building_claims_copied")
     assert event["building_id"] == b.id and event["from_building_id"] == other.id
+    assert event["fields"] == ["enabled", "provider_id"]
 
 
 def test_copy_needs_another_building(logged_in: Panel) -> None:

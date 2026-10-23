@@ -4,7 +4,7 @@ Idempotent: a kind of problem is found by its name; the missing ones are created
 order: sort_order 10, 20, ...) and the existing ones are left as they are (what an admin
 changed in the panel stays). With --building <ConsorPlus code>, the building gets every
 active kind it does not have yet: enabled, without provider ("Lo atiende el estudio") and in
-the kind's order. Providers are never created: they are loaded in the panel. Every creation
+the general order. Providers are never created: they are loaded in the panel. Every creation
 is logged in bot_events as admin_action by the user "script", like the panel does. Only
 touches our database: never ConsorPlus.
 
@@ -171,7 +171,6 @@ def seed(
                     category_id=category.id,
                     enabled=True,
                     provider_id=None,
-                    sort_order=category.sort_order,
                 )
             )
             new_ids.append(category.id)
@@ -192,19 +191,20 @@ def seed(
 
 
 def building_report(session: Session, building: Building) -> list[str]:
-    """The building's table as the panel shows it (with WhatsApp's second list)."""
+    """The building's table as the panel shows it: its place in the general order (with
+    WhatsApp's second list)."""
     rows = building_table(session, building.id)
     _, more = split_for_whatsapp([r for r in rows if r.enabled])
     second = {r.category.id for r in more}
     lines = [f"Tabla de {building_name(building.name)}:"]
-    for row in rows:
+    for place, row in enumerate(rows, start=1):
         if second and row.category.id == more[0].category.id:
-            lines.append("  -- Estos aparecen en una segunda lista («Más opciones») --")
+            lines.append("  -- Estos aparecen en «Más opciones» --")
         enabled = "sí" if row.enabled else "no"
         who = row.provider.name if row.provider else STUDIO
         scope = CLAIM_SCOPE[row.category.scope]
         lines.append(
-            f"  {row.sort_order:>3}  {row.category.list_title:<24}  habilitado: {enabled:<2}  "
+            f"  {place:>3}  {row.category.list_title:<24}  habilitado: {enabled:<2}  "
             f"{scope:<16}  {who}"
         )
     return lines

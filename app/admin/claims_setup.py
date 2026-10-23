@@ -235,9 +235,9 @@ class ProviderAdmin(AdminOnly, AuditedView, model=Provider):
         return None
 
 
-# --- The order of a table: «Subir» / «Bajar» (table[data-reorder], panel.js) -----------------
+# --- The general order: «Subir» / «Bajar» of «Tipos de problema» (table[data-reorder]) -------
 # Each row sends position_<id> (1, 2, 3…); sort_order is recalculated from them: 10, 20, 30…
-# (Tipos de problema, and Problemas y proveedores of each building).
+# The one order of the kinds of problem: every building lists its enabled ones in it.
 ORDER_STEP = 10
 BAD_POSITION = "El orden de la tabla llegó mal. Recargá la página y probá de nuevo."
 
@@ -472,25 +472,20 @@ def _int(value: Any) -> int | None:
 
 
 def parse_table(form: FormData, rows: list[TableRow]) -> dict[int, Choice]:
-    """The table's form: enabled_<id> (checkbox), provider_<id> ("" = the studio) and
-    position_<id> (1, 2, 3…: where the row is, moved with «Subir» / «Bajar»; without JavaScript
-    the order it was drawn in), for each kind of problem shown. The positions must be whole,
-    from 1 and not repeated (a form sent by hand): sort_order is recalculated from them as
-    10, 20, 30…"""
-    titles = {row.category.id: row.category.list_title for row in rows}
-    # A kind added meanwhile is not in the page the admin saw: left as it is.
-    ordered = in_position_order(form, titles)
+    """The table's form: enabled_<id> (checkbox) and provider_<id> ("" = the studio; always
+    sent: it says the row was in the page), for each kind of problem shown. The order is not
+    in it: it is the general one («Tipos de problema»); a position_<id> sent by hand is
+    ignored."""
     choices = {}
-    for n, cid in enumerate(ordered, start=1):
+    for row in rows:
+        cid = row.category.id
+        if f"provider_{cid}" not in form:
+            continue  # not in the page the admin saw (a kind added meanwhile)
         raw_provider = str(form.get(f"provider_{cid}", "")).strip()
         provider_id = _int(raw_provider) if raw_provider else None
         if raw_provider and provider_id is None:
-            raise SetupProblem(f"{titles[cid]}: elegí quién lo atiende.")
-        choices[cid] = Choice(
-            enabled=form.get(f"enabled_{cid}") == "on",
-            provider_id=provider_id,
-            sort_order=ORDER_STEP * n,
-        )
+            raise SetupProblem(f"{row.category.list_title}: elegí quién lo atiende.")
+        choices[cid] = Choice(enabled=form.get(f"enabled_{cid}") == "on", provider_id=provider_id)
     return choices
 
 

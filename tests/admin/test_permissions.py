@@ -364,7 +364,7 @@ def _snapshot(session: Session) -> dict[str, Any]:
             for c in session.scalars(select(ClaimCategory))
         ],
         "claims_tables": [
-            (r.building_id, r.category_id, r.enabled, r.provider_id, r.sort_order)
+            (r.building_id, r.category_id, r.enabled, r.provider_id)
             for r in session.scalars(select(BuildingClaimCategory))
         ],
     }

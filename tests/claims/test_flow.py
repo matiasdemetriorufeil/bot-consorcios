@@ -330,6 +330,29 @@ def test_more_options_with_twelve_kinds(w: World, db_session: Session) -> None:
     assert reply.text.startswith(texts.DESCRIBE)
 
 
+def test_the_list_follows_the_general_order(w: World, db_session: Session) -> None:
+    """The bot offers the building's enabled kinds in the order of «Tipos de problema»: moved
+    there, moved in WhatsApp; one disabled in the building is not offered."""
+    agent, _ = _agent()
+    kinds = ["Ascensor no funciona", "Olor a gas", "Humedad o filtración"]
+    assert _titles(say(w, agent, ANA, "Registrar reclamo"))[:3] == kinds
+
+    w.damp.sort_order = 5  # «Subir» twice in «Tipos de problema»
+    row = db_session.scalar(
+        select(BuildingClaimCategory).where(
+            BuildingClaimCategory.building_id == w.torre.id,
+            BuildingClaimCategory.category_id == w.gas.id,
+        )
+    )
+    assert row is not None
+    row.enabled = False  # not in this building
+    db_session.commit()
+    w.history.clear()
+    titles = _titles(say(w, agent, ANA, "Registrar reclamo"))
+    assert titles[:2] == ["Humedad o filtración", "Ascensor no funciona"]
+    assert "Olor a gas" not in titles
+
+
 # --- Unknown numbers and safety ---------------------------------------------------------------
 
 

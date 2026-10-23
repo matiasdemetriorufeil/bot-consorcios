@@ -377,7 +377,6 @@ def seed(s: Session, empty: bool) -> None:
                     building_id=b.id,
                     category_id=c.id,
                     provider_id=p.id if p else None,
-                    sort_order=c.sort_order,
                 )
             )
     # Six more in TORRE EJEMPLO only: 12 enabled, so «Problemas y proveedores» shows where
@@ -398,7 +397,7 @@ def seed(s: Session, empty: bool) -> None:
         )
         s.add(extra)
         s.flush()
-        s.add(BuildingClaimCategory(building_id=torre.id, category_id=extra.id, sort_order=order))
+        s.add(BuildingClaimCategory(building_id=torre.id, category_id=extra.id))
     s.flush()
 
     def claim(key, phone, hours, building=torre, name="Vecina Ejemplo"):

@@ -857,7 +857,7 @@ class BuildingClaimCategory(Base):
     provider_id: Mapped[int | None] = mapped_column(
         ForeignKey("providers.id", ondelete="RESTRICT"), index=True
     )
-    sort_order: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    # No order of its own: the general one, ClaimCategory.sort_order («Tipos de problema»).
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
     building: Mapped[Building] = relationship()

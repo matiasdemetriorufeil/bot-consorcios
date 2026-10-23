@@ -318,7 +318,7 @@ def _claims(session: Session, rodas2: Building, r2_4b: Unit, bruno: Person) -> N
         session.add(
             BuildingClaimCategory(
                 building_id=rodas2.id, category_id=kind.id, enabled=True,
-                provider_id=provider, sort_order=kind.sort_order,
+                provider_id=provider,
             )
         )  # fmt: skip
     session.flush()

@@ -85,8 +85,6 @@ def test_the_building_gets_every_kind_enabled_without_providers(db_session: Sess
     assert len(rows) == 12
     assert {r.building_id for r in rows} == {building.id}
     assert all(r.enabled and r.provider_id is None for r in rows)
-    orders = {r.category_id: r.sort_order for r in rows}
-    assert orders == {c.id: c.sort_order for c in _categories(db_session)}
     assert _count(db_session, Provider) == 0
     assert not any(r.building_id == other.id for r in rows)
     [event] = [e for e in _script_events(db_session) if e["action"] == "building_claims_seeded"]
@@ -100,7 +98,7 @@ def test_the_report_shows_the_second_whatsapp_list(db_session: Session) -> None:
     text = seeder.report(db_session, result, dry_run=False)
 
     lines = text.splitlines()
-    split = lines.index("  -- Estos aparecen en una segunda lista («Más opciones») --")
+    split = lines.index("  -- Estos aparecen en «Más opciones» --")
     after = [line for line in lines[split + 1 :] if "habilitado" in line]
     assert [line.split()[1] for line in after] == ["Ruidos", "Limpieza", "Otras"]
     assert "Lo atiende el estudio" in text

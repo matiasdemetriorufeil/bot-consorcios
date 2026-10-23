@@ -2,9 +2,10 @@
 the result, like app.amenities.booking for the SUM):
 
 - a provider's WhatsApp, normalized like the roster's phones and unique among active providers;
-- the table "Problemas y proveedores" of a building: one row per active kind of problem with
-  whether it is enabled, who attends it (no provider: the studio) and its order; saved whole,
-  or copied from another building;
+- the table "Problemas y proveedores" of a building: one row per active kind of problem, in
+  the general order (ClaimCategory.sort_order, «Tipos de problema»: the same in every
+  building), with whether it is enabled and who attends it (no provider: the studio); saved
+  whole, or copied from another building;
 - what deserves a warning (problems the studio attends, providers the bot cannot notify);
 - how the enabled problems fit in a WhatsApp list (split_for_whatsapp).
 
@@ -117,11 +118,11 @@ class TableChange:
 
 @dataclass(frozen=True)
 class Choice:
-    """What the admin chose for one problem in one building."""
+    """What the admin chose for one problem in one building (the order is not: it is the
+    general one, ClaimCategory.sort_order, the same in every building)."""
 
     enabled: bool
     provider_id: int | None
-    sort_order: int
 
 
 @dataclass
@@ -129,22 +130,21 @@ class TableRow:
     category: ClaimCategory
     enabled: bool
     provider: Provider | None
-    sort_order: int
 
     @property
     def provider_id(self) -> int | None:
         return self.provider.id if self.provider else None
 
 
-def _current(category: ClaimCategory, row: BuildingClaimCategory | None) -> Choice:
-    """A problem's choice in a building; with no row yet: disabled, the studio, its own
-    order."""
+def _current(row: BuildingClaimCategory | None) -> Choice:
+    """A problem's choice in a building; with no row yet: disabled, the studio."""
     if row is None:
-        return Choice(enabled=False, provider_id=None, sort_order=category.sort_order)
-    return Choice(row.enabled, row.provider_id, row.sort_order)
+        return Choice(enabled=False, provider_id=None)
+    return Choice(row.enabled, row.provider_id)
 
 
 def _active_categories(session: Session) -> list[ClaimCategory]:
+    """In the general order («Tipos de problema»)."""
     return list(
         session.scalars(
             select(ClaimCategory)
@@ -164,7 +164,8 @@ def _assignments(session: Session, building_id: int) -> dict[int, BuildingClaimC
 
 
 def enabled_categories(session: Session, building_id: int) -> list[ClaimCategory]:
-    """The kinds of problem that can be reported in the building, in its table's order."""
+    """The kinds of problem that can be reported in the building, in the general order
+    (ClaimCategory.sort_order, «Tipos de problema»): what the bot offers in WhatsApp."""
     return list(
         session.scalars(
             select(ClaimCategory)
@@ -174,29 +175,23 @@ def enabled_categories(session: Session, building_id: int) -> list[ClaimCategory
                 BuildingClaimCategory.enabled.is_(True),
                 ClaimCategory.active.is_(True),
             )
-            .order_by(
-                BuildingClaimCategory.sort_order, ClaimCategory.sort_order, ClaimCategory.name
-            )
+            .order_by(ClaimCategory.sort_order, ClaimCategory.name)
         )
     )
 
 
-def _sort_key(row: TableRow) -> tuple[int, int, str]:
-    return (row.sort_order, row.category.sort_order, row.category.name)
-
-
 def building_table(session: Session, building_id: int) -> list[TableRow]:
-    """One row per active kind of problem, in the building's order. Inactive kinds are not
+    """One row per active kind of problem, in the general order. Inactive kinds are not
     shown (their rows stay as they are)."""
     assignments = _assignments(session, building_id)
     rows = []
     for category in _active_categories(session):
         row = assignments.get(category.id)
         if row is None:
-            rows.append(TableRow(category, False, None, category.sort_order))
+            rows.append(TableRow(category, False, None))
         else:
-            rows.append(TableRow(category, row.enabled, row.provider, row.sort_order))
-    return sorted(rows, key=_sort_key)
+            rows.append(TableRow(category, row.enabled, row.provider))
+    return rows
 
 
 def _apply(
@@ -214,10 +209,10 @@ def _apply(
         if choice is None:
             continue
         row = assignments.get(category.id)
-        before = _current(category, row)
+        before = _current(row)
         differs = {
             name
-            for name in ("enabled", "provider_id", "sort_order")
+            for name in ("enabled", "provider_id")
             if getattr(before, name) != getattr(choice, name)
         }
         if row is None:
@@ -225,7 +220,6 @@ def _apply(
             session.add(row)
         row.enabled = choice.enabled
         row.provider_id = choice.provider_id
-        row.sort_order = choice.sort_order
         if differs:
             changed_ids.append(category.id)
             fields |= differs
@@ -247,8 +241,6 @@ def save_building_table(
         choice = choices.get(category.id)
         if choice is None:
             continue
-        if choice.sort_order < 0:
-            raise SetupProblem(f"{category.list_title}: el orden tiene que ser 0 o más.")
         if choice.provider_id is None:
             continue
         provider = providers.get(choice.provider_id)
@@ -260,15 +252,16 @@ def save_building_table(
 
 
 def copy_building_table(session: Session, building_id: int, source_id: int) -> TableChange:
-    """Leave the building's table like the source's (enabled, provider and order, for every
-    active kind of problem; those the source never had end up disabled)."""
+    """Leave the building's table like the source's: enabled and provider, for every active
+    kind of problem (those the source never had end up disabled). The order is the general
+    one, the same in every building: nothing to copy."""
     if source_id == building_id:
         raise SetupProblem("Elegí otro edificio para copiar.")
     if session.get(Building, building_id) is None or session.get(Building, source_id) is None:
         raise SetupProblem("Ese edificio no existe.")
     categories = _active_categories(session)
     source = _assignments(session, source_id)
-    choices = {c.id: _current(c, source.get(c.id)) for c in categories}
+    choices = {c.id: _current(source.get(c.id)) for c in categories}
     return _apply(session, building_id, choices, categories)
 
 

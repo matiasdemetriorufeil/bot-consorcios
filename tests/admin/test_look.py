@@ -750,7 +750,7 @@ def test_kinds_of_problem_have_the_same_list(logged_in: Panel) -> None:
     page = logged_in.client.get("/admin/claim-category/list").text
     assert 'id="search-input"' in page and page.count('class="segmented"') == 1
     assert "filter-sidebar-col" not in page and "Agregar tipo de problema" in page
-    assert "Título en la lista · " in page and "en el que el propietario ve la lista" in page
+    assert "Título en la lista · " in page and "en que el propietario ve la lista" in page
 
 
 def test_verifications_fit_at_1024(operator: Panel) -> None:

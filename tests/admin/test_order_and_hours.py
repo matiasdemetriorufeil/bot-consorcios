@@ -53,7 +53,7 @@ def test_the_list_shows_places_and_buttons(logged_in: Panel, three: dict[str, in
     assert "data-reorder" in page and 'data-reorder-status="category-order-status"' in page
     # Never the internal number.
     assert not re.search(r">\s*(10|20|30)\s*<", page.split('id="category-order"', 1)[1])
-    assert "En cada edificio se puede cambiar en «Reclamos por edificio»" in page
+    assert "El orden vale para todos los edificios" in page
 
 
 def test_save_the_order_recalculates_and_is_audited(

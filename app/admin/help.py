@@ -136,7 +136,8 @@ PAGE_HELP: dict[str, str] = {
     ),
     "list:claim-category": (
         "Los problemas que un propietario va a poder elegir al hacer un reclamo por WhatsApp. "
-        "Este es el orden general: en cada edificio se puede cambiar en «Reclamos por edificio»."
+        "El orden vale para todos los edificios; en cada uno se eligen en «Reclamos por "
+        "edificio» cuáles se pueden reclamar."
     ),
     "edit:claim-category": (
         "El título y la descripción son lo que la persona ve en la lista de WhatsApp: tienen "
@@ -152,7 +153,8 @@ PAGE_HELP: dict[str, str] = {
     ),
     "view-building-claims-table": (
         "Marcá los problemas que se pueden reclamar en este edificio y elegí quién atiende cada "
-        "uno. Guardá al terminar: se guarda toda la tabla junta."
+        "uno. Guardá al terminar: se guarda toda la tabla junta. El orden es el de «Tipos de "
+        "problema»."
     ),
     "view-users": "Las personas que entran al panel. Cada una tiene su usuario.",
     "view-user-edit": (
@@ -523,8 +525,8 @@ CONFIRM: dict[str, dict[str, str]] = {
     "copy_claims": {
         "title": "¿Copiar de otro edificio?",
         "text": (
-            "Se reemplazan los problemas habilitados, quién los atiende y el orden de este "
-            "edificio por los del otro. A nadie le llega ningún aviso."
+            "Se reemplazan los problemas habilitados y quién los atiende en este edificio por "
+            "los del otro. A nadie le llega ningún aviso."
         ),
         "button": "Copiar",
         "kind": "danger",

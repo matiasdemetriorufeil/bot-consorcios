@@ -43,21 +43,6 @@
     return { fresh: fresh, stored: next };
   };
 
-  // «Problemas y proveedores» of a building: before which row (its index) the line «Estos
-  // aparecen en "Más opciones"» goes, given whether each row is enabled, in order; -1 for none.
-  // The same rule as the bot (app.claims.setup.split_for_whatsapp): up to 10 enabled fit in one
-  // WhatsApp list; with more, the first 9 and «Más opciones» with the rest, from the 10th.
-  root.panelSecondListBefore = function (enabled) {
-    var max = 10, seen = 0;
-    if (enabled.filter(Boolean).length <= max) return -1;
-    for (var i = 0; i < enabled.length; i += 1) {
-      if (!enabled[i]) continue;
-      seen += 1;
-      if (seen === max) return i;
-    }
-    return -1;
-  };
-
   // The list of «Reclamos» when the panel's numbers arrive: "none" (no claim changed), "refresh"
   // (redraw it) or "wait" (something changed, but she is typing in the search or has the
   // filters open: later).
@@ -731,50 +716,18 @@
     document.querySelectorAll("form").forEach(function (form) { window.panelBusy(formButtons(form), false); });
   });
 
-  // --- Tables ordered with «Subir» / «Bajar» (table[data-reorder]): «Problemas y proveedores»
-  // of a building (building_claims.html) and «Tipos de problema» (claim_category_list.html).
-  // Without this the buttons stay hidden and the rows are saved in the order they were drawn.
-  // Each row (tr[data-reorder-row], data-title) has its place ([data-position-text]), its
-  // hidden position ([data-position]) and the two buttons ([data-move] up / down). Moving: the
-  // row swaps with its neighbor, every row is numbered again, the first has no «Subir» and the
-  // last no «Bajar», and the new place is said aloud (data-reorder-status: the live region's
-  // id). The focus stays on the button pressed (or on the other one, at an end).
-  // data-reorder-second-list (Problemas y proveedores): also the line of «Más opciones», moved
-  // when a problem is enabled or disabled too, and the count of enabled ones.
+  // --- «Tipos de problema» (claim_category_list.html): the general order with «Subir» / «Bajar»
+  // (table[data-reorder]). Without this the buttons stay hidden. Each row (tr[data-reorder-row],
+  // data-title) has its place ([data-position-text]), its hidden position ([data-position])
+  // and the two buttons ([data-move] up / down). Moving: the row swaps with its neighbor, every
+  // row is numbered again, the first has no «Subir» and the last no «Bajar», and the new place
+  // is said aloud (data-reorder-status: the live region's id). The focus stays on the button
+  // pressed (or on the other one, at an end). «Guardar orden» sends the positions.
   document.querySelectorAll("table[data-reorder]").forEach(function (table) {
     var body = table.tBodies[0];
     var status = document.getElementById(table.dataset.reorderStatus || "");
-    var secondList = table.hasAttribute("data-reorder-second-list");
-    var columns = table.tHead ? table.tHead.rows[0].cells.length : 1;
     var rowsOf = function () {
       return Array.prototype.slice.call(body.querySelectorAll("tr[data-reorder-row]"));
-    };
-    var enabledOf = function (row) {
-      var box = row.querySelector('input[type="checkbox"][name^="enabled_"]');
-      return !!(box && box.checked);
-    };
-    var placeLine = function (rows) {
-      var line = body.querySelector("tr[data-second-list]");
-      var enabled = rows.map(enabledOf);
-      var before = root.panelSecondListBefore(enabled);
-      if (before < 0) {
-        if (line) line.remove();
-      } else {
-        if (!line) {
-          line = document.createElement("tr");
-          line.className = "claims-second-list";
-          line.setAttribute("data-second-list", "");
-          line.innerHTML = '<td colspan="' + columns + '">Estos aparecen en «Más opciones»</td>';
-        }
-        body.insertBefore(line, rows[before]);
-      }
-      var count = enabled.filter(Boolean).length;
-      var note = document.querySelector("[data-more-note]");
-      if (note) {
-        note.hidden = count <= 10;
-        var number = note.querySelector("[data-enabled-count]");
-        if (number) number.textContent = String(count);
-      }
     };
     var redraw = function () {
       var rows = rowsOf();
@@ -783,9 +736,7 @@
         row.querySelector("[data-position]").value = String(i + 1);
         row.querySelector('[data-move="up"]').disabled = i === 0;
         row.querySelector('[data-move="down"]').disabled = i === rows.length - 1;
-        if (secondList) row.classList.toggle("text-secondary", !enabledOf(row));
       });
-      if (secondList) placeLine(rows);
     };
     rowsOf().forEach(function (row) { row.querySelector("[data-move-buttons]").hidden = false; });
     table.addEventListener("click", function (event) {
@@ -807,11 +758,6 @@
         status.textContent = row.dataset.title + ": lugar " + (now.indexOf(row) + 1) + " de " + now.length + ".";
       }
     });
-    if (secondList) {
-      table.addEventListener("change", function (event) {
-        if (event.target.matches && event.target.matches('input[name^="enabled_"]')) redraw();
-      });
-    }
   });
 
   // --- A field with a list to pick from (<input list data-submit-on-pick>): picking one of its

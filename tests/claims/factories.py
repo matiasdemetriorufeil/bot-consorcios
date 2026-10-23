@@ -46,14 +46,12 @@ def assign(
     p: Provider | None = None,
     *,
     enabled: bool = True,
-    sort_order: int | None = None,
 ) -> BuildingClaimCategory:
     row = BuildingClaimCategory(
         building_id=building_id,
         category_id=c.id,
         enabled=enabled,
         provider_id=p.id if p else None,
-        sort_order=c.sort_order if sort_order is None else sort_order,
     )
     session.add(row)
     session.flush()

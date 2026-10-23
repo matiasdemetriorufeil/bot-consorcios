@@ -14,6 +14,7 @@ from app.claims.setup import (
     SetupProblem,
     building_table,
     copy_building_table,
+    enabled_categories,
     normalize_provider_whatsapp,
     provider_with_whatsapp,
     save_building_table,
@@ -43,12 +44,12 @@ def _fails(session: Session, *objects: Any) -> None:
         session.flush()
 
 
-def _rows(session: Session, building_id: int) -> dict[int, tuple[bool, int | None, int]]:
+def _rows(session: Session, building_id: int) -> dict[int, tuple[bool, int | None]]:
     session.expire_all()
     rows = session.scalars(
         select(BuildingClaimCategory).where(BuildingClaimCategory.building_id == building_id)
     )
-    return {r.category_id: (r.enabled, r.provider_id, r.sort_order) for r in rows}
+    return {r.category_id: (r.enabled, r.provider_id) for r in rows}
 
 
 # --- Constraints ----------------------------------------------------------------------------
@@ -177,21 +178,20 @@ def test_a_new_building_shows_every_active_kind_disabled(
     rows = building_table(db_session, setup["building"].id)
     assert [r.category.list_title for r in rows] == ["Sin agua", "Ascensor"]
     assert all(not r.enabled and r.provider is None for r in rows)
-    assert [r.sort_order for r in rows] == [10, 20]
 
 
 def test_save_the_whole_table(db_session: Session, setup: dict[str, Any]) -> None:
     b, water, lift, lifts = setup["building"], setup["water"], setup["lift"], setup["lifts"]
-    choices = {water.id: Choice(True, None, 2), lift.id: Choice(True, lifts.id, 1)}
+    choices = {water.id: Choice(True, None), lift.id: Choice(True, lifts.id)}
 
     change = save_building_table(db_session, b.id, choices)
 
     assert sorted(change.category_ids) == sorted([water.id, lift.id])
-    assert change.fields == ["enabled", "provider_id", "sort_order"]
-    assert _rows(db_session, b.id) == {water.id: (True, None, 2), lift.id: (True, lifts.id, 1)}
-    # In the building's order.
+    assert change.fields == ["enabled", "provider_id"]
+    assert _rows(db_session, b.id) == {water.id: (True, None), lift.id: (True, lifts.id)}
+    # In the general order («Tipos de problema»), the same in every building.
     titles = [r.category.list_title for r in building_table(db_session, b.id)]
-    assert titles == ["Ascensor", "Sin agua"]
+    assert titles == ["Sin agua", "Ascensor"]
     # Saved again unchanged: nothing changed (the panel logs nothing).
     assert save_building_table(db_session, b.id, choices).category_ids == []
 
@@ -199,8 +199,8 @@ def test_save_the_whole_table(db_session: Session, setup: dict[str, Any]) -> Non
 def test_save_leaves_inactive_kinds_alone(db_session: Session, setup: dict[str, Any]) -> None:
     b, old, lifts = setup["building"], setup["old"], setup["lifts"]
     cf.assign(db_session, b.id, old, lifts)
-    save_building_table(db_session, b.id, {old.id: Choice(False, None, 0)})
-    assert _rows(db_session, b.id)[old.id] == (True, lifts.id, old.sort_order)
+    save_building_table(db_session, b.id, {old.id: Choice(False, None)})
+    assert _rows(db_session, b.id)[old.id] == (True, lifts.id)
 
 
 def test_save_refuses_an_inactive_provider_unless_it_was_already_there(
@@ -210,36 +210,46 @@ def test_save_refuses_an_inactive_provider_unless_it_was_already_there(
     lifts.active = False
     db_session.commit()
     with pytest.raises(SetupProblem, match="proveedor activo"):
-        save_building_table(db_session, b.id, {lift.id: Choice(True, lifts.id, 1)})
+        save_building_table(db_session, b.id, {lift.id: Choice(True, lifts.id)})
     db_session.rollback()
 
     cf.assign(db_session, b.id, lift, lifts)
     db_session.commit()
-    save_building_table(db_session, b.id, {lift.id: Choice(True, lifts.id, 3)})
-    assert _rows(db_session, b.id)[lift.id] == (True, lifts.id, 3)
+    save_building_table(db_session, b.id, {lift.id: Choice(True, lifts.id)})
+    assert _rows(db_session, b.id)[lift.id] == (True, lifts.id)
 
 
-def test_save_refuses_a_negative_order(db_session: Session, setup: dict[str, Any]) -> None:
-    choices = {setup["water"].id: Choice(True, None, -1)}
-    with pytest.raises(SetupProblem, match="orden"):
-        save_building_table(db_session, setup["building"].id, choices)
+def test_the_general_order_wins(db_session: Session, setup: dict[str, Any]) -> None:
+    """The table and the bot's list follow «Tipos de problema»: reordering it there changes
+    every building."""
+    b, water, lift = setup["building"], setup["water"], setup["lift"]
+    cf.assign(db_session, b.id, water)
+    cf.assign(db_session, b.id, lift)
+    lift.sort_order, water.sort_order = 10, 20  # «Subir» on Ascensor in «Tipos de problema»
+    db_session.commit()
+    assert [r.category.list_title for r in building_table(db_session, b.id)] == [
+        "Ascensor",
+        "Sin agua",
+    ]
+    assert [c.list_title for c in enabled_categories(db_session, b.id)] == ["Ascensor", "Sin agua"]
 
 
 def test_copy_from_another_building(db_session: Session, setup: dict[str, Any]) -> None:
     b, other, water, lift = setup["building"], setup["other"], setup["water"], setup["lift"]
     lifts = setup["lifts"]
-    cf.assign(db_session, other.id, lift, lifts, sort_order=1)  # the source has no water row
-    cf.assign(db_session, b.id, water, setup["plumber"], sort_order=7)
+    cf.assign(db_session, other.id, lift, lifts)  # the source has no water row
+    cf.assign(db_session, b.id, water, setup["plumber"])
     db_session.commit()
 
     change = copy_building_table(db_session, b.id, other.id)
 
     assert sorted(change.category_ids) == sorted([water.id, lift.id])
     assert _rows(db_session, b.id) == {
-        water.id: (False, None, water.sort_order),  # the source never had it: disabled
-        lift.id: (True, lifts.id, 1),
+        water.id: (False, None),  # the source never had it: disabled
+        lift.id: (True, lifts.id),
     }
-    assert _rows(db_session, other.id) == {lift.id: (True, lifts.id, 1)}  # untouched
+    assert _rows(db_session, other.id) == {lift.id: (True, lifts.id)}  # untouched
+    assert change.fields == ["enabled", "provider_id"]  # never an order
 
 
 def test_copy_from_itself_is_refused(db_session: Session, setup: dict[str, Any]) -> None:
